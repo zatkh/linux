@@ -16,18 +16,18 @@ source ~/.bashrc
 
 #git clone --depth=1 https://github.com/raspberrypi/linux
 
-sudo apt-get install git bison flex libssl-dev
+#sudo apt-get install git bison flex libssl-dev
 
 #For Pi 2, Pi 3, Pi 3+, or Compute Module 3:
 
-cd linux
+#cd linux
 KERNEL=kernel7
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- bcm2709_defconfig -j8
 make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs -j8
 
-mkdir mnt
-mkdir mnt/fat32
-mkdir mnt/ext4
+mkdir -p mnt
+mkdir -p mnt/fat32
+mkdir -p mnt/ext4
 
 sudo make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=mnt/ext4 modules_install
 
