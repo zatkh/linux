@@ -13,7 +13,7 @@
 #2015-11-21-raspbian-jessie.img2      131072 7684095 7553024  3.6G 83 Linux
 
 #wget http://downloads.raspberrypi.org/raspbian/images/raspbian-2015-11-24/2015-11-21-raspbian-jessie.zip
-#unzip 2015-11-21-raspbian-jessie.zip
+#unzip 2015-11-21-raspbian-jessie.zippi
 
 IMG= $1 #2015-11-21-raspbian-jessie.img
 BOOT=/media/zt233/boot
@@ -28,9 +28,8 @@ LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.73-v7+/
 #sudo mount /dev/sdb7 mnt/ext4
 
 
-sudo cp $LINUX_BOOT_DIR/zImage $FS/boot/kernelx.img
 sudo cp -R $LINUX_BOOT_DIR/dts/*.dtb $FS/boot/
-sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $FS/boot/overlays/
+#sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $FS/boot/overlays/
 sudo cp -R $LINUX_MODULES_DIR $FS/lib/modules
 sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernelx.img
 sudo cp -R  $LINUX_BOOT_DIR/dts/*.dtb $BOOT
