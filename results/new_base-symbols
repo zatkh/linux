@@ -341,11 +341,9 @@
 000008dc T regmap_add_irq_chip
 000008dc T perf_output_sample
 000008d4 T vchiq_prepare_bulk_data
-000008d4 r smack_hooks
 000008d4 T ksys_semctl
 000008d4 T fb_show_logo
 000008d4 t bpf_prepare_filter
-000008d0 t netlbl_cipsov4_add
 000008d0 T cfb_imageblit
 000008cc t semctl_main
 000008c8 T xfrm_lookup_with_ifid
@@ -395,7 +393,6 @@
 00000828 T siphash_4u64
 00000828 T common_lsm_audit
 00000820 t mpage_map_and_submit_extent
-0000081c T netlbl_domhsh_add
 0000081c T fb_find_mode_cvt
 00000818 t kswapd
 00000818 T __block_write_begin_int
@@ -666,7 +663,6 @@
 000005f8 T ext4_punch_hole
 000005f4 t worker_thread
 000005f4 T ring_buffer_write
-000005f4 T __ip_options_compile
 000005f4 t cpuset_hotplug_workfn
 000005f0 t try_to_unmap_one
 000005f0 T siphash_2u64
@@ -708,14 +704,13 @@
 000005c4 t vcs_write
 000005c4 T ext4_process_freed_data
 000005c0 t vif_add
-000005c0 t cipso_v4_genopt.part.2.constprop.4
 000005bc t vfat_rename
 000005bc T vchiq_arm_force_suspend
 000005bc t dev_gro_receive
 000005b8 t vcs_read
 000005b8 t nfs_show_mount_options
+000005b8 T __ip_options_compile
 000005b8 t ext4_journalled_write_end
-000005b4 T cipso_v4_getattr
 000005b0 T unwind_frame
 000005b0 T register_kprobe
 000005b0 T f2fs_write_checkpoint
@@ -919,7 +914,6 @@
 000004f0 T unlzo
 000004f0 t tg_set_limit
 000004f0 T seq_read
-000004f0 T netlbl_unlhsh_remove
 000004ec d vm_table
 000004ec B vc_cons
 000004ec d throtl_legacy_files
@@ -1002,7 +996,6 @@
 000004b8 t ext4_file_write_iter
 000004b4 t truncate_partial_nodes
 000004b4 t regcache_rbtree_write
-000004b4 T netlbl_unlhsh_add
 000004b4 T check_and_switch_context
 000004b4 t cfq_service_tree_add
 000004b0 b kdb_base_commands
@@ -1047,7 +1040,6 @@
 00000490 T fat_fill_inode
 00000490 T con_font_op
 0000048c T tcp_close
-0000048c t smk_write_net4addr
 0000048c T ip_mc_source
 0000048c t ip_finish_output2
 0000048c t iomap_readpage_actor
@@ -1130,7 +1122,6 @@
 00000468 t oom_reaper
 00000468 t nfs4_proc_lookup_common
 00000468 t net_rx_action
-00000468 t netlbl_mgmt_listentry
 00000468 t mem_cgroup_css_alloc
 00000468 T ext4_sync_file
 00000468 T crypto_aes_expand_key
@@ -1145,7 +1136,6 @@
 00000460 t rpi_power_probe
 00000460 T rpc_clnt_show_stats
 00000460 t number
-00000460 t netlbl_mgmt_add_common
 00000460 t handle_hc_xfercomp_intr
 00000460 T f2fs_recover_orphan_inodes
 0000045c t sock_ioctl
@@ -1206,7 +1196,6 @@
 00000438 T sys_pivot_root
 00000438 T __se_sys_pivot_root
 00000438 T of_resolve_phandles
-00000438 t netlbl_cipsov4_list
 00000438 T LZ4_decompress_safe_partial
 00000438 t f2fs_sbi_store
 00000434 T perf_pmu_register
@@ -1357,12 +1346,10 @@
 000003fc T chacha20_block
 000003fc t call_status
 000003f8 T xfrm_state_update
-000003f8 t smack_d_instantiate
 000003f8 T nfs_remount
 000003f8 t ethtool_set_rxfh
 000003f8 T cont_write_begin
 000003f8 b cont
-000003f8 T cipso_v4_validate
 000003f8 t cgroup_pidlist_start
 000003f8 T bpf_setsockopt
 000003f4 t nfs4_do_setattr.constprop.34
@@ -1370,7 +1357,6 @@
 000003f4 T fscache_stats_show
 000003f4 t ext4_mb_release_inode_pa
 000003f4 T dwc_otg_ep0_start_transfer
-000003f0 t smk_write_net6addr
 000003f0 T rcu_init
 000003f0 T ping_bind
 000003f0 t nfs_write_end
@@ -2209,7 +2195,6 @@
 000002e4 t reweight_entity
 000002e4 T nfs4_replace_transport
 000002e4 t net_tx_action
-000002e4 T netlbl_cfg_unlbl_map_add
 000002e4 T napi_busy_loop
 000002e4 t kobject_add_internal
 000002e4 T kdbgetaddrarg
@@ -2227,7 +2212,6 @@
 000002e0 t rq_offline_rt
 000002e0 t nfs_write_begin
 000002e0 t nfs4_xdr_dec_server_caps
-000002e0 t netlbl_unlabel_staticlist
 000002e0 t mousedev_create
 000002e0 t __issue_discard_cmd_range.constprop.5
 000002e0 t ip_error
@@ -2250,7 +2234,6 @@
 000002d8 r symbols.42619
 000002d8 r symbols.42605
 000002d8 T spi_map_buf
-000002d8 t smack_parse_opts_str
 000002d8 T perf_output_begin_backward
 000002d8 T nfs_generic_pgio
 000002d8 t fbcon_blank
@@ -2346,7 +2329,6 @@
 000002c4 T device_link_add
 000002c0 T vread
 000002c0 T tracepoint_probe_register_prio
-000002c0 t smack_inet_conn_request
 000002c0 t slave_configure
 000002c0 t scsi_alloc_sdev
 000002c0 t regmap_reg_ranges_read_file
@@ -2783,7 +2765,6 @@
 0000026c t wb_position_ratio
 0000026c t trailing_symlink
 0000026c t trace_event_define_fields_nfs4_set_lock
-0000026c t smack_set_mnt_opts
 0000026c T regcache_sync_block
 0000026c t of_syscon_register
 0000026c T nfs_try_mount
@@ -2809,7 +2790,6 @@
 00000268 t trace_event_raw_event_mmc_request_start
 00000268 T sys_fanotify_init
 00000268 T splice_direct_to_actor
-00000268 t smack_socket_sock_rcv_skb
 00000268 T __se_sys_fanotify_init
 00000268 t __rwsem_mark_wake
 00000268 T ring_buffer_reset_cpu
@@ -2845,7 +2825,6 @@
 00000264 t load_script
 00000264 T led_trigger_set
 00000264 T kernel_read_file
-00000264 d ipv4_table
 00000264 t iomap_write_end
 00000264 T iomap_readpages
 00000264 t get_implied_cluster_alloc
@@ -2891,7 +2870,6 @@
 0000025c t put_unbound_pool
 0000025c T pipe_fcntl
 0000025c t nfs4_do_unlck
-0000025c T netlbl_domhsh_remove_entry
 0000025c t neigh_fill_info
 0000025c T mb_cache_entry_create
 0000025c T match_token
@@ -2915,7 +2893,6 @@
 00000258 t univ8250_setup_irq
 00000258 t unaccount_page_cache_page
 00000258 t tcp_sacktag_one
-00000258 t smk_set_cipso.constprop.11
 00000258 t show_trans_table
 00000258 T search_binary_handler
 00000258 t _regmap_raw_read
@@ -2944,7 +2921,6 @@
 00000254 T _pnfs_return_layout
 00000254 T play_idle
 00000254 T __netlink_kernel_create
-00000254 t netlbl_unlabel_staticlist_gen
 00000254 t net_dev_init
 00000254 T mem_init_print_info
 00000254 T list_sort
@@ -2965,7 +2941,6 @@
 00000250 t store_bind
 00000250 T srcu_barrier
 00000250 T sock_alloc_send_pskb
-00000250 t smack_inode_setxattr
 00000250 T sdhci_calc_clk
 00000250 t perf_trace_tcp_probe
 00000250 T nfs_fs_mount_common
@@ -3223,7 +3198,6 @@
 00000230 t tk_setup_internals.constprop.5
 00000230 t tc_dump_tfilter
 00000230 T sys_fcntl64
-00000230 t smk_skb_to_addr_ipv6
 00000230 T __se_sys_fcntl64
 00000230 T request_key_auth_new
 00000230 T print_trace_header
@@ -3324,7 +3298,6 @@
 00000224 t queue_process
 00000224 d print_fmt_net_dev_rx_verbose_template
 00000224 t parse_mount_options
-00000224 t netlbl_unlabel_staticlistdef
 00000224 t neigh_periodic_work
 00000224 T mii_ethtool_gset
 00000224 t mem_rw
@@ -3369,7 +3342,6 @@
 00000220 T __ext4_error_inode
 00000220 T elv_iosched_show
 00000220 t dd_dispatch_request
-00000220 T cipso_v4_skbuff_setattr
 00000220 T bus_add_driver
 00000220 T blk_queue_enter
 00000220 T blkdev_issue_zeroout
@@ -3630,7 +3602,6 @@
 00000200 t tcf_block_find
 00000200 T sys_sched_setattr
 00000200 t sysfs_blk_trace_attr_show
-00000200 t smack_inode_removexattr
 00000200 t shmem_fault
 00000200 D shift_map
 00000200 D shift_ctrl_map
@@ -3800,7 +3771,6 @@
 000001f4 t packet_rcv_fanout
 000001f4 t nlm_alloc_host
 000001f4 T nfs_async_rename
-000001f4 T netlbl_cfg_calipso_map_add
 000001f4 T mempool_resize
 000001f4 t journal_init_common
 000001f4 t ip_copy_metadata
@@ -3865,7 +3835,6 @@
 000001ec t tpk_write
 000001ec t tcf_fill_node
 000001ec T sys_waitid
-000001ec t smack_init
 000001ec t __set_nat_cache_dirty
 000001ec T __se_sys_waitid
 000001ec T scatterwalk_copychunks
@@ -3955,7 +3924,6 @@
 000001e4 t swap_do_scheduled_discard
 000001e4 T svc_age_temp_xprts_now
 000001e4 t smpboot_thread_fn
-000001e4 t smk_write_rules_list.constprop.12
 000001e4 T __sk_receive_skb
 000001e4 T sdio_align_size
 000001e4 T rtc_set_time
@@ -4161,6 +4129,7 @@
 000001d4 t mem_cgroup_can_attach
 000001d4 T kmem_cache_destroy
 000001d4 t key_or_keyring_common
+000001d4 d ipv4_table
 000001d4 T integrity_audit_msg
 000001d4 t instance_rmdir
 000001d4 T install_user_keyrings
@@ -4175,7 +4144,6 @@
 000001d4 t do_remove_conflicting_framebuffers
 000001d4 T do_remount_sb
 000001d4 T configfs_unlink
-000001d4 T cipso_v4_doi_add
 000001d4 T __audit_free
 000001d4 t alarm_timer_nsleep
 000001d0 t xfrm_replay_advance_esn
@@ -4192,7 +4160,6 @@
 000001d0 t swp_handler
 000001d0 t _svc_create_xprt
 000001d0 t s_show
-000001d0 t smack_sb_copy_data
 000001d0 T sk_skb_change_tail
 000001d0 T skb_vlan_untag
 000001d0 t setxattr
@@ -4281,7 +4248,6 @@
 000001c8 t print_prefix
 000001c8 t pinconf_dbg_config_print
 000001c8 t perf_trace_xs_socket_event
-000001c8 t netlbl_domhsh_free_entry
 000001c8 t m_show
 000001c8 t __mem_cgroup_clear_mc
 000001c8 T keyring_restrict
@@ -4541,7 +4507,6 @@
 000001b4 t nfs4_xdr_dec_setclientid
 000001b4 t nfs4_proc_symlink
 000001b4 t netpoll_start_xmit
-000001b4 T netlbl_cfg_cipsov4_map_add
 000001b4 t memblock_virt_alloc_internal
 000001b4 T __lock_page_killable
 000001b4 T key_change_session_keyring
@@ -4662,7 +4627,6 @@
 000001ac t perf_lock_task_context
 000001ac t nlm_traverse_locks
 000001ac T nfs_statfs
-000001ac t netlbl_unlhsh_free_iface
 000001ac T mpihelp_mul
 000001ac t mpage_process_page_bufs
 000001ac t migration_cpu_stop
@@ -4709,8 +4673,6 @@
 000001a8 t trace_event_define_fields_writeback_single_inode_template
 000001a8 t trace_event_define_fields_ext4_ext_handle_unwritten_extents
 000001a8 t tk_set_wall_to_mono
-000001a8 t smk_parse_long_rule
-000001a8 t smack_socket_getpeersec_dgram
 000001a8 T skb_vlan_push
 000001a8 t set_vc_hi_font
 000001a8 t setup_net
@@ -4834,7 +4796,6 @@
 000001a0 T sys_timer_settime
 000001a0 T sys_rseq
 000001a0 t store_rps_map
-000001a0 T smack_log
 000001a0 T skb_crc32c_csum_help
 000001a0 T sk_alloc
 000001a0 T __se_sys_timer_settime
@@ -4884,7 +4845,6 @@
 0000019c t trace_event_define_fields_mm_vmscan_inactive_list_is_low
 0000019c t trace_event_define_fields_jbd2_handle_stats
 0000019c t srp_timeout
-0000019c t smk_perm_from_str
 0000019c T rpc_wake_up_first_on_wq
 0000019c t regulator_dev_lookup
 0000019c t pl011_sgbuf_init.constprop.5
@@ -4997,8 +4957,6 @@
 00000194 T sys_setpgid
 00000194 T sys_init_module
 00000194 t s_show
-00000194 t smk_write_onlycap
-00000194 t smack_cred_prepare
 00000194 T __se_sys_setpgid
 00000194 T __se_sys_init_module
 00000194 t serial8250_start_tx
@@ -5119,7 +5077,6 @@
 0000018c t trace_event_define_fields_rpm_internal
 0000018c t toggle_bp_slot
 0000018c t switched_to_dl
-0000018c t smack_file_open
 0000018c T __skb_wait_for_more_packets
 0000018c T set_tracer_flag
 0000018c T rpcauth_clear_credcache
@@ -5186,7 +5143,6 @@
 00000188 t svc_defer
 00000188 T subtract_range
 00000188 t sock_filter_is_valid_access
-00000188 t smk_cipso_doi
 00000188 t __sk_destruct
 00000188 r simplefb_of_match
 00000188 t show_cons_active
@@ -5222,7 +5178,6 @@
 00000188 T nfs_mount
 00000188 t nfs4_open_recover_helper
 00000188 T __netpoll_setup
-00000188 t netlbl_domhsh_audit_add
 00000188 T mr_mfc_find_any
 00000188 T __mmdrop
 00000188 t __mmc_start_request
@@ -5258,7 +5213,6 @@
 00000188 D cpu_data
 00000188 t __clocksource_select
 00000188 T _cleanup_srcu_struct
-00000188 T cipso_v4_cache_add
 00000188 r brcmvirt_gpio_ids
 00000188 t blk_stat_timer_fn
 00000188 T blk_mq_sched_try_merge
@@ -5517,7 +5471,6 @@
 0000017c T clk_hw_register_mux_table
 0000017c t __clear_user_memset
 0000017c t clean_xps_maps
-0000017c t cipso_v4_map_cache_hash
 0000017c t cev_delta2ns
 0000017c T cap_convert_nscap
 0000017c t blk_mq_check_expired
@@ -5549,8 +5502,6 @@
 00000178 t tcp_prune_ofo_queue.part.11
 00000178 T sys_mlockall
 00000178 T sys_lookup_dcookie
-00000178 t smk_write_relabel_self
-00000178 t smack_netlabel_send
 00000178 t show_vfsstat
 00000178 T __se_sys_mlockall
 00000178 T __se_sys_lookup_dcookie
@@ -5653,7 +5604,6 @@
 00000174 t _nfs4_proc_getlk.constprop.28
 00000174 T nfs4_find_or_create_ds_client
 00000174 t nfs41_callback_svc
-00000174 t netlbl_calipso_add
 00000174 T __mm_populate
 00000174 t lan78xx_terminate_urbs
 00000174 t kthread
@@ -5731,7 +5681,6 @@
 00000170 t nfs4_xdr_enc_link
 00000170 t nfs4_read_done_cb
 00000170 t nfs4_init_uniform_client_string
-00000170 T netlbl_catmap_walkrng
 00000170 T memcg_drain_all_list_lrus
 00000170 t may_delete
 00000170 T locks_lock_inode_wait
@@ -5791,7 +5740,6 @@
 0000016c T sys_mq_unlink
 0000016c T sys_epoll_pwait
 0000016c T swp_swapcount
-0000016c t smack_inode_setsecurity
 0000016c t shmem_get_link
 0000016c T __se_sys_mq_unlink
 0000016c T __se_sys_epoll_pwait
@@ -5819,7 +5767,6 @@
 0000016c t nfs_proc_symlink
 0000016c t _nfs4_proc_link
 0000016c t _nfs40_proc_get_locations
-0000016c t netlbl_calipso_list
 0000016c T netdev_queue_update_kobjects
 0000016c t __mutex_unlock_slowpath.constprop.5
 0000016c T mount_root
@@ -5877,7 +5824,6 @@
 00000168 T svc_pool_map_get
 00000168 T strncpy_from_user
 00000168 t smsc95xx_set_link_ksettings
-00000168 t smack_unix_stream_connect
 00000168 t slabs_cpu_partial_show
 00000168 t skcipher_walk_aead_common
 00000168 t show_console_dev
@@ -5976,8 +5922,6 @@
 00000164 T sys_request_key
 00000164 T sys_futex
 00000164 t sockstat_seq_show
-00000164 t smk_ipv6_port_label
-00000164 t smack_file_receive
 00000164 t show_vfsmnt
 00000164 T __se_sys_setitimer
 00000164 T __se_sys_request_key
@@ -6085,7 +6029,6 @@
 00000160 t nfs4_handle_reclaim_lease_error
 00000160 T nfs4_handle_exception
 00000160 t _nfs41_proc_sequence
-00000160 t netlbl_unlabel_staticadd
 00000160 t neigh_flush_dev
 00000160 t mmc_sdio_suspend
 00000160 d kworld_pc150u
@@ -6096,7 +6039,6 @@
 00000160 t key_gc_unused_keys.constprop.1
 00000160 T irq_domain_free_irqs
 00000160 t ip_rt_update_pmtu
-00000160 t init_smk_fs
 00000160 T inet_netconf_notify_devconf
 00000160 T hdmi_vendor_infoframe_pack
 00000160 t gpio_set_open_drain_value_commit
@@ -6121,7 +6063,6 @@
 00000160 T con_set_cmap
 00000160 T common_timer_set
 00000160 t clk_register_gpio
-00000160 T cipso_v4_doi_remove
 00000160 t check_ctrlrecip
 00000160 T cgroup_release
 00000160 T cgroup1_release_agent
@@ -6157,9 +6098,6 @@
 0000015c T tcp_v4_early_demux
 0000015c T sys_setgroups
 0000015c T spi_setup
-0000015c t smk_write_mapped
-0000015c t smk_write_direct
-0000015c t smk_set_access
 0000015c T __se_sys_setgroups
 0000015c T scsi_report_opcode
 0000015c t scorpion_pmu_enable_event
@@ -6252,7 +6190,6 @@
 00000158 T stop_machine_cpuslocked
 00000158 T splice_to_pipe
 00000158 t spi_mem_default_supports_op
-00000158 T smk_import_entry
 00000158 T simple_xattr_set
 00000158 T __se_sys_getresuid16
 00000158 T __se_sys_getresgid16
@@ -6352,8 +6289,6 @@
 00000154 T svc_close_net
 00000154 t stmpe_irq
 00000154 t smsc95xx_ethtool_set_eeprom
-00000154 t smk_rule_show
-00000154 t smack_setprocattr
 00000154 t show_softirqs
 00000154 t __shmem_file_setup.part.2
 00000154 t shm_close
@@ -6449,7 +6384,6 @@
 00000150 t store_rps_dev_flow_table_cnt
 00000150 t spi_slave_store
 00000150 T spi_register_board_info
-00000150 T smk_access
 00000150 t slab_pad_check.part.2
 00000150 T simple_xattr_list
 00000150 T scsi_eh_get_sense
@@ -6483,7 +6417,6 @@
 00000150 T nfs4_proc_fs_locations
 00000150 t nfs4_open_recover
 00000150 T nfs41_handle_sequence_flag_errors
-00000150 T netlbl_domhsh_remove_af6
 00000150 t krait_pmu_enable_event
 00000150 t kpageflags_read
 00000150 T kernfs_node_dentry
@@ -6544,7 +6477,6 @@
 0000014c T stop_machine_from_inactive_cpu
 0000014c T sprint_oid
 0000014c t sock_diag_rcv_msg
-0000014c t smack_file_fcntl
 0000014c T sk_stream_kill_queues
 0000014c T skb_checksum_trimmed
 0000014c t set_termiox
@@ -6587,8 +6519,6 @@
 0000014c t _nfs4_proc_fs_locations
 0000014c t net_ns_init
 0000014c T netlink_table_grab
-0000014c t netlbl_unlabel_staticadddef
-0000014c T netlbl_domhsh_remove_af4
 0000014c t mq_init
 0000014c t mem_cgroup_read_u64
 0000014c T memcg_expand_shrinker_maps
@@ -6671,7 +6601,6 @@
 00000148 T tcp_cwnd_reduction
 00000148 r sysrq_ids
 00000148 T __sock_recv_ts_and_drops
-00000148 t smack_from_secattr
 00000148 t shmem_remount_fs
 00000148 T shmem_charge
 00000148 T seq_buf_putmem_hex
@@ -6698,8 +6627,6 @@
 00000148 t _nfs41_proc_get_locations
 00000148 t _nfs40_proc_fsid_present
 00000148 t __nf_hook_entries_try_shrink
-00000148 t netlbl_cipsov4_listall_cb
-00000148 t netlbl_calipso_listall_cb
 00000148 t msdos_add_entry
 00000148 t mmc_sdio_resume
 00000148 T mdiobus_scan
@@ -6779,7 +6706,6 @@
 00000144 t stack_max_size_write
 00000144 t srcu_gp_start
 00000144 t __smsc95xx_mdio_read
-00000144 t smack_mmap_file
 00000144 t show_vma_header_prefix
 00000144 t set_current_rng
 00000144 T __se_sys_settimeofday
@@ -6806,7 +6732,6 @@
 00000144 T percpu_pagelist_fraction_sysctl_handler
 00000144 T percpu_down_write
 00000144 t nfs4_xdr_enc_close
-00000144 T netlbl_af6list_add
 00000144 T neigh_parms_alloc
 00000144 t neigh_invalidate
 00000144 t mqueue_read_file
@@ -6881,7 +6806,6 @@
 00000140 T sys_setdomainname
 00000140 T sys_llseek
 00000140 t syscon_probe
-00000140 t smk_bu_inode
 00000140 t setup_slub_debug
 00000140 T __se_sys_setgroups16
 00000140 T __se_sys_setdomainname
@@ -7124,8 +7048,6 @@
 00000138 T sys_clock_adjtime
 00000138 T svc_send_common
 00000138 t store_modes
-00000138 t smk_ipv6_port_check
-00000138 r smack_files.64914
 00000138 T __se_sys_poll
 00000138 T __se_sys_clock_adjtime
 00000138 t serial8250_backup_timeout
@@ -7270,7 +7192,6 @@
 00000134 T nfs_scan_commit_list
 00000134 t nfs41_proc_reclaim_complete
 00000134 T nf_ip6_checksum
-00000134 t netlbl_calipso_remove
 00000134 t mmc_read_switch
 00000134 t map_pages
 00000134 t lo_write_bvec
@@ -7346,7 +7267,6 @@
 00000130 T start_critical_timings
 00000130 T sock_queue_err_skb
 00000130 t snoop_urb.part.2
-00000130 t smk_bu_file
 00000130 T sk_wait_data
 00000130 T simple_write_to_buffer
 00000130 t shmem_add_to_page_cache
@@ -7493,8 +7413,6 @@
 0000012c t nfs4_xdr_dec_open
 0000012c t nfs4_xdr_dec_layoutcommit
 0000012c t nfs4_proc_rmdir
-0000012c t netlbl_unlabel_staticremove
-0000012c t netlbl_cipsov4_add_common
 0000012c T neigh_lookup_nodev
 0000012c t mmc_mrq_prep
 0000012c t mmc_mmc_erase_timeout
@@ -7546,8 +7464,6 @@
 0000012c t collect_garbage_slots
 0000012c t close_pdeo
 0000012c T __clk_put
-0000012c T cipso_v4_sock_setattr
-0000012c t cipso_v4_delopt
 0000012c t __cgroup_procs_start
 0000012c T cache_clean_deferred
 0000012c T blk_rq_merge_ok
@@ -7583,7 +7499,6 @@
 00000128 t tc_dump_tclass_root
 00000128 t store_rotate_all
 00000128 t smsc95xx_enter_suspend1
-00000128 t smk_ptrace_rule_check
 00000128 t sk_reuseport_is_valid_access
 00000128 T skb_network_protocol
 00000128 t skb_entail
@@ -7680,7 +7595,6 @@
 00000124 t tcf_block_playback_offloads
 00000124 T sock_zerocopy_alloc
 00000124 t smsc95xx_read_eeprom
-00000124 t smack_key_permission
 00000124 t skb_zerocopy_clone
 00000124 t show_pools
 00000124 t show_kprobe_addr
@@ -7953,7 +7867,6 @@
 0000011c t tca_get_fill.constprop.8
 0000011c T task_cgroup_path
 0000011c t store_scan
-0000011c t smk_unlbl_ambient
 0000011c T sk_setup_caps
 0000011c t sk_prot_alloc
 0000011c T __skb_pad
@@ -8010,7 +7923,6 @@
 0000011c t nfs3_xdr_dec_readlink3res
 0000011c t new_id_store
 0000011c t netlink_connect
-0000011c T netlbl_domhsh_walk
 0000011c T netdev_boot_setup
 0000011c T mb_cache_entry_get
 0000011c T kthread_delayed_work_timer_fn
@@ -8169,7 +8081,6 @@
 00000118 T nfs4_proc_commit
 00000118 t _nfs41_proc_fsid_present
 00000118 t __netlink_lookup
-00000118 t netlbl_cipsov4_remove
 00000118 t mnt_xdr_dec_mountres
 00000118 T mm_drop_all_locks
 00000118 T mmc_cqe_recovery
@@ -8293,7 +8204,6 @@
 00000114 T strncpy_from_unsafe
 00000114 t store_shost_eh_deadline
 00000114 T sock_dequeue_err_skb
-00000114 t smack_bprm_set_creds
 00000114 T show_ipi_list
 00000114 T __se_sys_getgroups16
 00000114 t select_task_rq_dl
@@ -8335,7 +8245,6 @@
 00000114 T nfs4_proc_destroy_session
 00000114 T nfs4_open_delegation_recall
 00000114 t __nf_register_net_hook
-00000114 t netlbl_unlabel_staticremovedef
 00000114 t neigh_proc_update
 00000114 d napi_alloc_cache
 00000114 t mul_n_basecase
@@ -8458,7 +8367,6 @@
 00000110 t svc_age_temp_xprts
 00000110 T strnlen_user
 00000110 t sock_ops_func_proto
-00000110 t smk_write_ptrace
 00000110 t __sk_free
 00000110 t __skb_clone
 00000110 T sierra_ms_init
@@ -8629,9 +8537,6 @@
 0000010c T __sock_cmsg_send
 0000010c r smsc95xx_netdev_ops
 0000010c t __smsc95xx_mdio_write
-0000010c t smk_user_access.constprop.9
-0000010c t smk_fill_rule
-0000010c t smack_file_send_sigiotask
 0000010c T skb_page_frag_refill
 0000010c T __se_sys_times
 0000010c T __se_sys_sigaltstack
@@ -8679,8 +8584,6 @@
 0000010c T nfs4_slot_wait_on_seqid
 0000010c T nfs4_init_clientid
 0000010c t nfs3_xdr_dec_fsstat3res
-0000010c t netlbl_unlabel_list
-0000010c T netlbl_catmap_walk
 0000010c t neigh_proc_dointvec_unres_qlen
 0000010c t msg_insert
 0000010c T mmc_wait_for_app_cmd
@@ -8842,10 +8745,6 @@
 00000108 T nfs4_layoutreturn_refresh_stateid
 00000108 t nfs3_rpc_wrapper.constprop.4
 00000108 t netlink_getname
-00000108 T netlbl_unlabel_init
-00000108 t netlbl_mgmt_listdef
-00000108 t netlbl_mgmt_add
-00000108 T netlbl_af4list_add
 00000108 t msdos_rmdir
 00000108 t module_flags
 00000108 t mmc_sdio_detect
@@ -8971,8 +8870,6 @@
 00000104 T srcu_torture_stats_print
 00000104 T sock_zerocopy_realloc
 00000104 t __smpboot_create_thread.part.0
-00000104 t smack_task_kill
-00000104 t smack_file_ioctl
 00000104 t setup_irq_thread
 00000104 T set_gssp_clnt
 00000104 T __se_sys_sendfile64
@@ -9166,9 +9063,6 @@
 00000100 t __sprint_symbol
 00000100 t splice_from_pipe_next
 00000100 T smp_init
-00000100 t smk_write_logging
-00000100 t smk_ipv6_check
-00000100 t smack_inode_getsecurity
 00000100 t slub_cpu_dead
 00000100 T simple_attr_read
 00000100 t signalfd_poll
@@ -9258,8 +9152,6 @@
 00000100 t nfs4_do_lookup_revalidate
 00000100 T nfs40_discover_server_trunking
 00000100 t nfs3_proc_setattr
-00000100 T netlbl_unlabel_getattr
-00000100 t netlbl_mgmt_version
 00000100 T __napi_alloc_skb
 00000100 d msi_digivox_iii
 00000100 t msg_submit
@@ -9413,8 +9305,6 @@
 000000fc T store_msg
 000000fc r stmpe_spi_id
 000000fc T __sp804_clocksource_and_sched_clock_init
-000000fc t smk_write_doi
-000000fc t smack_inode_rmdir
 000000fc T skb_append_pagefrags
 000000fc T simple_attr_write
 000000fc t show_scaling_available_governors
@@ -9481,9 +9371,6 @@
 000000fc t nfs41_sequence_call_done
 000000fc t nfs3_xdr_dec_readdir3res
 000000fc T nfs3_set_ds_client
-000000fc t netlbl_mgmt_adddef
-000000fc T netlbl_domhsh_init
-000000fc T netlbl_audit_start_common
 000000fc T neigh_connected_output
 000000fc T mpage_writepages
 000000fc T mempool_init_node
@@ -9588,9 +9475,6 @@
 000000f8 T sys_setsockopt
 000000f8 T sysrq_timer_list_show
 000000f8 t smsc95xx_wait_eeprom
-000000f8 t smack_unix_may_send
-000000f8 t smack_inode_unlink
-000000f8 t smack_inode_init_security
 000000f8 t slab_out_of_memory.constprop.17
 000000f8 t skb_warn_bad_offload
 000000f8 t sg_pool_init
@@ -9645,7 +9529,6 @@
 000000f8 T nfs4_callback_devicenotify
 000000f8 t nfs3_proc_link
 000000f8 t nfs2_xdr_dec_readres
-000000f8 t _netlbl_catmap_getnode
 000000f8 t msg_print_text
 000000f8 T mpih_sqr_n_basecase
 000000f8 T mmc_pwrseq_alloc
@@ -9705,7 +9588,6 @@
 000000f8 t con_driver_unregister_callback
 000000f8 T clk_hw_register_fixed_rate_with_accuracy
 000000f8 T class_interface_register
-000000f8 T cipso_v4_req_setattr
 000000f8 t check_bytes_and_report
 000000f8 t cfq_cpd_bind
 000000f8 t ccw_clear_margins
@@ -9832,7 +9714,6 @@
 000000f4 T nfs4_fl_prepare_ds
 000000f4 t nfs3_xdr_dec_pathconf3res
 000000f4 t nfs2_xdr_dec_readlinkres
-000000f4 t netlbl_mgmt_protocols_cb
 000000f4 t neigh_get_next
 000000f4 T mr_vif_seq_next
 000000f4 T mount_ns
@@ -10147,9 +10028,6 @@
 000000ec T srcu_notifier_chain_unregister
 000000ec t softnet_seq_next
 000000ec t smap_gather_stats
-000000ec t smack_inode_rename
-000000ec t smack_inode_permission
-000000ec t smack_inode_link
 000000ec t show_wakeup_protocols
 000000ec T sg_alloc_table_chained
 000000ec t set_inverse_trans_unicode.constprop.2
@@ -10288,7 +10166,6 @@
 000000ec T cpufreq_table_validate_and_sort
 000000ec t con_do_clear_unimap
 000000ec t cleanup_timers
-000000ec T cipso_v4_error
 000000ec t cgroup_migrate_add_src.part.16
 000000ec T cgroup_attach_task_all
 000000ec t cfqg_prfill_sectors
@@ -10365,8 +10242,6 @@
 000000e8 T __sp804_clockevents_init
 000000e8 T sock_gen_put
 000000e8 r smsc95xx_ethtool_ops
-000000e8 T smk_netlbl_mls
-000000e8 t smk_bu_task
 000000e8 T shmem_lock
 000000e8 t setkey
 000000e8 T __se_sys_sched_setaffinity
@@ -10427,7 +10302,6 @@
 000000e8 t nfs3_xdr_dec_access3res
 000000e8 t nfs2_xdr_dec_statfsres
 000000e8 d netlink_proto
-000000e8 t netlbl_unlabel_addrinfo_get
 000000e8 t netdev_store.constprop.11
 000000e8 T mr_table_alloc
 000000e8 T mmc_cqe_request_done
@@ -10599,9 +10473,6 @@
 000000e4 t store_state_field
 000000e4 t sock_write_iter
 000000e4 t s_next
-000000e4 t smk_write_revoke_subj
-000000e4 T smk_tskacc
-000000e4 t smack_sb_kern_mount
 000000e4 T sg_copy_buffer
 000000e4 T __set_task_comm
 000000e4 T __se_sys_setns
@@ -10667,7 +10538,6 @@
 000000e4 t nfs4_xdr_dec_bind_conn_to_session
 000000e4 T nf_register_sockopt
 000000e4 T nf_log_packet
-000000e4 T netlbl_skbuff_setattr
 000000e4 t move_cursor
 000000e4 T mount_subtree
 000000e4 T mmc_go_idle
@@ -10824,7 +10694,6 @@
 000000e0 T srcu_notifier_chain_register
 000000e0 t sock_read_iter
 000000e0 t smsc95xx_eeprom_confirm_not_busy
-000000e0 t smack_inode_post_setxattr
 000000e0 t slab_caches_to_rcu_destroy_workfn
 000000e0 t slab_attr_store
 000000e0 T sk_dst_check
@@ -10894,7 +10763,6 @@
 000000e0 t nfs4_xdr_dec_lockt
 000000e0 t nfs3_xdr_enc_readdirplus3args
 000000e0 T nf_log_register
-000000e0 t netlbl_mgmt_listall_cb
 000000e0 t netif_receive_skb_internal
 000000e0 T netdev_pick_tx
 000000e0 T mmc_wait_for_req
@@ -11047,8 +10915,6 @@
 000000dc t stack_trace_init
 000000dc t spi_stop_queue
 000000dc t softnet_seq_start
-000000dc T smk_parse_smack
-000000dc t smack_socket_getpeersec_stream
 000000dc T __skb_recv_datagram
 000000dc T skb_copy_expand
 000000dc T skb_clone
@@ -11168,7 +11034,6 @@
 000000dc t configfs_detach_prep
 000000dc t con2fb_acquire_newinfo
 000000dc T class_interface_unregister
-000000dc t cipso_seq_show
 000000dc t cgroup_init_cftypes
 000000dc t cfq_merge
 000000dc t cachefiles_grab_object
@@ -11245,7 +11110,6 @@
 000000d8 t store_boost
 000000d8 r stmpe_i2c_id
 000000d8 T sock_cmsg_send
-000000d8 t smk_bu_current
 000000d8 T show_mem
 000000d8 T shmem_uncharge
 000000d8 t shm_destroy
@@ -11958,9 +11822,6 @@
 000000cc t nfs3_proc_readlink
 000000cc T next_service_by_instance
 000000cc t netlink_autobind
-000000cc T netlbl_req_setattr
-000000cc T netlbl_af6list_search_exact
-000000cc T netlbl_af6list_audit_addr
 000000cc t neigh_stat_seq_show
 000000cc T mpi_resize
 000000cc T module_alloc
@@ -12124,11 +11985,6 @@
 000000c8 T spi_controller_dma_map_mem_op_data
 000000c8 T sock_no_sendpage_locked
 000000c8 T sock_no_sendpage
-000000c8 t smk_read_ptrace
-000000c8 t smk_read_mapped
-000000c8 t smk_read_logging
-000000c8 t smk_read_doi
-000000c8 t smk_read_direct
 000000c8 T sk_common_release
 000000c8 T __skb_gro_checksum_complete
 000000c8 T __skb_checksum_complete
@@ -12188,7 +12044,6 @@
 000000c8 t nfs3_xdr_dec_commit3res
 000000c8 t netstat_show.constprop.10
 000000c8 t __netlink_create
-000000c8 T netlbl_conn_setattr
 000000c8 t netif_reset_xps_queues.part.11
 000000c8 T __neigh_for_each_release
 000000c8 t msdos_lookup
@@ -12350,7 +12205,6 @@
 000000c4 t store_virtual
 000000c4 T snmp_fold_field64
 000000c4 t __smsc95xx_write_reg
-000000c4 t smack_ipc_permission
 000000c4 T skb_ensure_writable
 000000c4 t __show_fd_locks
 000000c4 T sg_zero_buffer
@@ -12437,7 +12291,6 @@
 000000c4 t netlink_seq_show
 000000c4 T netlink_remove_tap
 000000c4 t netlink_realloc_groups
-000000c4 T netlbl_sock_setattr
 000000c4 T netif_rx_ni
 000000c4 t neigh_stat_seq_next
 000000c4 t neigh_hash_alloc
@@ -12615,8 +12468,6 @@
 000000c0 d sp804_clockevent
 000000c0 t sock_init
 000000c0 T smp_cpus_done
-000000c0 t smack_ipv6host_label
-000000c0 t smack_file_lock
 000000c0 T __sk_queue_drop_skb
 000000c0 T skb_partial_csum_set
 000000c0 T skb_orphan_partial
@@ -12681,9 +12532,6 @@
 000000c0 t nfs4_layoutreturn_done
 000000c0 t nfs41_finish_session_reset
 000000c0 d netpoll_srcu_srcu_data
-000000c0 r netlbl_unlabel_genl_ops
-000000c0 T netlbl_unlabel_defconf
-000000c0 r netlbl_mgmt_genl_ops
 000000c0 d msi_tvanywhere
 000000c0 T mmc_release_host
 000000c0 T mmc_regulator_get_supply
@@ -12786,7 +12634,6 @@
 000000c0 t cn_vprintf
 000000c0 T clocksource_mmio_init
 000000c0 t clk_mux_set_parent
-000000c0 t cipso2_seq_show
 000000c0 T check_gss_callback_principal
 000000c0 t check_carrier
 000000c0 d ce_broadcast_hrtimer
@@ -12950,8 +12797,6 @@
 000000bc T nf_logger_find_get
 000000bc t next_group
 000000bc T netpoll_print_options
-000000bc t netlbl_unlhsh_netdev_handler
-000000bc T netlbl_catmap_getlong
 000000bc t netfilter_net_init
 000000bc T neigh_table_clear
 000000bc t neigh_proc_dointvec_zero_intmax
@@ -13178,7 +13023,6 @@
 000000b8 t sock_poll
 000000b8 t sock_alloc_inode
 000000b8 t smpboot_destroy_threads
-000000b8 t smk_parse_label_list
 000000b8 T skb_splice_bits
 000000b8 T simple_readpage
 000000b8 t show_shost_mode
@@ -13320,7 +13164,6 @@
 000000b8 T copy_semundo
 000000b8 t __control_devkmsg
 000000b8 T compaction_defer_reset
-000000b8 T cipso_v4_cache_invalidate
 000000b8 t ca_keys_setup
 000000b8 T buffer_init
 000000b8 T bpf_bind
@@ -13412,8 +13255,6 @@
 000000b4 T sock_wake_async
 000000b4 b sock_diag_handlers
 000000b4 T smp_prepare_cpus
-000000b4 t smack_sk_alloc_security
-000000b4 t smack_log_callback
 000000b4 t skb_checksum_setup_ip
 000000b4 T __se_sys_getgroups
 000000b4 T __se_sys_fremovexattr
@@ -13485,7 +13326,6 @@
 000000b4 t nfs3_xdr_dec_remove3res
 000000b4 t next_positive
 000000b4 t netlink_update_listeners
-000000b4 T netlbl_domhsh_remove
 000000b4 d net_families
 000000b4 T netdev_rss_key_fill
 000000b4 T netdev_lower_state_changed
@@ -13702,9 +13542,6 @@
 000000b0 t __spi_queued_transfer
 000000b0 T sock_register
 000000b0 t smsc95xx_set_features
-000000b0 t smack_netlabel
-000000b0 t smack_inode_setattr
-000000b0 t smack_audit_rule_match
 000000b0 T sk_reuseport_load_bytes
 000000b0 t show_available_freqs
 000000b0 t shmem_tmpfile
@@ -13790,7 +13627,6 @@
 000000b0 t nfs3_proc_lock
 000000b0 t __next_timer_interrupt
 000000b0 t __netlink_seq_next
-000000b0 t netlbl_mgmt_remove
 000000b0 T neigh_parms_release
 000000b0 t __munlock_isolated_page
 000000b0 t msg_print_ext_header.constprop.9
@@ -14039,8 +13875,6 @@
 000000ac T strim
 000000ac t s_stop
 000000ac t speed_show
-000000ac t smk_bu_mode
-000000ac t smack_inode_getattr
 000000ac t slab_err
 000000ac T sk_reuseport_load_bytes_relative
 000000ac T skb_set_owner_w
@@ -14115,9 +13949,6 @@
 000000ac t nfs4_call_sync_sequence
 000000ac t nfs3_proc_symlink
 000000ac T nfs3_listxattr
-000000ac t netlbl_unlabel_accept
-000000ac T netlbl_af6list_search
-000000ac T netlbl_af4list_audit_addr
 000000ac t mrtsock_destruct
 000000ac T mpage_readpage
 000000ac t mmc_ssr_show
@@ -14213,7 +14044,6 @@
 000000ac t __clk_notify
 000000ac t clean_path
 000000ac t cleancache_get_key
-000000ac T cipso_v4_skbuff_delattr
 000000ac T chrdev_show
 000000ac T __cgroup_account_cputime_field
 000000ac T can_request_irq
@@ -14304,12 +14134,7 @@
 000000a8 t stack_trace_call
 000000a8 T splice_from_pipe
 000000a8 t sock_warn_obsolete_bsdism
-000000a8 t smk_read_ambient
-000000a8 t smk_curacc_shm
-000000a8 t smk_curacc_sem
-000000a8 t smk_curacc_msq
 000000a8 t smaps_rollup_open
-000000a8 t smack_sb_statfs
 000000a8 t slab_bug
 000000a8 t sk_skb_is_valid_access
 000000a8 t skb_gro_reset_offset
@@ -14395,7 +14220,6 @@
 000000a8 T nfs4_callback_recallany
 000000a8 T nfs41_discover_server_trunking
 000000a8 T nf_hook_entries_delete_raw
-000000a8 t netlbl_domhsh_search
 000000a8 T net_enable_timestamp
 000000a8 T net_disable_timestamp
 000000a8 t mqueue_unlink
@@ -14602,8 +14426,6 @@
 000000a4 t spi_mem_probe
 000000a4 t spi_match_device
 000000a4 T spi_alloc_device
-000000a4 t smk_write_ambient
-000000a4 t smack_inode_getxattr
 000000a4 t slave_alloc
 000000a4 t show_bios_limit
 000000a4 T shmem_zero_setup
@@ -14904,8 +14726,6 @@
 000000a0 t sock_def_write_space
 000000a0 T sock_alloc_file
 000000a0 T smpboot_park_threads
-000000a0 t smk_curacc_on_task
-000000a0 T smack_privileged_cred
 000000a0 T skb_gso_validate_network_len
 000000a0 T skb_gso_validate_mac_len
 000000a0 T skb_get_poff
@@ -14980,8 +14800,6 @@
 000000a0 T nfs4_proc_lookup_mountpoint
 000000a0 t nfs3_xdr_enc_create3args
 000000a0 t nfs2_xdr_dec_readdirres
-000000a0 t new_task_smack
-000000a0 t netlbl_calipso_listall
 000000a0 t __nd_alloc_stack
 000000a0 t mpage_end_io
 000000a0 T mount_nodev
@@ -15179,8 +14997,6 @@
 0000009c t stmpe_gpio_set
 0000009c T __starget_for_each_device
 0000009c T smpboot_create_threads
-0000009c t smk_fetch.part.5
-0000009c t smk_bu_note.part.1
 0000009c T sk_mc_loop
 0000009c t skb_gso_transport_seglen
 0000009c t simplefb_init
@@ -15484,7 +15300,6 @@
 00000098 t smsc95xx_ethtool_getregs
 00000098 t smsc95xx_enter_suspend2
 00000098 T smpboot_unpark_threads
-00000098 t smk_read_unconfined
 00000098 t skcipher_null_crypt
 00000098 T si_swapinfo
 00000098 T sigqueue_free
@@ -15571,9 +15386,6 @@
 00000098 t nfs4_callback_svc
 00000098 t nfs4_bitmap_copy_adjust
 00000098 t netns_install
-00000098 t netlbl_init
-00000098 t netlbl_domhsh_search_def
-00000098 T netlbl_af4list_remove
 00000098 T netif_rx
 00000098 T netif_receive_skb
 00000098 T netdev_master_upper_dev_get
@@ -15822,7 +15634,6 @@
 00000094 T sock_create_lite
 00000094 t snapshot_refaults
 00000094 t smsc95xx_write_reg_async
-00000094 t smack_cred_free
 00000094 T skb_realloc_headroom
 00000094 T simple_attr_open
 00000094 t shm_mmap
@@ -15911,8 +15722,6 @@
 00000094 t nfs4_file_flush
 00000094 T nf_register_net_hooks
 00000094 t netlink_seq_start
-00000094 t netlbl_mgmt_protocols
-00000094 t netlbl_mgmt_listall
 00000094 T __netdev_watchdog_up
 00000094 T mpi_read_from_buffer
 00000094 T mmc_gpio_get_cd
@@ -16172,8 +15981,6 @@
 00000090 T sock_omalloc
 00000090 r snmp4_ipstats_list
 00000090 T smp_call_function_single_async
-00000090 t smk_write_unconfined
-00000090 t smk_read_syslog
 00000090 t slope_store
 00000090 t __slab_alloc.constprop.13
 00000090 T sk_stream_error
@@ -16273,7 +16080,6 @@
 00000090 T nf_ip_reroute
 00000090 T __next_reserved_mem_region
 00000090 T netlink_add_tap
-00000090 T netlbl_catmap_setrng
 00000090 T netdev_has_upper_dev
 00000090 T netdev_alloc_frag
 00000090 T neigh_remove_one
@@ -16432,8 +16238,6 @@
 00000090 t clk_calc_subtree
 00000090 t clear_ftrace_pids
 00000090 r clas_info
-00000090 T cipso_v4_optptr
-00000090 T cipso_v4_doi_walk
 00000090 t __change_pid
 00000090 t cgwb_kill
 00000090 T cgroup_path_ns
@@ -16640,7 +16444,6 @@
 0000008c T nf_log_buf_open
 0000008c t nextprop_
 0000008c t netlink_skb_set_owner_r
-0000008c T netlbl_bitmap_walk
 0000008c T neigh_seq_next
 0000008c t mq_walk
 0000008c T mmc_select_card
@@ -16774,7 +16577,6 @@
 0000008c T clk_bulk_enable
 0000008c t clear_node_page_dirty
 0000008c T class_compat_create_link
-0000008c t cipso_v4_init
 0000008c t check_clock
 0000008c T cgroup_file_notify
 0000008c t cfq_target_latency_store
@@ -16950,7 +16752,6 @@
 00000088 t spi_set_cs
 00000088 T sock_diag_broadcast_destroy
 00000088 T smp_setup_processor_id
-00000088 T smk_insert_entry
 00000088 T sk_page_frag_refill
 00000088 T single_open_size
 00000088 T show_swap_cache_info
@@ -17060,7 +16861,6 @@
 00000088 T nf_log_bind_pf
 00000088 T __netpoll_cleanup
 00000088 t netlink_update_socket_mc
-00000088 t netlbl_cipsov4_listall
 00000088 T netdev_unbind_sb_channel
 00000088 T netdev_state_change
 00000088 T netdev_is_rx_handler_busy
@@ -17367,7 +17167,6 @@
 00000084 T sock_wfree
 00000084 t sockfd_lookup_light
 00000084 t sock_fasync
-00000084 T smk_find_entry
 00000084 t skcipher_setkey_blkcipher
 00000084 t skcipher_setkey_ablkcipher
 00000084 T skcipher_register_instance
@@ -17445,9 +17244,6 @@
 00000084 t nfs4_drain_slot_tbl
 00000084 t net_olddevs_init
 00000084 t netlink_update_subscriptions
-00000084 T netlbl_skbuff_getattr
-00000084 t netlbl_mgmt_removedef
-00000084 T netlbl_cfg_map_del
 00000084 t netdev_show.constprop.12
 00000084 D net_cls_cgrp_subsys
 00000084 T napi_disable
@@ -17800,29 +17596,6 @@
 00000080 r snapshot_fops
 00000080 t smsc95xx_enable_phy_wakeup_interrupts
 00000080 d smsc95xx_driver
-00000080 r smk_unconfined_ops
-00000080 r smk_syslog_ops
-00000080 r smk_revoke_subj_ops
-00000080 r smk_relabel_self_ops
-00000080 r smk_ptrace_ops
-00000080 r smk_onlycap_ops
-00000080 r smk_net6addr_ops
-00000080 r smk_net4addr_ops
-00000080 r smk_mapped_ops
-00000080 r smk_logging_ops
-00000080 r smk_load_self_ops
-00000080 r smk_load_self2_ops
-00000080 r smk_load_ops
-00000080 r smk_load2_ops
-00000080 r smk_doi_ops
-00000080 r smk_direct_ops
-00000080 r smk_cipso_ops
-00000080 r smk_cipso2_ops
-00000080 r smk_change_rule_ops
-00000080 r smk_ambient_ops
-00000080 r smk_access_ops
-00000080 r smk_access2_ops
-00000080 t smack_sem_semctl
 00000080 b sleep_time_bin
 00000080 t sk_msg_is_valid_access
 00000080 t skcipher_encrypt_blkcipher
@@ -18479,7 +18252,6 @@
 00000080 T clkdev_add_table
 00000080 t clk_core_get_rate
 00000080 r clear_warn_once_fops
-00000080 T cipso_v4_doi_putdef
 00000080 T cgroup_procs_write_finish
 00000080 t cgroup_pidlist_destroy_work_fn
 00000080 t cgroup_migrate_vet_dst.part.15
@@ -18647,9 +18419,7 @@
 0000007c t __soft_restart
 0000007c T sock_kzfree_s
 0000007c T sock_kfree_s
-0000007c t smk_write_syslog
 0000007c t smaps_rollup_release
-0000007c t smack_dentry_create_files_as
 0000007c t sk_skb_convert_ctx_access
 0000007c t __sk_filter_charge
 0000007c T skb_init
@@ -18771,8 +18541,6 @@
 0000007c t nfs4_proc_rename_setup
 0000007c T nf_register_net_hook
 0000007c t netlink_undo_bind
-0000007c t netlbl_unlhsh_search_iface
-0000007c T netlbl_catmap_setbit
 0000007c t __netif_receive_skb_one_core
 0000007c t __netif_receive_skb
 0000007c T netdev_walk_all_upper_dev_rcu
@@ -18780,7 +18548,6 @@
 0000007c T netdev_walk_all_lower_dev
 0000007c T netdev_notify_peers
 0000007c T netdev_has_any_upper_dev
-0000007c t net4addr_seq_show
 0000007c t need_update
 0000007c r names.36131
 0000007c t mqueue_fill_super
@@ -18923,7 +18690,6 @@
 0000007c t __clk_recalc_accuracies
 0000007c T clkdev_create
 0000007c T class_compat_register
-0000007c T cipso_v4_doi_getdef
 0000007c t cgroup_is_valid_domain.part.12
 0000007c t cgroup_idr_alloc.constprop.23
 0000007c t cfq_target_latency_us_show
@@ -19534,7 +19300,6 @@
 00000074 d spi_controller_statistics_attrs
 00000074 t softnet_seq_show
 00000074 T sock_unregister
-00000074 t smack_getprocattr
 00000074 T slab_unmergeable
 00000074 t slab_fix
 00000074 t skcipher_encrypt_ablkcipher
@@ -19973,9 +19738,6 @@
 00000070 T sockfd_lookup
 00000070 T sock_diag_register
 00000070 T snmp_fold_field
-00000070 t smack_sk_free_security
-00000070 t smack_shm_shmctl
-00000070 t smack_sb_alloc_security
 00000070 t sk_filter_func_proto
 00000070 T __sk_dst_check
 00000070 t skb_panic
@@ -20042,7 +19804,6 @@
 00000070 t releaseintf
 00000070 T release_fiq
 00000070 t __release_child_resources
-00000070 t relabel_self_seq_start
 00000070 T regulator_set_load
 00000070 t _regmap_bus_read
 00000070 T register_shrinker_prepared
@@ -20142,7 +19903,6 @@
 00000070 T nf_getsockopt
 00000070 t net_rps_send_ipi
 00000070 t __netlink_sendskb
-00000070 T netlbl_af4list_search_exact
 00000070 T netif_device_detach
 00000070 T netdev_master_upper_dev_get_rcu
 00000070 t netdev_init
@@ -20164,7 +19924,6 @@
 00000070 T lock_sock_nested
 00000070 T lock_sock_fast
 00000070 T lockd_create_procfs
-00000070 t load_self_seq_start
 00000070 T linkwatch_forget_dev
 00000070 T ldsem_down_write_trylock
 00000070 t kswapd_init
@@ -20466,11 +20225,6 @@
 0000006c t srpcapable_show
 0000006c T __spi_register_driver
 0000006c T sock_rfree
-0000006c t smack_socket_post_create
-0000006c t smack_msg_queue_msgctl
-0000006c t smack_inode_copy_up
-0000006c t smack_audit_rule_known
-0000006c t smack_audit_rule_init
 0000006c T skb_recv_datagram
 0000006c t show_type
 0000006c t show_sb_opts
@@ -20556,7 +20310,6 @@
 0000006c t packet_rcv_has_room
 0000006c t packet_getname_spkt
 0000006c t ops_free_list.part.1
-0000006c t onlycap_seq_show
 0000006c t of_pwm_simple_xlate
 0000006c T of_phy_attach
 0000006c T of_parse_coupled_regulator
@@ -20583,8 +20336,6 @@
 0000006c t nfs3_do_create
 0000006c t nfs3_commit_done
 0000006c t netlink_overrun
-0000006c T netlbl_catmap_setlong
-0000006c T netlbl_cache_add
 0000006c T netif_device_attach
 0000006c T netdev_update_features
 0000006c T netdev_set_tc_queue
@@ -20903,10 +20654,6 @@
 00000068 t sock_def_readable
 00000068 t sock_def_error_report
 00000068 t smsc95xx_status
-00000068 T smk_access_entry
-00000068 t smack_syslog
-00000068 t smack_socket_connect
-00000068 T smack_from_secid
 00000068 t skb_may_tx_timestamp.part.12
 00000068 T skb_do_redirect
 00000068 T simple_release_fs
@@ -21040,8 +20787,6 @@
 00000068 T net_sysctl_init
 00000068 t netns_get
 00000068 T __netlink_clear_multicast_users
-00000068 r netlbl_mgmt_genl_policy
-00000068 r netlbl_cipsov4_genl_policy
 00000068 T netdev_refcnt_read
 00000068 T netdev_printk
 00000068 T netdev_lower_dev_get_private
@@ -21206,7 +20951,6 @@
 00000068 T cleancache_register_ops
 00000068 T claim_fiq
 00000068 t cistpl_funce_common
-00000068 T cipso_v4_doi_free
 00000068 t check_early_ioremap_leak
 00000068 t cgroup_rm_cftypes_locked
 00000068 t cgroup_can_be_thread_root
@@ -21339,9 +21083,6 @@
 00000064 T sock_diag_unregister
 00000064 T sock_diag_destroy
 00000064 t snapshot_raw_open
-00000064 t smk_write_load2
-00000064 t smk_write_load
-00000064 t smk_write_change_rule
 00000064 T sk_clear_memalloc
 00000064 T skb_rbtree_purge
 00000064 T skb_put
@@ -21518,7 +21259,6 @@
 00000064 r netstat_attrs
 00000064 r netlink_ops
 00000064 t netlink_hash
-00000064 T netlbl_domhsh_getentry_af6
 00000064 T netdev_txq_to_tc
 00000064 T netdev_lower_get_first_private_rcu
 00000064 T netdev_change_features
@@ -21706,7 +21446,6 @@
 00000064 T __clear_user_std
 00000064 T clear_selection
 00000064 T clear_all_latency_tracing
-00000064 t cipso_v4_cache_entry_free
 00000064 T __check_sticky
 00000064 t check_loop_fn
 00000064 T check_disk_change
@@ -21992,13 +21731,7 @@
 00000060 r nfs3_acl_procedures
 00000060 T nf_log_unset
 00000060 T next_signal
-00000060 t new_inode_smack
 00000060 T net_ns_get_ownership
-00000060 T netlbl_domhsh_getentry_af4
-00000060 r netlbl_cipsov4_ops
-00000060 T netlbl_cfg_unlbl_static_add
-00000060 r netlbl_calipso_ops
-00000060 T netlbl_af4list_search
 00000060 T netif_carrier_off
 00000060 T neigh_seq_stop
 00000060 T mutex_lock_killable
@@ -22214,7 +21947,6 @@
 00000060 t clear_refs_test_walk
 00000060 T clear_buffer_attributes
 00000060 t cistpl_funce
-00000060 T cipso_v4_sock_delattr
 00000060 t check_ppi_trigger
 00000060 t cgroup_save_control
 00000060 t cgroup_procs_start
@@ -22374,9 +22106,6 @@
 0000005c T sock_diag_check_cookie
 0000005c t smsc95xx_start_rx_path
 0000005c T smp_irq_stat_cpu
-0000005c t smk_write_load_self2
-0000005c t smk_write_load_self
-0000005c t smack_key_getsecurity
 0000005c t slab_show
 0000005c T skb_zerocopy_headlen
 0000005c T skb_unlink
@@ -22513,7 +22242,6 @@
 0000005c T part_size_show
 0000005c t pagemap_release
 0000005c t oom_kill_memcg_member
-0000005c t onlycap_seq_start
 0000005c t online_show
 0000005c r of_serial_pm_ops
 0000005c T of_prop_next_u32
@@ -22549,13 +22277,10 @@
 0000005c T nfs4_refresh_delegation_stateid
 0000005c T nf_hook_entries_insert_raw
 0000005c T new_inode_pseudo
-0000005c t netlbl_domhsh_hash
 0000005c T netdev_rx_handler_register
 0000005c T netdev_reset_tc
 0000005c t netdev_queue_get_ownership
 0000005c T netdev_features_change
-0000005c t net6addr_seq_start
-0000005c t net4addr_seq_start
 0000005c t mqueue_mount
 0000005c T mpihelp_submul_1
 0000005c T mpihelp_addmul_1
@@ -22590,9 +22315,6 @@
 0000005c t loop_get_status
 0000005c t lock_trace
 0000005c T lock_device_hotplug_sysfs
-0000005c t load_seq_show
-0000005c t load2_seq_start
-0000005c t load2_seq_show
 0000005c t leds_init
 0000005c r leds_class_dev_pm_ops
 0000005c t leases_conflict
@@ -22768,7 +22490,6 @@
 0000005c T clk_hw_register_gpio_mux
 0000005c T clkdev_hw_alloc
 0000005c T __cleanup_sighand
-0000005c t cipso_seq_start
 0000005c t chunk_to_key
 0000005c t cgroup_wq_init
 0000005c T cgroup_rstat_flush
@@ -22931,7 +22652,6 @@
 00000058 t s_next
 00000058 T smpcfd_prepare_cpu
 00000058 T smpboot_unregister_percpu_thread
-00000058 t smack_sock_graft
 00000058 t sk_reuseport_func_proto
 00000058 T sk_filter_uncharge
 00000058 t sk_filter_is_valid_access
@@ -23068,8 +22788,6 @@
 00000058 T nf_reroute
 00000058 T __next_zones_zonelist
 00000058 t netlink_net_init
-00000058 t netlbl_unlabel_acceptflg_set
-00000058 T netlbl_cfg_unlbl_static_del
 00000058 t netdev_queue_release
 00000058 t neigh_hash_free_rcu
 00000058 T nd_jump_link
@@ -23098,8 +22816,6 @@
 00000058 t loop_reread_partitions
 00000058 T locks_init_lock
 00000058 T locks_end_grace
-00000058 t load_self_seq_show
-00000058 t load_self2_seq_show
 00000058 R linux_proc_banner
 00000058 t ledtrig_panic_init
 00000058 t kyber_exit_hctx
@@ -23442,9 +23158,6 @@
 00000054 t sockfs_mount
 00000054 t snto32
 00000054 T snprintf
-00000054 t smk_fill_super
-00000054 t smack_socket_sendmsg
-00000054 t smack_cred_transfer
 00000054 T slab_kmem_cache_release
 00000054 T __sk_mem_schedule
 00000054 T sk_busy_loop_end
@@ -23550,7 +23263,6 @@
 00000054 t resource_show
 00000054 T remove_conflicting_framebuffers
 00000054 t release_early_probes
-00000054 t relabel_self_seq_next
 00000054 t reg_vif_setup
 00000054 T regulator_set_soft_start_regmap
 00000054 T regulator_set_pull_down_regmap
@@ -23694,7 +23406,6 @@
 00000054 t lookup_slow
 00000054 t locks_insert_block
 00000054 t locks_dispose_list
-00000054 t load_self_seq_next
 00000054 t link_pwq
 00000054 t link_peers_report.part.0
 00000054 t link_obj
@@ -24101,13 +23812,6 @@
 00000050 T sock_zerocopy_put_abort
 00000050 t sockfs_setattr
 00000050 t smsc95xx_ethtool_set_wol
-00000050 t smk_preset_netlabel
-00000050 D smack_known_web
-00000050 D smack_known_star
-00000050 D smack_known_huh
-00000050 D smack_known_hat
-00000050 D smack_known_floor
-00000050 t smack_inode_listsecurity
 00000050 T sk_detach_filter
 00000050 T skb_coalesce_rx_frag
 00000050 T simple_xattr_list_add
@@ -24280,10 +23984,6 @@
 00000050 t nfs2_xdr_enc_createargs
 00000050 T nf_log_unbind_pf
 00000050 T __netlink_ns_capable
-00000050 r netlbl_unlabel_gnl_family
-00000050 r netlbl_mgmt_gnl_family
-00000050 r netlbl_cipsov4_gnl_family
-00000050 r netlbl_calipso_gnl_family
 00000050 T netif_tx_stop_all_queues
 00000050 t netdev_unbind_all_sb_channels
 00000050 t netdev_uevent
@@ -24623,7 +24323,6 @@
 0000004c t sock_disable_timestamp
 0000004c t s_next
 0000004c r smsc95xx_info
-0000004c t smack_inode_alloc_security
 0000004c T sk_skb_pull_data
 0000004c T skb_free_datagram
 0000004c t single_release_net
@@ -24795,7 +24494,6 @@
 0000004c t netlink_tap_init_net
 0000004c T netdev_set_num_tc
 0000004c t net_ctl_set_ownership
-0000004c t net6addr_seq_show
 0000004c T nanosleep_copyout
 0000004c t name_show
 0000004c t mq_find
@@ -25876,7 +25574,6 @@
 00000048 T spi_bus_lock
 00000048 t sock_def_wakeup
 00000048 r snmp4_udp_list
-00000048 T smk_destroy_label_list
 00000048 t smaps_pte_hole
 00000048 T skb_to_sgvec
 00000048 T single_release
@@ -26056,9 +25753,6 @@
 00000048 T nf_logger_request_module
 00000048 t net_rps_action_and_irq_enable
 00000048 d netns_core_table
-00000048 T netlbl_skbuff_err
-00000048 t netlbl_cipsov4_remove_cb
-00000048 t netlbl_calipso_remove_cb
 00000048 T netfilter_init
 00000048 T netdev_rx_csum_fault
 00000048 t neigh_proc_dointvec_userhz_jiffies
@@ -26298,8 +25992,6 @@
 00000048 t __clkdev_add
 00000048 T clear_gssp_clnt
 00000048 t cistpl_manfid
-00000048 t cipso_v4_map_lvl_ntoh.part.1
-00000048 t cipso_v4_map_lvl_hton.part.0
 00000048 t __check_hid_generic
 00000048 B cgroup_threadgroup_rwsem
 00000048 T cgroup_rstat_flush_irqsafe
@@ -26494,9 +26186,6 @@
 00000044 t sock_filter_func_proto
 00000044 t sock_diag_rcv
 00000044 t snapshot_count_trigger
-00000044 t smack_ptrace_traceme
-00000044 t smack_ptrace_access_check
-00000044 T smack_privileged
 00000044 t skip_atoi
 00000044 t simulate_ldm1_pc
 00000044 T simulate_bbl
@@ -26604,7 +26293,6 @@
 00000044 T pcpu_free_vm_areas
 00000044 t oom_init
 00000044 t onoff_get_trigger_ops
-00000044 t onlycap_seq_next
 00000044 t of_thermal_set_trips
 00000044 t of_thermal_get_trip_type
 00000044 t of_thermal_get_trip_temp
@@ -26646,7 +26334,6 @@
 00000044 t nfs41_free_lock_state
 00000044 t nfs3_xdr_enc_access3args
 00000044 t netobj_equal
-00000044 T netlbl_af6list_remove
 00000044 t net_grab_current_ns
 00000044 t net_drop_ns.part.3
 00000044 T netdev_stats_to_stats64
@@ -26671,7 +26358,6 @@
 00000044 T logic_pio_unregister_range
 00000044 t locks_stop
 00000044 T load_nls
-00000044 t load2_seq_next
 00000044 t linkwatch_event
 00000044 T led_classdev_resume
 00000044 T kthread_data
@@ -26864,8 +26550,6 @@
 00000044 T clk_bulk_put
 00000044 t client_disconnect_notify
 00000044 T classes_init
-00000044 T cipso_v4_sock_getattr
-00000044 t cipso_seq_next
 00000044 T checker_stack_use_stmdx
 00000044 t change_page_range
 00000044 T cgroup_rm_cftypes
@@ -27052,10 +26736,6 @@
 00000040 t smsc_crc
 00000040 t smsc95xx_unbind
 00000040 T smp_send_reschedule
-00000040 T smk_curacc
-00000040 t smack_socket_bind
-00000040 t smack_secid_to_secctx
-00000040 B smack_known_hash
 00000040 t slope_show
 00000040 T sk_set_memalloc
 00000040 T sk_ns_capable
@@ -27223,13 +26903,7 @@
 00000040 T __next_node_in
 00000040 d net_sysctl_root
 00000040 T netlink_sendskb
-00000040 r netlbl_unlabel_genl_policy
-00000040 T netlbl_sock_getattr
-00000040 T netlbl_netlink_init
-00000040 T netlbl_calipso_ops_register
 00000040 t net_alloc_generic
-00000040 t net6addr_seq_next
-00000040 t net4addr_seq_next
 00000040 T neigh_changeaddr
 00000040 t msg_buf.37003
 00000040 r __msg.60535
@@ -27730,15 +27404,6 @@
 0000003c T sock_is_registered
 0000003c t smsc95xx_ioctl
 0000003c T smp_call_function
-0000003c t smack_socket_socketpair
-0000003c t smack_msg_msg_alloc_security
-0000003c t smack_ipc_alloc_security
-0000003c t smack_inode_setsecctx
-0000003c t smack_inode_notifysecctx
-0000003c t smack_inode_getsecctx
-0000003c t smack_inet_csk_clone
-0000003c t smack_file_alloc_security
-0000003c t smack_cred_alloc_blank
 0000003c T sk_reset_timer
 0000003c T sk_free_unlock_clone
 0000003c t skew_tick
@@ -27931,7 +27596,6 @@
 0000003c T netlink_detachskb
 0000003c t netlink_compare
 0000003c T netlink_change_ngroups
-0000003c T netlbl_req_delattr
 0000003c t netdev_release
 0000003c t netdev_queue_attr_store
 0000003c t net_current_may_mount
@@ -28190,18 +27854,6 @@
 0000003c t cfq_registered_queue
 0000003c T cdev_device_del
 0000003c T cdev_del
-0000003c T calipso_sock_setattr
-0000003c T calipso_sock_getattr
-0000003c T calipso_skbuff_setattr
-0000003c T calipso_skbuff_delattr
-0000003c T calipso_req_setattr
-0000003c T calipso_optptr
-0000003c T calipso_getattr
-0000003c T calipso_doi_walk
-0000003c T calipso_doi_remove
-0000003c T calipso_doi_getdef
-0000003c T calipso_doi_add
-0000003c T calipso_cache_add
 0000003c T cache_unregister_net
 0000003c T cache_flush
 0000003c t bussuspend_show
@@ -28393,11 +28045,6 @@
 00000038 T sock_common_getsockopt
 00000038 T smp_prepare_boot_cpu
 00000038 T smpcfd_dead_cpu
-00000038 t smack_task_to_inode
-00000038 t smack_shm_associate
-00000038 t smack_sem_associate
-00000038 t smack_msg_queue_associate
-00000038 t smack_file_set_fowner
 00000038 T slab_start
 00000038 t slab_proc_init
 00000038 t slab_attr_show
@@ -28482,7 +28129,6 @@
 00000038 T relay_subbufs_consumed
 00000038 t relay_file_release
 00000038 T relay_buf_full
-00000038 t relabel_self_seq_show
 00000038 t regulator_uA_show
 00000038 t _regulator_is_enabled.part.1
 00000038 T regs_get_kernel_stack_nth
@@ -28594,10 +28240,6 @@
 00000038 t netns_put
 00000038 t net_ns_net_init
 00000038 T netlink_broadcast
-00000038 T netlbl_sock_delattr
-00000038 T netlbl_bitmap_setbit
-00000038 T netlbl_af6list_remove_entry
-00000038 T netlbl_af4list_remove_entry
 00000038 T netif_tx_wake_queue
 00000038 t netdev_queue_attr_show
 00000038 T netdev_master_upper_dev_link
@@ -29110,9 +28752,6 @@
 00000034 t smsc95xx_get_link_ksettings
 00000034 t smsc95xx_ethtool_get_eeprom
 00000034 t smp_call_on_cpu_callback
-00000034 t smack_shm_shmat
-00000034 t smack_secctx_to_secid
-00000034 t smack_msg_queue_msgsnd
 00000034 T slab_init_memcg_params
 00000034 T sk_stop_timer
 00000034 t sk_skb_prologue
@@ -29672,11 +29311,6 @@
 00000034 t cfq_set_weight
 00000034 t cfq_set_leaf_weight
 00000034 t cdev_dynamic_release
-00000034 T calipso_sock_delattr
-00000034 T calipso_req_delattr
-00000034 T calipso_doi_putdef
-00000034 T calipso_doi_free
-00000034 T calipso_cache_invalidate
 00000034 T calibrate_delay_is_known
 00000034 t cache_open_procfs
 00000034 T cachefiles_uncache_page
@@ -29937,9 +29571,6 @@
 00000030 T snmp_get_cpu_field
 00000030 t smsc95xx_driver_init
 00000030 T smp_init_cpus
-00000030 r smk_mount_tokens
-00000030 t smack_kernel_create_files_as
-00000030 t smack_inode_copy_up_xattr
 00000030 t slab_size_show
 00000030 T slab_is_available
 00000030 T skcipher_walk_aead_decrypt
@@ -30380,7 +30011,6 @@
 00000030 T net_ns_barrier
 00000030 T netlink_net_capable
 00000030 T netlink_kernel_release
-00000030 T netlbl_enabled
 00000030 t netif_reset_xps_queues_gt
 00000030 t net_eq_idr
 00000030 T netdev_has_upper_dev_all_rcu
@@ -31045,14 +30675,6 @@
 0000002c t smsc95xx_mdio_write
 0000002c t smsc95xx_ethtool_get_wol
 0000002c T smp_set_ops
-0000002c t smk_write_cipso2
-0000002c t smk_write_cipso
-0000002c t smack_task_getsecid
-0000002c t smack_sb_free_security
-0000002c t smack_kernel_act_as
-0000002c t smack_ismaclabel
-0000002c t smack_inode_free_security
-0000002c t smack_inode_free_rcu
 0000002c T skb_to_sgvec_nomark
 0000002c t show_fnode_username_in
 0000002c t show_fnode_username
@@ -31307,7 +30929,6 @@
 0000002c T net_ratelimit
 0000002c T netpoll_poll_enable
 0000002c T netlink_capable
-0000002c T netlbl_domhsh_getentry
 0000002c T netif_schedule_queue
 0000002c T netdev_set_default_ethtool_ops
 0000002c T netdev_class_remove_file_ns
@@ -31985,29 +31606,6 @@
 00000028 t sock_close
 00000028 t s_next
 00000028 t snapshot_trigger_print
-00000028 t smk_open_relabel_self
-00000028 t smk_open_onlycap
-00000028 t smk_open_net6addr
-00000028 t smk_open_net4addr
-00000028 t smk_open_load_self2
-00000028 t smk_open_load_self
-00000028 t smk_open_load2
-00000028 t smk_open_load
-00000028 t smk_open_cipso2
-00000028 t smk_open_cipso
-00000028 t smk_mount
-00000028 t smack_task_setscheduler
-00000028 t smack_task_setpgid
-00000028 t smack_task_setnice
-00000028 t smack_task_setioprio
-00000028 t smack_task_movememory
-00000028 t smack_task_getsid
-00000028 t smack_task_getscheduler
-00000028 t smack_task_getpgid
-00000028 t smack_task_getioprio
-00000028 t smack_key_alloc
-00000028 t smack_inode_getsecid
-00000028 t smack_cred_getsecid
 00000028 T slab_next
 00000028 t slabinfo_open
 00000028 T sk_reuseport_attach_bpf
@@ -32260,7 +31858,6 @@
 00000028 T netlink_register_notifier
 00000028 t netlink_net_exit
 00000028 d netlink_mgr
-00000028 T netlbl_domhsh_remove_default
 00000028 t netfilter_net_exit
 00000028 T netdev_freemem
 00000028 T neigh_app_ns
@@ -33080,7 +32677,6 @@
 00000024 d snapstream_firefly_map
 00000024 t snapshot_get_trigger_ops
 00000024 T smpcfd_dying_cpu
-00000024 t smack_ipc_getsecid
 00000024 T slab_stop
 00000024 T skcipher_walk_atomise
 00000024 T skcipher_walk_aead
@@ -33335,10 +32931,6 @@
 00000024 t nfs3_proc_read_setup
 00000024 t nfs3_proc_commit_setup
 00000024 t nfs2_xdr_enc_fhandle
-00000024 T netlbl_unlabel_genl_init
-00000024 T netlbl_mgmt_genl_init
-00000024 T netlbl_cipsov4_genl_init
-00000024 T netlbl_calipso_genl_init
 00000024 T net_inc_ingress_queue
 00000024 T net_inc_egress_queue
 00000024 T netfilter_log_init
@@ -34873,14 +34465,6 @@
 00000020 T sock_edemux
 00000020 r sm_stats_human_read
 00000020 t smsc95xx_mdio_read
-00000020 t smk_write_access2
-00000020 t smk_write_access
-00000020 t smack_sem_semop
-00000020 t smack_msg_queue_msgrcv
-00000020 t smack_msg_msg_free_security
-00000020 t smack_key_free
-00000020 t smack_ipc_free_security
-00000020 t smack_file_free_security
 00000020 t slabs_show
 00000020 r sk_skb_pull_data_proto
 00000020 r sk_skb_change_tail_proto
@@ -35139,7 +34723,6 @@
 00000020 t netlink_sock_destruct_work
 00000020 T netlink_ns_capable
 00000020 t netlink_ioctl
-00000020 T netlbl_cache_invalidate
 00000020 t net_initial_ns
 00000020 T netif_set_xps_queue
 00000020 T netif_receive_skb_core
@@ -35687,8 +35270,6 @@
 00000020 T clean_page_buffers
 00000020 t class_dir_child_ns_type
 00000020 t class_child_ns_type
-00000020 T cipso_v4_req_delattr
-00000020 t cipso_v4_doi_free_rcu
 00000020 t __check_vc
 00000020 t __check_pl
 00000020 t __check_ne
@@ -36654,7 +36235,6 @@
 0000001c t smsc95xx_ethtool_getregslen
 0000001c t smsc95xx_ethtool_get_eeprom_len
 0000001c t smsc95xx_driver_exit
-0000001c d smk_fs_type
 0000001c d slub_oom_rs.39070
 0000001c t slot_virt
 0000001c T slabinfo_write
@@ -36751,7 +36331,7 @@
 0000001c d _rs.67228
 0000001c d _rs.66562
 0000001c d _rs.66300
-0000001c d _rs.61155
+0000001c d _rs.61204
 0000001c d _rs.59416
 0000001c d _rs.56539
 0000001c d _rs.55885
@@ -37020,12 +36600,6 @@
 0000001c r netlink_rhashtable_params
 0000001c d netlink_net_ops
 0000001c d netlink_chain
-0000001c T netlbl_domhsh_add_default
-0000001c T netlbl_cfg_cipsov4_del
-0000001c T netlbl_cfg_cipsov4_add
-0000001c T netlbl_cfg_calipso_del
-0000001c T netlbl_cfg_calipso_add
-0000001c T netlbl_audit_start
 0000001c d net_inuse_ops
 0000001c d netfilter_net_ops
 0000001c d netdev_net_ops
@@ -37086,8 +36660,6 @@
 0000001c D loopback_net_ops
 0000001c d loop_attrs
 0000001c d lockd_net_ops
-0000001c t load_self2_seq_start
-0000001c t load_self2_seq_next
 0000001c T load_default_modules
 0000001c d last_warned.47336
 0000001c t lan78xx_set_msglevel
@@ -37186,7 +36758,6 @@
 0000001c r __kstrtab_nfs_client_init_is_complete
 0000001c r __kstrtab_nf_queue_entry_release_refs
 0000001c r __kstrtab_netlink_unregister_notifier
-0000001c r __kstrtab_netlbl_calipso_ops_register
 0000001c r __kstrtab_netdev_master_upper_dev_get
 0000001c r __kstrtab_netdev_class_remove_file_ns
 0000001c r __kstrtab_netdev_class_create_file_ns
@@ -38581,10 +38152,6 @@
 0000001a r __func__.75016
 0000001a r __func__.70525
 0000001a r __func__.69973
-0000001a r __func__.66023
-0000001a r __func__.65911
-0000001a r __func__.65161
-0000001a r __func__.64776
 0000001a r __func__.60515
 0000001a r __func__.52305
 0000001a r __func__.52145
@@ -39828,7 +39395,6 @@
 00000018 r sockfs_xattr_handler
 00000018 r sockfs_security_xattr_handler
 00000018 t sock_def_destruct
-00000018 t smk_seq_stop
 00000018 d slab_ktype
 00000018 T slabinfo_show_stats
 00000018 r size_index
@@ -40414,11 +39980,6 @@
 00000018 r __func__.67485
 00000018 r __func__.66302
 00000018 r __func__.66173
-00000018 r __func__.66107
-00000018 r __func__.65656
-00000018 r __func__.65280
-00000018 r __func__.65276
-00000018 r __func__.65008
 00000018 r __func__.62800
 00000018 r __func__.62622
 00000018 r __func__.60497
@@ -40588,7 +40149,6 @@
 00000018 D cgroup1_kf_syscall_ops
 00000018 t cfqq_process_refs.part.1
 00000018 d cb_lock
-00000018 r calipso_genl_policy
 00000018 t cachefiles_dissociate_pages
 00000018 d bus_ktype
 00000018 t buf_unmapped_default_callback
@@ -41099,7 +40659,6 @@
 00000017 r __func__.67145
 00000017 r __func__.66564
 00000017 r __func__.66143
-00000017 r __func__.64956
 00000017 r __func__.54247
 00000017 r __func__.53513
 00000017 r __func__.53235
@@ -41634,7 +41193,6 @@
 00000016 r __func__.70007
 00000016 r __func__.69844
 00000016 r __func__.67293
-00000016 r __func__.65284
 00000016 r __func__.61664
 00000016 r __func__.55775
 00000016 r __func__.55707
@@ -41979,8 +41537,6 @@
 00000015 r __kstrtab_net_ns_get_ownership
 00000015 r __kstrtab___netlink_ns_capable
 00000015 r __kstrtab___netlink_dump_start
-00000015 r __kstrtab_netlbl_catmap_setbit
-00000015 r __kstrtab_netlbl_bitmap_setbit
 00000015 r __kstrtab_net_inc_egress_queue
 00000015 r __kstrtab_netif_schedule_queue
 00000015 r __kstrtab_net_enable_timestamp
@@ -42230,15 +41786,7 @@
 00000015 r __func__.70373
 00000015 r __func__.70115
 00000015 r __func__.6680
-00000015 r __func__.66133
-00000015 r __func__.65830
-00000015 r __func__.65272
-00000015 r __func__.65268
-00000015 r __func__.65000
-00000015 r __func__.64984
-00000015 r __func__.64883
-00000015 r __func__.64783
-00000015 r __func__.61157
+00000015 r __func__.61206
 00000015 r __func__.59756
 00000015 r __func__.58944
 00000015 r __func__.53359
@@ -42442,14 +41990,6 @@
 00000014 d sock_diag_table_mutex
 00000014 d sock_diag_mutex
 00000014 d smpboot_threads_lock
-00000014 d smk_net6addr_lock
-00000014 d smk_net4addr_lock
-00000014 D smack_onlycap_lock
-00000014 d smack_master_list_lock
-00000014 D smack_known_lock
-00000014 D smack_ipv6_lock
-00000014 d smack_cipso_lock
-00000014 d smack_ambient_lock
 00000014 D slab_mutex
 00000014 r slab_attr_group
 00000014 R sk_skb_verifier_ops
@@ -43613,10 +43153,6 @@
 00000014 r __func__.67437
 00000014 r __func__.67230
 00000014 r __func__.66748
-00000014 r __func__.65921
-00000014 r __func__.65482
-00000014 r __func__.64970
-00000014 r __func__.64963
 00000014 r __func__.60009
 00000014 r __func__.53472
 00000014 r __func__.53293
@@ -44171,9 +43707,6 @@
 00000013 r __kstrtab_net_namespace_list
 00000013 r __kstrtab_netlink_remove_tap
 00000013 r __kstrtab_netlink_ns_capable
-00000013 r __kstrtab_netlbl_catmap_walk
-00000013 r __kstrtab_netlbl_bitmap_walk
-00000013 r __kstrtab_netlbl_audit_start
 00000013 r __kstrtab_netif_skb_features
 00000013 r __kstrtab_netdev_refcnt_read
 00000013 r __kstrtab_netdev_max_backlog
@@ -44453,17 +43986,11 @@
 00000013 r __func__.67349
 00000013 r __func__.66335
 00000013 r __func__.65998
-00000013 r __func__.65263
-00000013 r __func__.65249
-00000013 r __func__.65245
-00000013 r __func__.65172
-00000013 r __func__.64947
-00000013 r __func__.64930
 00000013 r __func__.63251
 00000013 r __func__.62215
 00000013 r __func__.60983
 00000013 r __func__.60504
-00000013 r __func__.58004
+00000013 r __func__.58053
 00000013 r __func__.56541
 00000013 r __func__.55803
 00000013 r __func__.52683
@@ -45126,9 +44653,6 @@
 00000012 r __func__.67826
 00000012 r __func__.67415
 00000012 r __func__.66444
-00000012 r __func__.65253
-00000012 r __func__.64937
-00000012 r __func__.63787
 00000012 r __func__.63123
 00000012 r __func__.60161
 00000012 r __func__.59749
@@ -45818,9 +45342,6 @@
 00000011 r __func__.72991
 00000011 r __func__.67480
 00000011 r __func__.67336
-00000011 r __func__.65069
-00000011 r __func__.65048
-00000011 r __func__.64922
 00000011 r __func__.63416
 00000011 r __func__.63151
 00000011 r __func__.56373
@@ -46534,7 +46055,6 @@
 00000010 d snapshot_count_trigger_ops
 00000010 d snapshot_count_probe_ops
 00000010 r smp_ops
-00000010 r smk_bu_mess
 00000010 R slash_name
 00000010 d slab_size_attr
 00000010 d slabs_cpu_partial_attr
@@ -46614,7 +46134,6 @@
 00000010 d reset
 00000010 D reservation_ww_class
 00000010 d related_cpus
-00000010 r relabel_self_seq_ops
 00000010 d red_zone_attr
 00000010 d red8
 00000010 d reclaim_account_attr
@@ -46751,7 +46270,6 @@
 00000010 t __pabt_invalid
 00000010 d osq_node
 00000010 d order_attr
-00000010 r onlycap_seq_ops
 00000010 b old_delta.31611
 00000010 r of_overlay_action_name
 00000010 d objs_per_slab_attr
@@ -46816,8 +46334,6 @@
 00000010 r netlink_seq_ops
 00000010 d netdev_alloc_cache
 00000010 d net_cleanup_work
-00000010 r net6addr_seq_ops
-00000010 r net4addr_seq_ops
 00000010 r neigh_stat_seq_ops
 00000010 d name_attr
 00000010 r __msg.64269
@@ -46854,10 +46370,6 @@
 00000010 d loop_attr_backing_file
 00000010 d loop_attr_autoclear
 00000010 r locks_seq_operations
-00000010 r load_seq_ops
-00000010 r load_self_seq_ops
-00000010 r load_self2_seq_ops
-00000010 r load2_seq_ops
 00000010 t Ldiv0
 00000010 r kyber_sync_write_rqs_seq_ops
 00000010 r kyber_read_rqs_seq_ops
@@ -47488,10 +47000,6 @@
 00000010 d func_opts
 00000010 r __func__.67375
 00000010 r __func__.67054
-00000010 r __func__.65295
-00000010 r __func__.65181
-00000010 r __func__.65056
-00000010 r __func__.64873
 00000010 r __func__.62046
 00000010 r __func__.61493
 00000010 r __func__.61369
@@ -48460,8 +47968,6 @@
 00000010 d class_attr_unexport
 00000010 d class_attr_export
 00000010 d class_attr_disabled
-00000010 r cipso_seq_ops
-00000010 r cipso2_seq_ops
 00000010 d ci_cpu_cacheinfo
 00000010 b chosen_elevator
 00000010 d chip_name_attr
@@ -49114,11 +48620,6 @@
 0000000f r __func__.67445
 0000000f r __func__.66946
 0000000f r __func__.66234
-0000000f r __func__.65789
-0000000f r __func__.65749
-0000000f r __func__.65714
-0000000f r __func__.65492
-0000000f r __func__.64915
 0000000f r __func__.64615
 0000000f r __func__.63290
 0000000f r __func__.63267
@@ -49636,7 +49137,6 @@
 0000000e r __func__.8252
 0000000e r __func__.8245
 0000000e r __func__.67405
-0000000e r __func__.63778
 0000000e r __func__.56270
 0000000e r __func__.53116
 0000000e r __func__.50741
@@ -50711,7 +50211,6 @@
 0000000c D nfs3_xattr_handlers
 0000000c b nfs3_acl_counts
 0000000c r netlink_family_ops
-0000000c d netlbl_unlhsh_netdev_notifier
 0000000c d net_generic_ids
 0000000c D netdev_unregistering_wq
 0000000c d neigh_tables
@@ -51146,7 +50645,6 @@
 0000000c r CSWTCH.61
 0000000c r CSWTCH.572
 0000000c r CSWTCH.370
-0000000c r CSWTCH.245
 0000000c r CSWTCH.169
 0000000c r CSWTCH.15
 0000000c r CSWTCH.14
@@ -52025,12 +51523,6 @@
 00000008 d spi_master_groups
 00000008 d spi_dev_attrs
 00000008 d spi_controller_list
-00000008 D smk_net6addr_list
-00000008 D smk_net4addr_list
-00000008 d smk_ipv6_port_list
-00000008 d smack_rule_list
-00000008 D smack_onlycap_list
-00000008 D smack_known_list
 00000008 r slab_sysfs_ops
 00000008 D slab_root_caches
 00000008 d slab_caches_to_rcu_destroy
@@ -56265,12 +55757,6 @@
 00000008 r __ksymtab_netlink_broadcast
 00000008 r __ksymtab_netlink_add_tap
 00000008 r __ksymtab_netlink_ack
-00000008 r __ksymtab_netlbl_catmap_walk
-00000008 r __ksymtab_netlbl_catmap_setbit
-00000008 r __ksymtab_netlbl_calipso_ops_register
-00000008 r __ksymtab_netlbl_bitmap_walk
-00000008 r __ksymtab_netlbl_bitmap_setbit
-00000008 r __ksymtab_netlbl_audit_start
 00000008 r __ksymtab_net_inc_ingress_queue
 00000008 r __ksymtab_net_inc_egress_queue
 00000008 r __ksymtab_netif_tx_wake_queue
@@ -60629,7 +60115,6 @@
 00000008 r __func__.8324
 00000008 r __func__.8313
 00000008 r __func__.8313
-00000008 r __func__.8064
 00000008 r __func__.7940
 00000008 r __func__.7788
 00000008 r __func__.7667
@@ -60785,7 +60270,6 @@
 00000008 b cleancache_invalidates
 00000008 b cleancache_failed_gets
 00000008 r class_sysfs_ops
-00000008 d cipso_v4_doi_list
 00000008 D cgroup_roots
 00000008 d cfs_overlay_bin_attrs
 00000008 r cfb_tab32
@@ -60931,15 +60415,12 @@
 00000007 r __func__.8338
 00000007 r __func__.8337
 00000007 r __func__.8337
-00000007 r __func__.8331
 00000007 r __func__.8314
 00000007 r __func__.8303
 00000007 r __func__.8266
 00000007 r __func__.8068
-00000007 r __func__.8054
 00000007 r __func__.7979
 00000007 r __func__.7930
-00000007 r __func__.7692
 00000007 r __func__.7692
 00000007 r __func__.7692
 00000007 r __func__.7692
@@ -62448,18 +61929,7 @@
 00000004 r sock_inode_cachep
 00000004 b sm_state
 00000004 b __smp_cross_call
-00000004 d smk_cipso_doi_value
 00000004 b sm_inited
-00000004 B smack_unconfined
-00000004 B smack_syslog_label
-00000004 B smack_ptrace_rule
-00000004 d smack_next_secid
-00000004 B smack_net_ambient
-00000004 b smack_inode_cache
-00000004 b smackfs_mount
-00000004 B smack_enabled
-00000004 D smack_cipso_mapped
-00000004 D smack_cipso_direct
 00000004 b slub_min_order
 00000004 b slub_min_objects
 00000004 d slub_max_order
@@ -63007,14 +62477,6 @@
 00000004 b netns_wq
 00000004 b net_msg_warn
 00000004 b netlink_tap_net_id
-00000004 b netlbl_unlhsh_lock
-00000004 b netlbl_unlhsh_def
-00000004 b netlbl_unlhsh
-00000004 b netlbl_domhsh_lock
-00000004 b netlbl_domhsh_def_ipv6
-00000004 b netlbl_domhsh_def_ipv4
-00000004 b netlbl_domhsh
-00000004 B netlabel_mgmt_protocount
 00000004 b net_header
 00000004 b net_family_lock
 00000004 D netdev_tstamp_prequeue
@@ -63187,7 +62649,6 @@
 00000004 D loops_per_jiffy
 00000004 d long_max
 00000004 d long_max
-00000004 D log_policy
 00000004 d logo_shown
 00000004 b logo_lines
 00000004 b log_next_idx
@@ -63570,7 +63031,6 @@
 00000004 t __initcall_sock_init1
 00000004 t __initcall_sock_diag_init6
 00000004 t __initcall_smsc95xx_driver_init6
-00000004 t __initcall_smack_init
 00000004 t __initcall_slab_sysfs_init6
 00000004 t __initcall_slab_proc_init6
 00000004 t __initcall_simplefb_init5
@@ -63662,7 +63122,6 @@
 00000004 t __initcall_net_olddevs_init6
 00000004 t __initcall_net_ns_init0
 00000004 t __initcall_netlink_proto_init1
-00000004 t __initcall_netlbl_init4
 00000004 t __initcall_net_inuse_init1
 00000004 t __initcall_net_dev_init4
 00000004 t __initcall_net_defaults_init1
@@ -63726,7 +63185,6 @@
 00000004 t __initcall_init_sunrpc5
 00000004 t __initcall_init_static_idmapearly
 00000004 t __initcall_init_soundcore4
-00000004 t __initcall_init_smk_fs6
 00000004 t __initcall_init_sd6
 00000004 t __initcall_init_scsi4
 00000004 t __initcall_init_script_binfmt1
@@ -63980,7 +63438,6 @@
 00000004 t __initcall_clk_disable_unused7s
 00000004 t __initcall_clk_debug_init7
 00000004 t __initcall_clear_boot_tracer7s
-00000004 t __initcall_cipso_v4_init4
 00000004 t __initcall_chr_dev_init5
 00000004 t __initcall_check_early_ioremap_leak7
 00000004 t __initcall_check_cpu_stall_initearly
@@ -65453,12 +64910,6 @@
 00000004 b cleanup_list
 00000004 d cleancache_ops
 00000004 b class_kset
-00000004 D cipso_v4_rbm_strictvalid
-00000004 B cipso_v4_rbm_optfmt
-00000004 b cipso_v4_doi_list_lock
-00000004 D cipso_v4_cache_enabled
-00000004 D cipso_v4_cache_bucketsize
-00000004 b cipso_v4_cache
 00000004 d ci_index_dev
 00000004 d ci_cache_dev
 00000004 b chords.33043
@@ -65490,7 +64941,6 @@
 00000004 d call_single_queue
 00000004 b callchain_cpus_entries
 00000004 b callback_lock
-00000004 b calipso_ops
 00000004 B calc_load_update
 00000004 B calc_load_tasks
 00000004 b calc_load_idx
@@ -65808,7 +65258,6 @@
 00000001 d __warned.66221
 00000001 d __warned.66220
 00000001 d __warned.66191
-00000001 d __warned.66166
 00000001 d __warned.66163
 00000001 d __warned.66158
 00000001 d __warned.66154
@@ -66936,7 +66385,6 @@
 00000001 r nlink_tgid
 00000001 D nf_skb_duplicated
 00000001 D nfs4_disable_idmapping
-00000001 b netlabel_unlabel_acceptflg
 00000001 D microframe_schedule
 00000001 b mem_id_init
 00000001 b memcg_sysfs_enabled
