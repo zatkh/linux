@@ -1,0 +1,19 @@
+config SECURITY_USTAR
+	bool "difc support"
+	depends on SECURITY
+	default n
+	help
+		This selects ustar LSM
+
+config EXTENDED_LSM
+ 	depends on SECURITY
+ 	default y
+ 	help
+		This selects an extension to basic LSM for seccomp-based sandboxing.
+
+config EXTENDED_LSM_DIFC
+	bool "supports difc model based LSM"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds difc support to the extended LSM.
