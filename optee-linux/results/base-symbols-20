@@ -1,0 +1,22 @@
+********top 20 ***********
+
+00008000 b read_buffers
+00005330 T hidinput_connect
+00004f50 r edid_cea_modes
+00004670 r platform_of_match
+000040a0 r drm_dmt_modes
+00004000 b __log_buf
+00003824 T __blockdev_direct_IO
+00003530 t ext4_fill_super
+00002bfc T dev_ethtool
+00002450 t load_module
+000020a8 b iter.45102
+00002000 b write_buf.39946
+00002000 d safe_print_seq
+00002000 d nmi_print_seq
+00002000 b ext_text.43691
+00002000 r crc32table_le
+00002000 r crc32table_be
+00002000 r crc32ctable_le
+00001ed8 D usb_storage_usb_ids
+00001da4 t usbdev_ioctl

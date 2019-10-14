@@ -1,0 +1,20 @@
+config SECURITY_USTAR
+	bool "difc support"
+	depends on SECURITY
+	default n
+	help
+		This selects ustar LSM
+
+config EXTENDED_LSM
+	bool "supports seccomp based isolation"
+	depends on SECURITY_USTAR
+	default y
+	help
+		This adds difc support to the extended LSM.
+
+config EXTENDED_LSM_DIFC
+	bool "supports difc model based LSM"
+	depends on SECURITY_USTAR
+	default y
+	help
+		This adds difc support to the extended LSM.
