@@ -1,8 +1,3 @@
-/*
-* DIFC Linux Security Module
-* Author: Yuqiong Sun <yus138@cse.psu.edu>
-*/
-
 #include <linux/xattr.h>
 #include <linux/pagemap.h>
 #include <linux/mount.h>
@@ -80,9 +75,6 @@ static struct inode_difc *new_inode_difc(void) {
 
 	tsp = current_security();
 
-	/*
-	* Label of inode is the label of the task creating the inode
-	*/
 
 	rc = difc_copy_label(&tsp->slabel, &isp->slabel);
 	if (rc < 0)
@@ -127,13 +119,6 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old,
 	rc = difc_copy_label(&old_tsp->ilabel, &new_tsp->ilabel);
 	if (rc != 0)
 		return rc;
-
-	/*
-	// Don't copy ownerships
-	rc = difc_copy_label(&old_tsp->olabel, &new_tsp->olabel);
-	if (rc != 0)
-		return rc;
-	*/	
 
 	new->security = new_tsp;
 	return 0;
@@ -196,13 +181,6 @@ static int difc_inode_init_security(struct inode *inode, struct inode *dir,
 	int rc, llen;
 	char *labels;
 	struct task_difc *tsp = current_security();
-
-	/* 
-	if (!isp) {
-		printk(KERN_ALERT "SYQ: inode->i_security is null (%s)\n", __func__);
-		return 0;
-	}
-	*/
 
 	if (tsp->confined) {
 		printk(KERN_ALERT "SYQ: new inode is created %ld\n", inode->i_ino);
@@ -281,9 +259,7 @@ static int difc_inode_listsecurity(struct inode *inode, char *buffer,
 	return len;
 }
 
-/*
-* FIX IT: Currently, anybody could set xattr
-*/
+
 static int difc_inode_getxattr(struct dentry *dentry, const char *name) {
 	return 0;
 }
@@ -328,11 +304,9 @@ static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
 		case DEBUGFS_MAGIC:
 			return rc;
 		default:
-			/* For now, only check on the rest cases */
 			break;
 	}
 
-	/* Only allow when current can integrity write the dentry inode */
 	list_for_each_entry_rcu(t, &isp->ilabel, next)
 		if (t->content == 0)
 			return rc;
@@ -345,17 +319,12 @@ static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
 	}
 	
 out:
-	/* For debugging, always return 0 */
 	rc = 0;
 	return rc;
 }
 
 static int difc_inode_rmdir(struct inode *dir, struct dentry *dentry) {
-	/* 
-	* Currently, we assume files under the directory would have the same label
-	* if a dir is a/b/c and labels are a(1), b(1;2), c(1;2;3)
-	* Impossible, since otherwise the file cannot be read due to parent directories have less integrity
-	*/
+
 	return difc_inode_unlink(dir, dentry);
 }
 
@@ -369,7 +338,6 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 
 	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
 
-	/* For some reason, label of / is not persistent.  Thus if /, return */
 	if (mask == 0 || !isp || inode->i_ino == 2) 
 		return rc;
 
@@ -388,15 +356,11 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		case DEBUGFS_MAGIC:
 			return rc;
 		default:
-			/* For now, only check on the rest cases */
 			break;
 	}
 
 	if (mask & (MAY_READ | MAY_EXEC)) {
-		/*
-		* Check for special tag: 65535 and 0
-		* If integrity label contains 65535 and secrecy label contains 0, the inode is globally readable
-		*/
+
 		top = -1;
 		down = -1;
 		list_for_each_entry_rcu(t, &isp->ilabel, next)
@@ -410,9 +374,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			goto out;
 
 		if (top != 0) {
-			/*
-			*  Integrity: Ip <= Iq + Op
-			*/
+	
 			rc = is_label_subset(&tsp->ilabel, &tsp->olabel, &isp->ilabel);
 			if (rc < 0) {
 				printk(KERN_ALERT "SYQ: integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -422,9 +384,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		}
 	
 		if (down != 0) {
-			/*
-			*  Secrecy: Sq <= Sp + Op
-			*/
+		
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
 				printk(KERN_ALERT "SYQ: secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -435,10 +395,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	} 
 	
 	if(mask & (MAY_WRITE | MAY_APPEND)) {
-		/*
-		* Check for special tag: 65535 and 0
-		* If integrity label contains 0 and secrecy label contains 65535, the inode is globally writable
-		*/
+
 		top = -1;
 		down = -1;
 		list_for_each_entry_rcu(t, &isp->ilabel, next)
@@ -452,9 +409,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			goto out;
 
 		if (top != 0) {
-			/*
-			*  Integrity: Iq <= Ip + Op
-			*/
+	
 			rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
 			if (rc < 0) {
 				printk(KERN_ALERT "SYQ: integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -464,9 +419,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		}
 
 		if (down != 0) {
-			/*
-			*  Secrecy: Sp <= Sq + Op
-			*/
+		
 			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
 			if (rc < 0) {
 				printk(KERN_ALERT "SYQ: secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -477,7 +430,6 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	}
 
 out:
-	/* Always allow for debugging */
 	rc = 0;
 	return rc;
 }
@@ -568,9 +520,7 @@ static void difc_sk_clone_security(const struct sock *sk, struct sock *newsk) {
 }
 
 static int difc_socket_create(int family, int type, int protocol, int kern) {
-	/*
-	* Seems like no need to set up
-	*/
+
 	return 0;
 }
 
@@ -647,9 +597,7 @@ static struct security_hook_list difc_hooks[] = {
 	LSM_HOOK_INIT(inode_free_security, difc_inode_free_security),
 	LSM_HOOK_INIT(inode_init_security, difc_inode_init_security),
 	//LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
-	/*
-	LSM_HOOK_INIT(inode_removexattr, difc_inode_removexattr),
-	*/
+	//LSM_HOOK_INIT(inode_removexattr, difc_inode_removexattr),
 	//LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 	//LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),
 	//LSM_HOOK_INIT(inode_getsecurity, difc_inode_getsecurity),

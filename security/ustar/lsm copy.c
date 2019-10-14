@@ -2115,8 +2115,8 @@ static struct security_hook_list azure_sphere_hooks[] = {
 
 static int __init azure_sphere_lsm_init(void)
 {
-    if (!security_module_enable("USTAR")) {
-        printk(KERN_INFO "USTAR LSM is not enabled");
+    if (!security_module_enable("AzureSphere")) {
+        printk(KERN_INFO "Azure Sphere LSM disabled by boot time parameter");
 		return 0;
 	}
 	difc_caps_kcache = 
