@@ -194,6 +194,27 @@
 #define BPF_RAW_TP()
 #endif
 
+#ifdef CONFIG_EXTENDED_LSM
+#define ARGDESC_SYSCALLS() . = ALIGN(8);				\
+			 __start_syscalls_argdesc = .;	\
+			 KEEP(*(__syscalls_argdesc))				\
+			 __stop_syscalls_argdesc = .;
+
+#ifdef CONFIG_COMPAT
+#define COMPAT_ARGDESC_SYSCALLS() . = ALIGN(8);				\
+		 __start_compat_syscalls_argdesc = .;	\
+		 KEEP(*(__compat_syscalls_argdesc))				\
+		 __stop_compat_syscalls_argdesc = .;
+#else
+#define COMPAT_ARGDESC_SYSCALLS()
+#endif	/* CONFIG_COMPAT */
+
+#else
+#define ARGDESC_SYSCALLS()
+#define COMPAT_ARGDESC_SYSCALLS()
+#endif /* CONFIG_EXTENDED_LSM */
+
+
 #ifdef CONFIG_SERIAL_EARLYCON
 #define EARLYCON_TABLE() . = ALIGN(8);				\
 			 __earlycon_table = .;			\
@@ -594,6 +615,7 @@
 	MEM_DISCARD(init.data*)						\
 	KERNEL_CTORS()							\
 	MCOUNT_REC()							\
+	ARGDESC_SYSCALLS()						\
 	*(.init.rodata .init.rodata.*)					\
 	FTRACE_EVENTS()							\
 	TRACE_SYSCALLS()						\

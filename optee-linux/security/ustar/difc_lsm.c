@@ -18,6 +18,41 @@
 #include <linux/personality.h>
 #include <linux/msg.h>
 #include <linux/shm.h>
+#include <linux/device.h>
+#include <linux/lsm_hooks.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/binfmts.h>
+#include <linux/types.h>
+#include <linux/security.h>
+#include <linux/file.h>
+#include <linux/cred.h>
+#include <linux/uaccess.h>
+#include <linux/mman.h>
+#include <linux/fs.h>
+#include <linux/miscdevice.h>
+
+
+#ifdef CONFIG_EXTENDED_LSM
+
+#include <asm/syscall.h>
+#include <linux/compat.h>
+#include <linux/slab.h>
+#include <linux/syscalls.h>	
+#include <linux/mm.h>
+
+#include <asm/elf.h>
+#include <asm/unistd.h>
+#include <asm/domain.h>
+#include <asm/page.h>
+#include <asm/pgtable.h>
+#include <asm/bug.h>
+#include <asm/tlbflush.h>
+
+#endif /*CONFIG_EXTENDED_LSM */
+
+#include "lsm.h"
 #include "difc.h"
 
 
@@ -61,6 +96,62 @@ static int debug = 1;
 
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
+
+
+
+
+#ifdef CONFIG_EXTENDED_LSM
+
+struct syscall_argdesc (*seccomp_syscalls_argdesc)[] = NULL;
+
+
+static const struct syscall_argdesc *__init
+find_syscall_argdesc(const struct syscall_argdesc *start,
+		const struct syscall_argdesc *stop, const void *addr)
+{
+	if (unlikely(!addr || !start || !stop)) {
+		WARN_ON(1);
+		return NULL;
+	}
+
+	for (; start < stop; start++) {
+		if (start->addr == addr)
+			return start;
+	}
+	return NULL;
+}
+
+static inline void __init init_argdesc(void)
+{
+	const struct syscall_argdesc *argdesc;
+	const void *addr;
+	int i;
+
+	seccomp_syscalls_argdesc = kcalloc(NR_syscalls,
+			sizeof((*seccomp_syscalls_argdesc)[0]), GFP_KERNEL);
+	if (unlikely(!seccomp_syscalls_argdesc)) {
+		WARN_ON(1);
+		return;
+	}
+	for (i = 0; i < NR_syscalls; i++) {
+		addr = (const void *)sys_call_table[i];
+		argdesc = find_syscall_argdesc(__start_syscalls_argdesc,
+				__stop_syscalls_argdesc, addr);
+		if (!argdesc)
+			continue;
+
+		(*seccomp_syscalls_argdesc)[i] = *argdesc;
+	}
+	
+}
+
+void __init seccomp_init(void)
+{
+	pr_info("[seccomp_init] initializing seccomp-based sandboxing\n");
+	init_argdesc();
+}
+
+#endif /*CONFIG_EXTENDED_LSM*/
 
 
 static struct task_difc *new_task_difc(gfp_t gfp) {
@@ -215,6 +306,11 @@ static __init int difc_init(void) {
 
 	struct task_difc *tsp;
 	struct cred *cred;
+
+	#ifdef CONFIG_EXTENDED_LSM
+	seccomp_init();
+	#endif
+ 
 
 	tag_struct = KMEM_CACHE(tag, SLAB_PANIC);
 

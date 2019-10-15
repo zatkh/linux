@@ -450,7 +450,8 @@ void free_task(struct task_struct *tsk)
 #endif
 	rt_mutex_debug_task_free(tsk);
 	ftrace_graph_exit_task(tsk);
-	put_seccomp_filter(tsk);
+	//put_seccomp_filter(tsk);
+	put_seccomp(tsk);
 	arch_release_task_struct(tsk);
 	if (tsk->flags & PF_KTHREAD)
 		free_kthread_struct(tsk);
@@ -880,6 +881,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	 * the usage counts on the error path calling free_task.
 	 */
 	tsk->seccomp.filter = NULL;
+
+	#ifdef CONFIG_EXTENDED_LSM
+	
+		tsk->seccomp.checker_group = NULL;
+		tsk->seccomp.arg_cache = NULL;
+
+	#endif /*CONFIG_EXTENDED_LSM */
+
 #endif
 
 	setup_thread_stack(tsk, orig);
@@ -1575,7 +1584,9 @@ static void copy_seccomp(struct task_struct *p)
 
 	/* Ref-count the new filter user, and assign it. */
 	get_seccomp_filter(current);
-	p->seccomp = current->seccomp;
+		//p->seccomp = current->seccomp;
+	p->seccomp.mode = current->seccomp.mode;
+	p->seccomp.filter = current->seccomp.filter;
 
 	/*
 	 * Explicitly enable no_new_privs here in case it got set
