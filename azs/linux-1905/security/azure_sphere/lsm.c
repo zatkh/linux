@@ -82,7 +82,7 @@ static int debug = 1;
 #define difc_lsm_debug(fmt, arg...)					\
 	do {							\
 		if (debug)					\
-			printk(KERN_ERR "(pid %d) %s: [%s]: " fmt ,	\
+			printk(KERN_INFO "(pid %d) %s: [%s]: " fmt ,	\
 			       current->pid, "[difc_lsm]" , __FUNCTION__ , 	\
 				## arg);			\
 	} while (0)
@@ -166,7 +166,7 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
 	int is_max=0;
 
 	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
-
+	difc_lsm_debug("after kalloc\n");
   	cred = prepare_creds();
     if (!cred) {
         return -ENOMEM;
@@ -178,13 +178,7 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
         return -ENOENT;
     }
 
-	// in case we want to give appman extra capabilities to declassify or etc
-	if(tsec->is_app_man)
-		tsec->tcb=APPMAN_TCB;
-	else
-		tsec->tcb=REGULAR_TCB;
-	//difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
-    
+difc_lsm_debug("after creds check\n");
 
 	//get the requested t+ or t- cpabilty
 	new_cap |= (cap_type & (PLUS_CAPABILITY| MINUS_CAPABILITY));
@@ -195,8 +189,11 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
 	if((new_cap & MINUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
 
-	spin_lock(&tsec->cap_lock);
-		
+difc_lsm_debug("before spinlock\n");
+	////spin_lock(&tsec->cap_lock);
+
+	difc_lsm_debug("after spinlock\n");
+	
 	list_for_each_entry(cap_seg, &tsec->capList, list){
 		if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
 			//difc_lsm_debug("cap_seg->caps[0]%lld \n",cap_seg->caps[0]);
@@ -209,9 +206,22 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
 		INIT_LIST_HEAD(&cap_seg->list);
 		list_add_tail(&cap_seg->list, &tsec->capList);
 	}
+	difc_lsm_debug("after caplist list for ech entry\n");
 		
 	cap_seg->caps[++(cap_seg->caps[0])] = new_cap;
-	spin_unlock(&tsec->cap_lock);
+
+//labeling mark
+	if(tsec->is_app_man)
+		tsec->tcb=APPMAN_TCB;
+	else
+		tsec->tcb=REGULAR_TCB;
+	difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
+
+	////spin_unlock(&tsec->cap_lock);
+
+	// in case we want to give appman extra capabilities to declassify or etc
+
+	difc_lsm_debug("before commit\n");
 
 	cred->security = tsec;
 	commit_creds(cred);
@@ -384,9 +394,9 @@ static int __difc_set_task_label(struct task_struct *tsk, struct label_struct *l
         return -ENOENT;
     }
 
-	spin_lock(&tsec->cap_lock);
+	//spin_lock(&tsec->cap_lock);
 	cap = cred_get_capability(tsec, label); 
-	spin_unlock(&tsec->cap_lock);
+	//spin_unlock(&tsec->cap_lock);
 
 	if(!cap){
 		difc_lsm_debug(" Failed to find capability for %llu\n", label);
@@ -815,7 +825,7 @@ static int difc_inode_alloc_security(struct inode *inode)
 
 	init_rwsem(&isec->label_change_sem);
 	inode->i_security = isec;
-	difc_lsm_debug("successfull inode alloc init\n");
+	//difc_lsm_debug("successfull inode alloc init\n");
 	return 0;
 
 }
@@ -1053,7 +1063,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 		kfree(capList);
 		return -ENOMEM;
 	}
-	spin_lock(&tsec->cap_lock);
+	//spin_lock(&tsec->cap_lock);
 
 	
 	list_for_each_entry(cap_seg, &tsec->capList, list){
@@ -1127,7 +1137,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 		return -1;
 	}
 
-	spin_unlock(&tsec->cap_lock);
+	//spin_unlock(&tsec->cap_lock);
 	cred->security = tsec;
 	commit_creds(cred);
 
@@ -1179,7 +1189,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 		kfree(capList);
 		return -ENOMEM;
 	}
-	spin_lock(&tsec->cap_lock);
+	//spin_lock(&tsec->cap_lock);
 
 	
 
@@ -1309,7 +1319,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 		}
 	}		
 */
-	spin_unlock(&tsec->cap_lock);
+	//spin_unlock(&tsec->cap_lock);
 	tsec->tcb=UNTRUSTED_TCB;
 	cred->security = tsec;
 	commit_creds(cred);
@@ -1361,7 +1371,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 		return -ENOMEM;
 	}
 
-	spin_lock(&tsec->cap_lock);
+	//spin_lock(&tsec->cap_lock);
 
 // drop from the suspended capList first then restore it to main capList
 
@@ -1462,7 +1472,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 		return -1;
 	}
 
-	spin_unlock(&tsec->cap_lock);
+	//spin_unlock(&tsec->cap_lock);
 	tsec->tcb=REGULAR_TCB;
 	cred->security = tsec;
 	commit_creds(cred);
@@ -1523,19 +1533,19 @@ static int difc_send_task_capabilities(pid_t pid, void __user *ucap_list, unsign
 	}
 	
 	if(&tsec->cap_lock < &rsec->cap_lock){
-		spin_lock(&tsec->cap_lock);
-		spin_lock(&rsec->cap_lock);
+		//spin_lock(&tsec->cap_lock);
+		//spin_lock(&rsec->cap_lock);
 	} else {
-		spin_lock(&rsec->cap_lock);
-		spin_lock(&tsec->cap_lock);
+		//spin_lock(&rsec->cap_lock);
+		//spin_lock(&tsec->cap_lock);
 	}
 
 	if(&tsec->cap_lock < &rsec->cap_lock){
-		spin_unlock(&rsec->cap_lock);
-		spin_unlock(&tsec->cap_lock);
+		//spin_unlock(&rsec->cap_lock);
+		//spin_unlock(&tsec->cap_lock);
 	} else {
-		spin_unlock(&tsec->cap_lock);
-		spin_unlock(&rsec->cap_lock);
+		//spin_unlock(&tsec->cap_lock);
+		//spin_unlock(&rsec->cap_lock);
 	}
 
 
@@ -1696,11 +1706,26 @@ static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
     return 0;
 }
 
-static int azure_sphere_task_alloc(struct task_struct *p)
+static struct azure_sphere_task_cred *azure_sphere_new_task(struct azure_sphere_task_cred *task,
+					struct azure_sphere_task_cred *forked, gfp_t gfp)
 {
-    struct azure_sphere_task_cred *tsec = p->cred->security;
+	struct azure_sphere_task_cred *tsec;
 
-    return 0;
+	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), gfp);
+	if (tsec == NULL)
+		return NULL;
+
+	INIT_LIST_HEAD(&tsec->capList);
+	INIT_LIST_HEAD(&tsec->suspendedCaps);
+	tsec->tcb=UNTRUSTED_TCB;
+
+	if (list_empty(&tsec->capList))
+		{
+		difc_lsm_debug(" tsec->capList empty\n");
+
+		}
+
+	return tsec;
 }
 
 
@@ -1708,23 +1733,26 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
 	struct azure_sphere_task_cred *tsec;
-
+	difc_lsm_debug(" azure_sphere_cred_alloc_blank\n");
+/*
 	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), gfp);
 	if (!tsec)
 		return -ENOMEM;
 
-	spin_lock_init(&tsec->cap_lock);
+	////spin_lock_init(&tsec->cap_lock);
 	INIT_LIST_HEAD(&tsec->capList);
 	INIT_LIST_HEAD(&tsec->suspendedCaps);
 	tsec->tcb=UNTRUSTED_TCB;
 	
-	if (list_empty(&tsec->capList))
-{
-		difc_lsm_debug(" tsec->capList empty\n");
+*/
+	tsec = azure_sphere_new_task(NULL, NULL, gfp);
+	if (tsec == NULL)
+		return -ENOMEM;
 
-}
-
+	
 	cred->security = tsec;
+	difc_lsm_debug(" end of azure_sphere_cred_alloc_blank\n");
+
 	return 0;
 
 }
@@ -1733,7 +1761,7 @@ static void azure_sphere_cred_free(struct cred *cred)
 {
 	struct azure_sphere_task_cred *tsec = cred->security;	
 	kfree(tsec);
-	difc_lsm_debug("successfull free\n");
+//	difc_lsm_debug("successfull free\n");
 
 }
 
@@ -1774,7 +1802,7 @@ static void azure_sphere_cred_init_security(void)
 		panic("Failed to initialize initial task security object.\n");
 
 
-	spin_lock_init(&tsec->cap_lock);
+	//spin_lock_init(&tsec->cap_lock);
 	
 	INIT_LIST_HEAD(&tsec->capList);
 	INIT_LIST_HEAD(&tsec->suspendedCaps);
@@ -1791,12 +1819,12 @@ static void azure_sphere_cred_init_security(void)
 	list_add_tail(&sus_seg->list, &tsec->suspendedCaps);
 
 
-	spin_unlock(&tsec->cap_lock);
+	//spin_unlock(&tsec->cap_lock);
 
 	tsec->is_app_man = true;
     tsec->capabilities = AZURE_SPHERE_CAP_ALL;
     cred->security = tsec;
-		difc_lsm_debug("[azure_sphere_cred_init_security] initialized, tsec->tcb %d\n",tsec->tcb);
+	difc_lsm_debug("[azure_sphere_cred_init_security] initialized, tsec->tcb %d\n",tsec->tcb);
 
 
 }	
@@ -1883,7 +1911,7 @@ static int azure_sphere_security_getprocattr(struct task_struct *p, char *name, 
     return ret;    
 }
 
-static int azure_sphere_security_setprocattr(struct task_struct *p, char *name, void *value, size_t size) 
+static int azure_sphere_security_setprocattr(const char *name, void *value, size_t size) 
 {
     struct azure_sphere_security_set_process_details *data = value;
     struct cred *cred;
@@ -1897,11 +1925,6 @@ static int azure_sphere_security_setprocattr(struct task_struct *p, char *name, 
 
     if (value == NULL || size < sizeof(*data)) {
         return -EINVAL;
-    }
-
-    if (p != current) {
-        // You can only change the current process
-        return -EPERM;
     }
 
     cred = prepare_creds();
@@ -1970,32 +1993,35 @@ int azure_sphere_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot
 // allocate a new label fro one or group of threads
 asmlinkage long sys_alloc_label(int type, int group_mode){
 
-	//difc_lsm_debug("enter, group_mode: %d,\n",group_mode);
+	difc_lsm_debug("enter, group_mode: %d,%d\n",type,group_mode);
 
 	return difc_alloc_label(type,group_mode);
+	//return 0;
 	
 }
 
 
 asmlinkage long sys_permanent_declassify(void __user *ucap_list, unsigned int ucap_list_size, int cap_type,int label_type){
 
-	//difc_lsm_debug("enter\n");
+	difc_lsm_debug("enter\n");
 	return difc_permanent_declassify(ucap_list, ucap_list_size, cap_type,label_type);
+	return 0;
 
 }
 
 asmlinkage long sys_temporarily_declassify(void __user *ucap_list, int ucap_list_size, int cap_type,int label_type){
 
-	//difc_lsm_debug("enter %d\n",ucap_list_size);
+	difc_lsm_debug("enter %d\n",ucap_list_size);
 	return difc_temporarily_declassify(ucap_list, ucap_list_size, cap_type,label_type);
+	return 0;
 }
 
 
 asmlinkage long sys_restore_suspended_capabilities(void __user *ucap_list, unsigned int ucap_list_size, int cap_type, int label_type){
 
-	//difc_lsm_debug("enter\n");
+	difc_lsm_debug("enter\n");
 	return difc_restore_suspended_capabilities(ucap_list, ucap_list_size, cap_type,label_type);
-
+return 0;
 }
 
 
@@ -2003,7 +2029,8 @@ asmlinkage long sys_restore_suspended_capabilities(void __user *ucap_list, unsig
 asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int label_type, void *bulk_label)
 {
 
-	//difc_lsm_debug(" enter %d\n",operation_type);
+	difc_lsm_debug(" enter %d\n",operation_type);
+	return 0;
 	return difc_set_task_label(current,  label,  operation_type,  label_type, bulk_label);
 
 }
@@ -2011,7 +2038,7 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 // map an address to a specific domain
  asmlinkage int sys_set_task_domain(unsigned long addr, unsigned long counts, int domain)
  {
-	//difc_lsm_debug(" enter\n");
+	difc_lsm_debug(" enter\n");
 	if(domain >= 0 && domain <16)
 		{
 			difc_set_domain(addr,counts, domain);
@@ -2021,6 +2048,7 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 		difc_lsm_debug("arm only supports 16 domains\n");
 		return -1;
 	}
+	return 0;
 	
 }
 
@@ -2028,8 +2056,9 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, unsigned int ucap_list_size, int cap_type)
 {
 
-	//difc_lsm_debug(" enter\n");
+	difc_lsm_debug(" enter\n");
 	return difc_send_task_capabilities(pid,ucap_list,ucap_list_size,cap_type);
+	return 0;
 }
 
 // this tries to enter a domain that is labeld for another task. 
@@ -2039,6 +2068,10 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
         unsigned long stack, struct pt_regs *regs)
 {
+
+		difc_lsm_debug("enter \n");
+		return 0;
+
 	unsigned long dacr = 0;
 	unsigned int domain;
 	int domain_copy;
@@ -2074,6 +2107,7 @@ asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
     printk("dacr=0x%lx\n", dacr);
 
 	return ret_val;
+	
 
 
 }
@@ -2087,16 +2121,17 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 static struct security_hook_list azure_sphere_hooks[] = {
 
+    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
     LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
-	LSM_HOOK_INIT(test_cred_free, azure_sphere_cred_free),
-
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
+    LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
+    LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
+    LSM_HOOK_INIT(setprocattr, azure_sphere_security_setprocattr),
 
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-    LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),

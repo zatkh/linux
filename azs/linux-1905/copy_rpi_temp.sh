@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # sudo /sbin/fdisk -lu 2015-11-21-raspbian-jessie.img 
@@ -17,8 +16,8 @@
 #unzip 2015-11-21-raspbian-jessie.zippi
 
 IMG= $1 #2015-11-21-raspbian-jessie.img
-BOOT=/home/zt/boot/
-FS=/home/zt/rootfs/
+BOOT=/media/zt/boot
+FS=/media/zt/rootfs
 LINUX_BOOT_DIR=$PWD/arch/arm/boot
 LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.42-v7/
 
@@ -28,15 +27,16 @@ LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.42-v7/
 #sudo mount /dev/sdb6 mnt/fat32
 #sudo mount /dev/sdb7 mnt/ext4
 
-echo "copy .dtbs"
-sudo cp -R $LINUX_BOOT_DIR/dts/*.dtb $BOOT
+sudo cp -R $LINUX_BOOT_DIR/dts/*.dtb $FS/boot/
+sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $FS/boot/overlays/
+sudo cp -R $LINUX_MODULES_DIR $FS/lib/modules
+sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernely.img
 sudo cp -R  $LINUX_BOOT_DIR/dts/*.dtb $BOOT
 sudo cp -R $LINUX_BOOT_DIR/dts/overlays/*.dtb* $BOOT/overlays/
 
-echo "copy modules"
-sudo cp -R $LINUX_MODULES_DIR $FS/modules
-echo "copy kernel"
-sudo cp $LINUX_BOOT_DIR/zImage $BOOT/kernely.img
+
+
+
 
 #mkdir $COPY_DIR
 #cp $BOOT/kernel7.img $COPY_DIR

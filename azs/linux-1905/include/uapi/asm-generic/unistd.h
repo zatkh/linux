@@ -738,48 +738,8 @@ __SC_COMP(__NR_io_pgetevents, sys_io_pgetevents, compat_sys_io_pgetevents)
 __SYSCALL(__NR_rseq, sys_rseq)
 
 
-#ifdef CONFIG_EXTENDED_LSM_DIFC
-
-#define __NR_alloc_label	294
-__SYSCALL(__NR_alloc_label,     sys_alloc_label)
-
-#define __NR_set_task_label 295
-__SYSCALL(__NR_set_task_label,     sys_set_task_label)
-
-#define __NR_mkdir_labeled  296
-__SYSCALL(__NR_mkdir_labeled,     sys_mkdir_labeled)
-
-#define __NR_create_labeled 297
-__SYSCALL(__NR_create_labeled,     sys_create_labeled)
-
-#define __NR_set_labeled_file 298
-__SYSCALL(__NR_set_labeled_file,     sys_set_labeled_file)
-
-#define __NR_permanent_declassify  299
-__SYSCALL(__NR_permanent_declassify,     sys_permanent_declassify)
-
-#define __NR_temporarily_declassify  300
-__SYSCALL(__NR_temporarily_declassify,     sys_temporarily_declassify)
-
-#define __NR_restore_suspended_capabilities  301
-__SYSCALL(__NR_restore_suspended_capabilities,     sys_restore_suspended_capabilities)
-
-#define __NR_set_task_domain 302
-__SYSCALL(__NR_set_task_domain,     sys_set_task_domain)
-
-#define __NR_difc_enter_domain 303
-__SYSCALL(__NR_difc_enter_domain,     sys_difc_enter_domain_wrapper)
-
-#define __NR_difc_exit_domain 304
-__SYSCALL(__NR_difc_exit_domain,     sys_difc_exit_domain_wrapper)
-
-
-
-#endif /*CONFIG_EXTENDED_LSM_DIFC */
-
-
 #undef __NR_syscalls
-#define __NR_syscalls 305
+#define __NR_syscalls 294
 
 
 /*
