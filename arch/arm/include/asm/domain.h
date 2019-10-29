@@ -33,11 +33,18 @@
  * 36-bit addressing and supersections are only available on
  * CPUs based on ARMv6+ or the Intel XSC3 core.
  */
+
 #ifndef CONFIG_IO_36
+#define DOMAIN_UNTRUSTED 6
+#define DOMAIN_TRUSTED 5
+#define DOMAIN_SANDBOX 4
 #define DOMAIN_KERNEL	0
 #define DOMAIN_USER	1
 #define DOMAIN_IO	2
 #else
+#define DOMAIN_UNTRUSTED 6
+#define DOMAIN_TRUSTED 5
+#define DOMAIN_SANDBOX 4
 #define DOMAIN_KERNEL	2
 #define DOMAIN_USER	1
 #define DOMAIN_IO	0
@@ -49,11 +56,11 @@
  */
 #define DOMAIN_NOACCESS	0
 #define DOMAIN_CLIENT	1
-#ifdef CONFIG_CPU_USE_DOMAINS
+//#ifdef CONFIG_CPU_USE_DOMAINS
 #define DOMAIN_MANAGER	3
-#else
-#define DOMAIN_MANAGER	1
-#endif
+//#else
+//#define DOMAIN_MANAGER	1
+//#endif
 
 #define domain_mask(dom)	((3) << (2 * (dom)))
 #define domain_val(dom,type)	((type) << (2 * (dom)))
@@ -63,12 +70,18 @@
 	(domain_val(DOMAIN_USER, DOMAIN_NOACCESS) | \
 	 domain_val(DOMAIN_KERNEL, DOMAIN_MANAGER) | \
 	 domain_val(DOMAIN_IO, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_SANDBOX, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_TRUSTED, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_UNTRUSTED, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_VECTORS, DOMAIN_CLIENT))
 #else
 #define DACR_INIT \
 	(domain_val(DOMAIN_USER, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_KERNEL, DOMAIN_MANAGER) | \
 	 domain_val(DOMAIN_IO, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_SANDBOX, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_TRUSTED, DOMAIN_CLIENT) | \
+	 domain_val(DOMAIN_UNTRUSTED, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_VECTORS, DOMAIN_CLIENT))
 #endif
 

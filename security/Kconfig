@@ -234,6 +234,7 @@ source "security/smack/Kconfig"
 source "security/tomoyo/Kconfig"
 source "security/apparmor/Kconfig"
 source "security/loadpin/Kconfig"
+source "security/azure_sphere/Kconfig"
 source "security/yama/Kconfig"
 source "security/safesetid/Kconfig"
 
@@ -245,6 +246,7 @@ choice
 	default DEFAULT_SECURITY_SMACK if SECURITY_SMACK
 	default DEFAULT_SECURITY_TOMOYO if SECURITY_TOMOYO
 	default DEFAULT_SECURITY_APPARMOR if SECURITY_APPARMOR
+	default DEFAULT_SECURITY_AZURE_SPHERE if SECURITY_AZURE_SPHERE
 	default DEFAULT_SECURITY_DAC
 
 	help
@@ -268,6 +270,10 @@ choice
 	config DEFAULT_SECURITY_APPARMOR
 		bool "AppArmor" if SECURITY_APPARMOR=y
 
+
+	config DEFAULT_SECURITY_AZURE_SPHERE
+		bool "AzureSphere" if SECURITY_AZURE_SPHERE=y
+
 	config DEFAULT_SECURITY_DAC
 		bool "Unix Discretionary Access Controls"
 
@@ -278,6 +284,7 @@ config LSM
 	default "yama,loadpin,safesetid,integrity,smack,selinux,tomoyo,apparmor" if DEFAULT_SECURITY_SMACK
 	default "yama,loadpin,safesetid,integrity,apparmor,selinux,smack,tomoyo" if DEFAULT_SECURITY_APPARMOR
 	default "yama,loadpin,safesetid,integrity,tomoyo" if DEFAULT_SECURITY_TOMOYO
+	default "AzureSphere" if DEFAULT_SECURITY_AZURE_SPHERE
 	default "yama,loadpin,safesetid,integrity" if DEFAULT_SECURITY_DAC
 	default "yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor"
 	help
