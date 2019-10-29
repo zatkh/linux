@@ -17,7 +17,6 @@
 #include "pgtable.h"
 #include "../string.h"
 #include "../voffset.h"
-#include <asm/bootparam_utils.h>
 
 /*
  * WARNING!!
@@ -351,6 +350,9 @@ asmlinkage __visible void *extract_kernel(void *rmode, memptr heap,
 
 	/* Clear flags intended for solely in-kernel use. */
 	boot_params->hdr.loadflags &= ~KASLR_FLAG;
+
+	/* Save RSDP address for later use. */
+	/* boot_params->acpi_rsdp_addr = get_rsdp_addr(); */
 
 	sanitize_boot_params(boot_params);
 

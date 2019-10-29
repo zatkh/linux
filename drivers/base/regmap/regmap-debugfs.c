@@ -435,17 +435,7 @@ static int regmap_access_show(struct seq_file *s, void *ignored)
 	return 0;
 }
 
-static int access_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, regmap_access_show, inode->i_private);
-}
-
-static const struct file_operations regmap_access_fops = {
-	.open		= access_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_ATTRIBUTE(regmap_access);
 
 static ssize_t regmap_cache_only_write_file(struct file *file,
 					    const char __user *user_buf,
@@ -575,8 +565,6 @@ void regmap_debugfs_init(struct regmap *map, const char *name)
 	}
 
 	if (!strcmp(name, "dummy")) {
-		kfree(map->debugfs_name);
-
 		map->debugfs_name = kasprintf(GFP_KERNEL, "dummy%d",
 						dummy_index);
 		name = map->debugfs_name;

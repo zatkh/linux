@@ -383,10 +383,9 @@ tsi108_stat_carry_one(int carry, int carry_bit, int carry_shift,
 static void tsi108_stat_carry(struct net_device *dev)
 {
 	struct tsi108_prv_data *data = netdev_priv(dev);
-	unsigned long flags;
 	u32 carry1, carry2;
 
-	spin_lock_irqsave(&data->misclock, flags);
+	spin_lock_irq(&data->misclock);
 
 	carry1 = TSI_READ(TSI108_STAT_CARRY1);
 	carry2 = TSI_READ(TSI108_STAT_CARRY2);
@@ -454,7 +453,7 @@ static void tsi108_stat_carry(struct net_device *dev)
 			      TSI108_STAT_TXPAUSEDROP_CARRY,
 			      &data->tx_pause_drop);
 
-	spin_unlock_irqrestore(&data->misclock, flags);
+	spin_unlock_irq(&data->misclock);
 }
 
 /* Read a stat counter atomically with respect to carries.
@@ -1312,13 +1311,13 @@ static int tsi108_open(struct net_device *dev)
 		       data->id, dev->irq, dev->name);
 	}
 
-	data->rxring = dma_zalloc_coherent(&data->pdev->dev, rxring_size,
-			&data->rxdma, GFP_KERNEL);
+	data->rxring = dma_alloc_coherent(&data->pdev->dev, rxring_size,
+					  &data->rxdma, GFP_KERNEL);
 	if (!data->rxring)
 		return -ENOMEM;
 
-	data->txring = dma_zalloc_coherent(&data->pdev->dev, txring_size,
-			&data->txdma, GFP_KERNEL);
+	data->txring = dma_alloc_coherent(&data->pdev->dev, txring_size,
+					  &data->txdma, GFP_KERNEL);
 	if (!data->txring) {
 		dma_free_coherent(&data->pdev->dev, rxring_size, data->rxring,
 				    data->rxdma);

@@ -182,15 +182,10 @@ static void __init register_insn_emulation(struct insn_emulation_ops *ops)
 
 	switch (ops->status) {
 	case INSN_DEPRECATED:
-#if 0
 		insn->current_mode = INSN_EMULATE;
 		/* Disable the HW mode if it was turned on at early boot time */
 		run_all_cpu_set_hw_mode(insn, false);
-#else
-		insn->current_mode = INSN_HW;
-		run_all_cpu_set_hw_mode(insn, true);
 		insn->max = INSN_HW;
-#endif
 		break;
 	case INSN_OBSOLETE:
 		insn->current_mode = INSN_UNDEF;
@@ -407,7 +402,7 @@ static int swp_handler(struct pt_regs *regs, u32 instr)
 
 	/* Check access in reasonable access range for both SWP and SWPB */
 	user_ptr = (const void __user *)(unsigned long)(address & ~3);
-	if (!access_ok(VERIFY_WRITE, user_ptr, 4)) {
+	if (!access_ok(user_ptr, 4)) {
 		pr_debug("SWP{B} emulation: access to 0x%08x not allowed!\n",
 			address);
 		goto fault;

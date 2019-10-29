@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Driver for Broadcom BCM2835 GPIO unit (pinctrl + GPIO)
  *
@@ -6,16 +7,6 @@
  * This driver is inspired by:
  * pinctrl-nomadik.c, please see original file for copyright information
  * pinctrl-tegra.c, please see original file for copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/bitmap.h>
@@ -67,21 +58,13 @@
 #define GPPUD		0x94	/* Pin Pull-up/down Enable */
 #define GPPUDCLK0	0x98	/* Pin Pull-up/down Enable Clock */
 
-/* 2711 has a different mechanism for pin pull-up/down/enable  */
-#define GPPUPPDN0		0xe4	/* Pin pull-up/down for pins 15:0  */
-#define GPPUPPDN1		0xe8	/* Pin pull-up/down for pins 31:16 */
-#define GPPUPPDN2		0xec	/* Pin pull-up/down for pins 47:32 */
-#define GPPUPPDN3		0xf0	/* Pin pull-up/down for pins 57:48 */
-
 #define FSEL_REG(p)		(GPFSEL0 + (((p) / 10) * 4))
 #define FSEL_SHIFT(p)		(((p) % 10) * 3)
 #define GPIO_REG_OFFSET(p)	((p) / 32)
 #define GPIO_REG_SHIFT(p)	((p) % 32)
 
-enum bcm2835_pinconf_param {
-	/* argument: bcm2835_pinconf_pull */
-	BCM2835_PINCONF_PARAM_PULL = (PIN_CONFIG_END + 1),
-};
+/* argument: bcm2835_pinconf_pull */
+#define BCM2835_PINCONF_PARAM_PULL	(PIN_CONFIG_END + 1)
 
 struct bcm2835_pinctrl {
 	struct device *dev;
@@ -358,7 +341,8 @@ static const struct gpio_chip bcm2835_gpio_chip = {
 	.get_direction = bcm2835_gpio_get_direction,
 	.get = bcm2835_gpio_get,
 	.set = bcm2835_gpio_set,
-	.base = 0,
+	.set_config = gpiochip_generic_config,
+	.base = -1,
 	.ngpio = BCM2835_NUM_GPIOS,
 	.can_sleep = false,
 };
@@ -923,45 +907,21 @@ static void bcm2835_pull_config_set(struct bcm2835_pinctrl *pc,
 		unsigned int pin, unsigned int arg)
 {
 	u32 off, bit;
-	/* BCM2835, BCM2836 & BCM2837 return 'gpio' for this unused register */
-	int is_2835 = bcm2835_gpio_rd(pc, GPPUPPDN3) == 0x6770696f;
 
-        if (is_2835) {
-		off = GPIO_REG_OFFSET(pin);
-		bit = GPIO_REG_SHIFT(pin);
-		/*
-		 * BCM2835 datasheet say to wait 150 cycles, but not of what.
-		 * But the VideoCore firmware delay for this operation
-		 * based nearly on the same amount of VPU cycles and this clock
-		 * runs at 250 MHz.
-		 */
-		bcm2835_gpio_wr(pc, GPPUD, arg & 3);
-		udelay(1);
-		bcm2835_gpio_wr(pc, GPPUDCLK0 + (off * 4), BIT(bit));
-		udelay(1);
-		bcm2835_gpio_wr(pc, GPPUDCLK0 + (off * 4), 0);
-	} else {
-		u32 reg;
-		int lsb;
+	off = GPIO_REG_OFFSET(pin);
+	bit = GPIO_REG_SHIFT(pin);
 
-		off = (pin >> 4);
-		if (off > 3)
-			return;
-		lsb = (pin & 0xf) << 1;
-
-		/* The up/down semantics are reversed compared to BCM2835.
-		 * Instead of updating all the device tree files, translate the
-		 * values here.
-		 */
-		if (arg == 2)
-			arg = 1;
-		else if (arg == 1)
-			arg = 2;
-		reg = bcm2835_gpio_rd(pc, GPPUPPDN0 + (off *4));
-		reg &= ~(0x3 << lsb);
-		reg |= (arg & 3) << lsb;
-		bcm2835_gpio_wr(pc, GPPUPPDN0 + (off * 4), reg);
-	}
+	bcm2835_gpio_wr(pc, GPPUD, arg & 3);
+	/*
+	 * BCM2835 datasheet say to wait 150 cycles, but not of what.
+	 * But the VideoCore firmware delay for this operation
+	 * based nearly on the same amount of VPU cycles and this clock
+	 * runs at 250 MHz.
+	 */
+	udelay(1);
+	bcm2835_gpio_wr(pc, GPPUDCLK0 + (off * 4), BIT(bit));
+	udelay(1);
+	bcm2835_gpio_wr(pc, GPPUDCLK0 + (off * 4), 0);
 }
 
 static int bcm2835_pinconf_set(struct pinctrl_dev *pctldev,
@@ -1001,7 +961,7 @@ static int bcm2835_pinconf_set(struct pinctrl_dev *pctldev,
 			break;
 
 		default:
-			return -EINVAL;
+			return -ENOTSUPP;
 
 		} /* switch param type */
 	} /* for each config */
@@ -1010,6 +970,7 @@ static int bcm2835_pinconf_set(struct pinctrl_dev *pctldev,
 }
 
 static const struct pinconf_ops bcm2835_pinconf_ops = {
+	.is_generic = true,
 	.pin_config_get = bcm2835_pinconf_get,
 	.pin_config_set = bcm2835_pinconf_set,
 };

@@ -19,7 +19,6 @@
 #include <linux/cpu.h>
 #include <linux/kvm_host.h>
 #include <kvm/arm_vgic.h>
-#include <asm/kvm_emulate.h>
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
@@ -172,22 +171,16 @@ static int kvm_vgic_dist_init(struct kvm *kvm, unsigned int nr_spis)
 
 		irq->intid = i + VGIC_NR_PRIVATE_IRQS;
 		INIT_LIST_HEAD(&irq->ap_list);
-		spin_lock_init(&irq->irq_lock);
+		raw_spin_lock_init(&irq->irq_lock);
 		irq->vcpu = NULL;
 		irq->target_vcpu = vcpu0;
 		kref_init(&irq->refcount);
-		switch (dist->vgic_model) {
-		case KVM_DEV_TYPE_ARM_VGIC_V2:
+		if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V2) {
 			irq->targets = 0;
 			irq->group = 0;
-			break;
-		case KVM_DEV_TYPE_ARM_VGIC_V3:
+		} else {
 			irq->mpidr = 0;
 			irq->group = 1;
-			break;
-		default:
-			kfree(dist->spis);
-			return -EINVAL;
 		}
 	}
 	return 0;
@@ -213,7 +206,7 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 	vgic_cpu->sgi_iodev.base_addr = VGIC_ADDR_UNDEF;
 
 	INIT_LIST_HEAD(&vgic_cpu->ap_list_head);
-	spin_lock_init(&vgic_cpu->ap_list_lock);
+	raw_spin_lock_init(&vgic_cpu->ap_list_lock);
 
 	/*
 	 * Enable and configure all SGIs to be edge-triggered and
@@ -223,10 +216,11 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 		struct vgic_irq *irq = &vgic_cpu->private_irqs[i];
 
 		INIT_LIST_HEAD(&irq->ap_list);
-		spin_lock_init(&irq->irq_lock);
+		raw_spin_lock_init(&irq->irq_lock);
 		irq->intid = i;
 		irq->vcpu = NULL;
 		irq->target_vcpu = vcpu;
+		irq->targets = 1U << vcpu->vcpu_id;
 		kref_init(&irq->refcount);
 		if (vgic_irq_is_sgi(i)) {
 			/* SGIs */
@@ -236,6 +230,11 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 			/* PPIs */
 			irq->config = VGIC_CONFIG_LEVEL;
 		}
+
+		if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3)
+			irq->group = 1;
+		else
+			irq->group = 0;
 	}
 
 	if (!irqchip_in_kernel(vcpu->kvm))
@@ -298,19 +297,10 @@ int vgic_init(struct kvm *kvm)
 
 		for (i = 0; i < VGIC_NR_PRIVATE_IRQS; i++) {
 			struct vgic_irq *irq = &vgic_cpu->private_irqs[i];
-			switch (dist->vgic_model) {
-			case KVM_DEV_TYPE_ARM_VGIC_V3:
+			if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3)
 				irq->group = 1;
-				irq->mpidr = kvm_vcpu_get_mpidr_aff(vcpu);
-				break;
-			case KVM_DEV_TYPE_ARM_VGIC_V2:
+			else
 				irq->group = 0;
-				irq->targets = 1U << idx;
-				break;
-			default:
-				ret = -EINVAL;
-				goto out;
-			}
 		}
 	}
 

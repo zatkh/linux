@@ -23,8 +23,10 @@
 #define __CRYPTO4XX_CORE_H__
 
 #include <linux/ratelimit.h>
+#include <linux/mutex.h>
 #include <crypto/internal/hash.h>
 #include <crypto/internal/aead.h>
+#include <crypto/internal/rng.h>
 #include <crypto/internal/skcipher.h>
 #include "crypto4xx_reg_def.h"
 #include "crypto4xx_sa.h"
@@ -119,6 +121,7 @@ struct crypto4xx_core_device {
 	u32 irq;
 	struct tasklet_struct tasklet;
 	spinlock_t lock;
+	struct mutex rng_lock;
 };
 
 struct crypto4xx_ctx {
@@ -143,6 +146,7 @@ struct crypto4xx_alg_common {
 		struct skcipher_alg cipher;
 		struct ahash_alg hash;
 		struct aead_alg aead;
+		struct rng_alg rng;
 	} u;
 };
 
@@ -179,12 +183,10 @@ int crypto4xx_setkey_rfc3686(struct crypto_skcipher *cipher,
 			     const u8 *key, unsigned int keylen);
 int crypto4xx_encrypt_ctr(struct skcipher_request *req);
 int crypto4xx_decrypt_ctr(struct skcipher_request *req);
-int crypto4xx_encrypt_iv_stream(struct skcipher_request *req);
-int crypto4xx_decrypt_iv_stream(struct skcipher_request *req);
-int crypto4xx_encrypt_iv_block(struct skcipher_request *req);
-int crypto4xx_decrypt_iv_block(struct skcipher_request *req);
-int crypto4xx_encrypt_noiv_block(struct skcipher_request *req);
-int crypto4xx_decrypt_noiv_block(struct skcipher_request *req);
+int crypto4xx_encrypt_iv(struct skcipher_request *req);
+int crypto4xx_decrypt_iv(struct skcipher_request *req);
+int crypto4xx_encrypt_noiv(struct skcipher_request *req);
+int crypto4xx_decrypt_noiv(struct skcipher_request *req);
 int crypto4xx_rfc3686_encrypt(struct skcipher_request *req);
 int crypto4xx_rfc3686_decrypt(struct skcipher_request *req);
 int crypto4xx_sha1_alg_init(struct crypto_tfm *tfm);

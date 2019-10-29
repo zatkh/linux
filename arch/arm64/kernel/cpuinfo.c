@@ -27,7 +27,6 @@
 #include <linux/elf.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/of_platform.h>
 #include <linux/personality.h>
 #include <linux/preempt.h>
 #include <linux/printk.h>
@@ -82,6 +81,10 @@ static const char *const hwcap_str[] = {
 	"uscat",
 	"ilrcpc",
 	"flagm",
+	"ssbs",
+	"sb",
+	"paca",
+	"pacg",
 	NULL
 };
 
@@ -126,10 +129,6 @@ static int c_show(struct seq_file *m, void *v)
 {
 	int i, j;
 	bool compat = personality(current->personality) == PER_LINUX32;
-	struct device_node *np;
-	const char *model;
-	const char *serial;
-	u32 revision;
 
 	for_each_online_cpu(i) {
 		struct cpuinfo_arm64 *cpuinfo = &per_cpu(cpu_data, i);
@@ -179,26 +178,6 @@ static int c_show(struct seq_file *m, void *v)
 		seq_printf(m, "CPU variant\t: 0x%x\n", MIDR_VARIANT(midr));
 		seq_printf(m, "CPU part\t: 0x%03x\n", MIDR_PARTNUM(midr));
 		seq_printf(m, "CPU revision\t: %d\n\n", MIDR_REVISION(midr));
-	}
-
-	seq_printf(m, "Hardware\t: BCM2835\n");
-
-	np = of_find_node_by_path("/system");
-	if (np) {
-		if (!of_property_read_u32(np, "linux,revision", &revision))
-			seq_printf(m, "Revision\t: %04x\n", revision);
-		of_node_put(np);
-	}
-
-	np = of_find_node_by_path("/");
-	if (np) {
-		if (!of_property_read_string(np, "serial-number",
-					     &serial))
-			seq_printf(m, "Serial\t\t: %s\n", serial);
-		if (!of_property_read_string(np, "model",
-					     &model))
-			seq_printf(m, "Model\t\t: %s\n", model);
-		of_node_put(np);
 	}
 
 	return 0;
@@ -349,7 +328,15 @@ static void cpuinfo_detect_icache_policy(struct cpuinfo_arm64 *info)
 static void __cpuinfo_store_cpu(struct cpuinfo_arm64 *info)
 {
 	info->reg_cntfrq = arch_timer_get_cntfrq();
-	info->reg_ctr = read_cpuid_cachetype();
+	/*
+	 * Use the effective value of the CTR_EL0 than the raw value
+	 * exposed by the CPU. CTR_E0.IDC field value must be interpreted
+	 * with the CLIDR_EL1 fields to avoid triggering false warnings
+	 * when there is a mismatch across the CPUs. Keep track of the
+	 * effective value of the CTR_EL0 in our internal records for
+	 * acurate sanity check and feature enablement.
+	 */
+	info->reg_ctr = read_cpuid_effective_cachetype();
 	info->reg_dczid = read_cpuid(DCZID_EL0);
 	info->reg_midr = read_cpuid_id();
 	info->reg_revidr = read_cpuid(REVIDR_EL1);

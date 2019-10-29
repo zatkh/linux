@@ -87,6 +87,15 @@ config QCOM_L3_PMU
 	   Adds the L3 cache PMU into the perf events subsystem for
 	   monitoring L3 cache events.
 
+config THUNDERX2_PMU
+	tristate "Cavium ThunderX2 SoC PMU UNCORE"
+	depends on ARCH_THUNDER2 && ARM64 && ACPI && NUMA
+	default m
+	help
+	   Provides support for ThunderX2 UNCORE events.
+	   The SoC has PMU support in its L3 cache controller (L3C) and
+	   in the DDR4 Memory Controller (DMC).
+
 config XGENE_PMU
         depends on ARCH_XGENE
         bool "APM X-Gene SoC PMU"
@@ -102,11 +111,4 @@ config ARM_SPE_PMU
 	  Extension, which provides periodic sampling of operations in
 	  the CPU pipeline and reports this via the perf AUX interface.
 
-config RPI_AXIPERF
-        depends on ARCH_BCM2835
-        tristate "RaspberryPi AXI Performance monitors"
-        default n
-        help
-          Say y if you want to use Raspberry Pi AXI performance monitors, m if
-          you want to build it as a module.
 endmenu

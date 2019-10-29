@@ -24,6 +24,7 @@
 #define __IO_PREFIX     generic
 #include <asm/io_generic.h>
 #include <asm/io_trapped.h>
+#include <asm-generic/pci_iomap.h>
 #include <mach/mangle-port.h>
 
 #define __raw_writeb(v,a)	(__chk_io_ptr(a), *(volatile u8  __force *)(a) = (v))
@@ -371,11 +372,7 @@ static inline int iounmap_fixed(void __iomem *addr) { return -EINVAL; }
 
 #define ioremap_nocache	ioremap
 #define ioremap_uc	ioremap
-
-static inline void iounmap(void __iomem *addr)
-{
-	__iounmap(addr);
-}
+#define iounmap		__iounmap
 
 /*
  * Convert a physical pointer to a virtual kernel pointer for /dev/mem

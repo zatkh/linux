@@ -15,8 +15,9 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/mtd/rawnand.h>
 #include <linux/slab.h>
+
+#include "internals.h"
 
 /*
  * Special Micron status bit 3 indicates that the block has been
@@ -74,9 +75,8 @@ struct micron_nand {
 	struct micron_on_die_ecc ecc;
 };
 
-static int micron_nand_setup_read_retry(struct mtd_info *mtd, int retry_mode)
+static int micron_nand_setup_read_retry(struct nand_chip *chip, int retry_mode)
 {
-	struct nand_chip *chip = mtd_to_nand(mtd);
 	u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = {retry_mode};
 
 	return nand_set_features(chip, ONFI_FEATURE_ADDR_READ_RETRY, feature);
@@ -290,10 +290,10 @@ static int micron_nand_on_die_ecc_status_8(struct nand_chip *chip, u8 status)
 }
 
 static int
-micron_nand_read_page_on_die_ecc(struct mtd_info *mtd, struct nand_chip *chip,
-				 uint8_t *buf, int oob_required,
-				 int page)
+micron_nand_read_page_on_die_ecc(struct nand_chip *chip, uint8_t *buf,
+				 int oob_required, int page)
 {
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	u8 status;
 	int ret, max_bitflips = 0;
 
@@ -332,9 +332,8 @@ out:
 }
 
 static int
-micron_nand_write_page_on_die_ecc(struct mtd_info *mtd, struct nand_chip *chip,
-				  const uint8_t *buf, int oob_required,
-				  int page)
+micron_nand_write_page_on_die_ecc(struct nand_chip *chip, const uint8_t *buf,
+				  int oob_required, int page)
 {
 	int ret;
 
@@ -342,7 +341,7 @@ micron_nand_write_page_on_die_ecc(struct mtd_info *mtd, struct nand_chip *chip,
 	if (ret)
 		return ret;
 
-	ret = nand_write_page_raw(mtd, chip, buf, oob_required, page);
+	ret = nand_write_page_raw(chip, buf, oob_required, page);
 	micron_nand_on_die_ecc_setup(chip, false);
 
 	return ret;
@@ -400,14 +399,6 @@ static int micron_supports_on_die_ecc(struct nand_chip *chip)
 	    (chip->id.data[4] & MICRON_ID_INTERNAL_ECC_MASK) != 0x2)
 		return MICRON_ON_DIE_UNSUPPORTED;
 
-	/*
-	 * It seems that there are devices which do not support ECC officially.
-	 * At least the MT29F2G08ABAGA / MT29F2G08ABBGA devices supports
-	 * enabling the ECC feature but don't reflect that to the READ_ID table.
-	 * So we have to guarantee that we disable the ECC feature directly
-	 * after we did the READ_ID table command. Later we can evaluate the
-	 * ECC_ENABLE support.
-	 */
 	ret = micron_nand_on_die_ecc_setup(chip, true);
 	if (ret)
 		return MICRON_ON_DIE_UNSUPPORTED;
@@ -416,11 +407,11 @@ static int micron_supports_on_die_ecc(struct nand_chip *chip)
 	if (ret)
 		return MICRON_ON_DIE_UNSUPPORTED;
 
-	ret = micron_nand_on_die_ecc_setup(chip, false);
-	if (ret)
+	if (!(id[4] & MICRON_ID_ECC_ENABLED))
 		return MICRON_ON_DIE_UNSUPPORTED;
 
-	if (!(id[4] & MICRON_ID_ECC_ENABLED))
+	ret = micron_nand_on_die_ecc_setup(chip, false);
+	if (ret)
 		return MICRON_ON_DIE_UNSUPPORTED;
 
 	ret = nand_readid_op(chip, 0, id, sizeof(id));

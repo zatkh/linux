@@ -19,7 +19,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
-#include <linux/string.h>
 #include <linux/sys_soc.h>
 #include <linux/uaccess.h>
 #include <linux/usb/ch9.h>
@@ -2379,9 +2378,9 @@ static ssize_t role_store(struct device *dev, struct device_attribute *attr,
 	if (usb3->forced_b_device)
 		return -EBUSY;
 
-	if (sysfs_streq(buf, "host"))
+	if (!strncmp(buf, "host", strlen("host")))
 		new_mode_is_host = true;
-	else if (sysfs_streq(buf, "peripheral"))
+	else if (!strncmp(buf, "peripheral", strlen("peripheral")))
 		new_mode_is_host = false;
 	else
 		return -EINVAL;
@@ -2609,6 +2608,13 @@ static const struct renesas_usb3_priv renesas_usb3_priv_gen3 = {
 	.ramsize_per_pipe = SZ_4K,
 };
 
+static const struct renesas_usb3_priv renesas_usb3_priv_r8a77990 = {
+	.ramsize_per_ramif = SZ_16K,
+	.num_ramif = 4,
+	.ramsize_per_pipe = SZ_4K,
+	.workaround_for_vbus = true,
+};
+
 static const struct of_device_id usb3_of_match[] = {
 	{
 		.compatible = "renesas,r8a7795-usb3-peri",
@@ -2624,8 +2630,16 @@ MODULE_DEVICE_TABLE(of, usb3_of_match);
 
 static const struct soc_device_attribute renesas_usb3_quirks_match[] = {
 	{
+		.soc_id = "r8a774c0",
+		.data = &renesas_usb3_priv_r8a77990,
+	},
+	{
 		.soc_id = "r8a7795", .revision = "ES1.*",
 		.data = &renesas_usb3_priv_r8a7795_es1,
+	},
+	{
+		.soc_id = "r8a77990",
+		.data = &renesas_usb3_priv_r8a77990,
 	},
 	{ /* sentinel */ },
 };

@@ -26,7 +26,6 @@ below.
 - trickle-diode-disable :   Do not use internal trickle charger diode Should be
                             given if internal trickle charger diode should be
                             disabled
-- backup-switchover-mode :  Configure RTC backup power supply switch behaviour
 - wakeup-source :           Enables wake up of host system on alarm
 - quartz-load-femtofarads : The capacitive load of the quartz(x-tal),
                             expressed in femto Farad (fF).
@@ -44,10 +43,12 @@ possibly an interrupt line.
 Compatible		Vendor / Chip
 ==========		=============
 abracon,abb5zes3	AB-RTCMC-32.768kHz-B5ZE-S3: Real Time Clock/Calendar Module with I2C Interface
+abracon,abeoz9		AB-RTCMC-32.768kHz-EOZ9: Real Time Clock/Calendar Module with I2C Interface
 dallas,ds1374		I2C, 32-Bit Binary Counter Watchdog RTC with Trickle Charger and Reset Input/Output
 dallas,ds1672		Dallas DS1672 Real-time Clock
 dallas,ds3232		Extremely Accurate I²C RTC with Integrated Crystal and SRAM
 epson,rx8010		I2C-BUS INTERFACE REAL TIME CLOCK MODULE
+epson,rx8571		I2C-BUS INTERFACE REAL TIME CLOCK MODULE with Battery Backed RAM
 epson,rx8581		I2C-BUS INTERFACE REAL TIME CLOCK MODULE
 emmicro,em3027		EM Microelectronic EM3027 Real-time Clock
 isil,isl1208		Intersil ISL1208 Low Power RTC with Battery Backed SRAM

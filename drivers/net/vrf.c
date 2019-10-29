@@ -169,28 +169,22 @@ static int vrf_ip6_local_out(struct net *net, struct sock *sk,
 static netdev_tx_t vrf_process_v6_outbound(struct sk_buff *skb,
 					   struct net_device *dev)
 {
-	const struct ipv6hdr *iph;
+	const struct ipv6hdr *iph = ipv6_hdr(skb);
 	struct net *net = dev_net(skb->dev);
-	struct flowi6 fl6;
+	struct flowi6 fl6 = {
+		/* needed to match OIF rule */
+		.flowi6_oif = dev->ifindex,
+		.flowi6_iif = LOOPBACK_IFINDEX,
+		.daddr = iph->daddr,
+		.saddr = iph->saddr,
+		.flowlabel = ip6_flowinfo(iph),
+		.flowi6_mark = skb->mark,
+		.flowi6_proto = iph->nexthdr,
+		.flowi6_flags = FLOWI_FLAG_SKIP_NH_OIF,
+	};
 	int ret = NET_XMIT_DROP;
 	struct dst_entry *dst;
 	struct dst_entry *dst_null = &net->ipv6.ip6_null_entry->dst;
-
-	if (!pskb_may_pull(skb, ETH_HLEN + sizeof(struct ipv6hdr)))
-		goto err;
-
-	iph = ipv6_hdr(skb);
-
-	memset(&fl6, 0, sizeof(fl6));
-	/* needed to match OIF rule */
-	fl6.flowi6_oif = dev->ifindex;
-	fl6.flowi6_iif = LOOPBACK_IFINDEX;
-	fl6.daddr = iph->daddr;
-	fl6.saddr = iph->saddr;
-	fl6.flowlabel = ip6_flowinfo(iph);
-	fl6.flowi6_mark = skb->mark;
-	fl6.flowi6_proto = iph->nexthdr;
-	fl6.flowi6_flags = FLOWI_FLAG_SKIP_NH_OIF;
 
 	dst = ip6_route_output(net, NULL, &fl6);
 	if (dst == dst_null)
@@ -247,26 +241,20 @@ static int vrf_ip_local_out(struct net *net, struct sock *sk,
 static netdev_tx_t vrf_process_v4_outbound(struct sk_buff *skb,
 					   struct net_device *vrf_dev)
 {
-	struct iphdr *ip4h;
+	struct iphdr *ip4h = ip_hdr(skb);
 	int ret = NET_XMIT_DROP;
-	struct flowi4 fl4;
+	struct flowi4 fl4 = {
+		/* needed to match OIF rule */
+		.flowi4_oif = vrf_dev->ifindex,
+		.flowi4_iif = LOOPBACK_IFINDEX,
+		.flowi4_tos = RT_TOS(ip4h->tos),
+		.flowi4_flags = FLOWI_FLAG_ANYSRC | FLOWI_FLAG_SKIP_NH_OIF,
+		.flowi4_proto = ip4h->protocol,
+		.daddr = ip4h->daddr,
+		.saddr = ip4h->saddr,
+	};
 	struct net *net = dev_net(vrf_dev);
 	struct rtable *rt;
-
-	if (!pskb_may_pull(skb, ETH_HLEN + sizeof(struct iphdr)))
-		goto err;
-
-	ip4h = ip_hdr(skb);
-
-	memset(&fl4, 0, sizeof(fl4));
-	/* needed to match OIF rule */
-	fl4.flowi4_oif = vrf_dev->ifindex;
-	fl4.flowi4_iif = LOOPBACK_IFINDEX;
-	fl4.flowi4_tos = RT_TOS(ip4h->tos);
-	fl4.flowi4_flags = FLOWI_FLAG_ANYSRC | FLOWI_FLAG_SKIP_NH_OIF;
-	fl4.flowi4_proto = ip4h->protocol;
-	fl4.daddr = ip4h->daddr;
-	fl4.saddr = ip4h->saddr;
 
 	rt = ip_route_output_flow(net, &fl4, NULL);
 	if (IS_ERR(rt))
@@ -759,7 +747,8 @@ static int vrf_rtable_create(struct net_device *dev)
 /**************************** device handling ********************/
 
 /* cycle interface to flush neighbor cache and move routes across tables */
-static void cycle_netdev(struct net_device *dev)
+static void cycle_netdev(struct net_device *dev,
+			 struct netlink_ext_ack *extack)
 {
 	unsigned int flags = dev->flags;
 	int ret;
@@ -767,9 +756,9 @@ static void cycle_netdev(struct net_device *dev)
 	if (!netif_running(dev))
 		return;
 
-	ret = dev_change_flags(dev, flags & ~IFF_UP);
+	ret = dev_change_flags(dev, flags & ~IFF_UP, extack);
 	if (ret >= 0)
-		ret = dev_change_flags(dev, flags);
+		ret = dev_change_flags(dev, flags, extack);
 
 	if (ret < 0) {
 		netdev_err(dev,
@@ -797,7 +786,7 @@ static int do_vrf_add_slave(struct net_device *dev, struct net_device *port_dev,
 	if (ret < 0)
 		goto err;
 
-	cycle_netdev(port_dev);
+	cycle_netdev(port_dev, extack);
 
 	return 0;
 
@@ -827,7 +816,7 @@ static int do_vrf_del_slave(struct net_device *dev, struct net_device *port_dev)
 	netdev_upper_dev_unlink(port_dev, dev);
 	port_dev->priv_flags &= ~IFF_L3MDEV_SLAVE;
 
-	cycle_netdev(port_dev);
+	cycle_netdev(port_dev, NULL);
 
 	return 0;
 }
@@ -886,6 +875,7 @@ static const struct net_device_ops vrf_netdev_ops = {
 	.ndo_init		= vrf_dev_init,
 	.ndo_uninit		= vrf_dev_uninit,
 	.ndo_start_xmit		= vrf_xmit,
+	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_get_stats64	= vrf_get_stats64,
 	.ndo_add_slave		= vrf_add_slave,
 	.ndo_del_slave		= vrf_del_slave,
@@ -993,24 +983,23 @@ static struct sk_buff *vrf_ip6_rcv(struct net_device *vrf_dev,
 				   struct sk_buff *skb)
 {
 	int orig_iif = skb->skb_iif;
-	bool need_strict;
+	bool need_strict = rt6_need_strict(&ipv6_hdr(skb)->daddr);
+	bool is_ndisc = ipv6_ndisc_frame(skb);
 
-	/* loopback traffic; do not push through packet taps again.
-	 * Reset pkt_type for upper layers to process skb
+	/* loopback, multicast & non-ND link-local traffic; do not push through
+	 * packet taps again. Reset pkt_type for upper layers to process skb
 	 */
-	if (skb->pkt_type == PACKET_LOOPBACK) {
+	if (skb->pkt_type == PACKET_LOOPBACK || (need_strict && !is_ndisc)) {
 		skb->dev = vrf_dev;
 		skb->skb_iif = vrf_dev->ifindex;
 		IP6CB(skb)->flags |= IP6SKB_L3SLAVE;
-		skb->pkt_type = PACKET_HOST;
+		if (skb->pkt_type == PACKET_LOOPBACK)
+			skb->pkt_type = PACKET_HOST;
 		goto out;
 	}
 
-	/* if packet is NDISC or addressed to multicast or link-local
-	 * then keep the ingress interface
-	 */
-	need_strict = rt6_need_strict(&ipv6_hdr(skb)->daddr);
-	if (!ipv6_ndisc_frame(skb) && !need_strict) {
+	/* if packet is NDISC then keep the ingress interface */
+	if (!is_ndisc) {
 		vrf_rx_stats(vrf_dev, skb->len);
 		skb->dev = vrf_dev;
 		skb->skb_iif = vrf_dev->ifindex;
@@ -1227,7 +1216,18 @@ static int vrf_add_fib_rules(const struct net_device *dev)
 		goto ipmr_err;
 #endif
 
+#if IS_ENABLED(CONFIG_IPV6_MROUTE_MULTIPLE_TABLES)
+	err = vrf_fib_rule(dev, RTNL_FAMILY_IP6MR, true);
+	if (err < 0)
+		goto ip6mr_err;
+#endif
+
 	return 0;
+
+#if IS_ENABLED(CONFIG_IPV6_MROUTE_MULTIPLE_TABLES)
+ip6mr_err:
+	vrf_fib_rule(dev, RTNL_FAMILY_IPMR,  false);
+#endif
 
 #if IS_ENABLED(CONFIG_IP_MROUTE_MULTIPLE_TABLES)
 ipmr_err:
@@ -1275,6 +1275,14 @@ static void vrf_setup(struct net_device *dev)
 	/* default to no qdisc; user can add if desired */
 	dev->priv_flags |= IFF_NO_QUEUE;
 	dev->priv_flags |= IFF_NO_RX_HANDLER;
+	dev->priv_flags |= IFF_LIVE_ADDR_CHANGE;
+
+	/* VRF devices do not care about MTU, but if the MTU is set
+	 * too low then the ipv4 and ipv6 protocols are disabled
+	 * which breaks networking.
+	 */
+	dev->min_mtu = IPV6_MIN_MTU;
+	dev->max_mtu = ETH_MAX_MTU;
 }
 
 static int vrf_validate(struct nlattr *tb[], struct nlattr *data[],

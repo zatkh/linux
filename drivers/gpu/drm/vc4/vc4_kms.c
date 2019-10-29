@@ -17,11 +17,9 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
-#include <drm/drm_plane_helper.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
 #include "vc4_drv.h"
 #include "vc4_regs.h"
 
@@ -107,9 +105,6 @@ vc4_ctm_commit(struct vc4_dev *vc4, struct drm_atomic_state *state)
 	struct vc4_ctm_state *ctm_state = to_vc4_ctm_state(vc4->ctm_manager.state);
 	struct drm_color_ctm *ctm = ctm_state->ctm;
 
-	if (vc4->firmware_kms)
-		return;
-
 	if (ctm_state->fifo) {
 		HVS_WRITE(SCALER_OLEDCOEF2,
 			  VC4_SET_FIELD(vc4_ctm_s31_32_to_s0_9(ctm->matrix[0]),
@@ -150,8 +145,7 @@ vc4_atomic_complete_commit(struct drm_atomic_state *state)
 
 	drm_atomic_helper_commit_modeset_disables(dev, state);
 
-	if (!vc4->firmware_kms)
-		vc4_ctm_commit(vc4, state);
+	vc4_ctm_commit(vc4, state);
 
 	drm_atomic_helper_commit_planes(dev, state, 0);
 
@@ -225,8 +219,7 @@ static int vc4_atomic_commit(struct drm_device *dev,
 	 * drm_atomic_helper_setup_commit() from auto-completing
 	 * commit->flip_done.
 	 */
-	if (!vc4->firmware_kms)
-		state->legacy_cursor_update = false;
+	state->legacy_cursor_update = false;
 	ret = drm_atomic_helper_setup_commit(state, nonblock);
 	if (ret)
 		return ret;
@@ -405,7 +398,6 @@ vc4_atomic_check(struct drm_device *dev, struct drm_atomic_state *state)
 }
 
 static const struct drm_mode_config_funcs vc4_mode_funcs = {
-	.output_poll_changed = drm_fb_helper_output_poll_changed,
 	.atomic_check = vc4_atomic_check,
 	.atomic_commit = vc4_atomic_commit,
 	.fb_create = vc4_fb_create,
@@ -422,39 +414,29 @@ int vc4_kms_load(struct drm_device *dev)
 	/* Set support for vblank irq fast disable, before drm_vblank_init() */
 	dev->vblank_disable_immediate = true;
 
-	dev->irq_enabled = true;
 	ret = drm_vblank_init(dev, dev->mode_config.num_crtc);
 	if (ret < 0) {
 		dev_err(dev->dev, "failed to initialize vblank\n");
 		return ret;
 	}
 
-	if (!drm_core_check_feature(dev, DRIVER_RENDER)) {
-		/* No V3D as part of vc4. Assume this is Pi4. */
-		dev->mode_config.max_width = 7680;
-		dev->mode_config.max_height = 7680;
-	} else {
-		dev->mode_config.max_width = 2048;
-		dev->mode_config.max_height = 2048;
-	}
+	dev->mode_config.max_width = 2048;
+	dev->mode_config.max_height = 2048;
 	dev->mode_config.funcs = &vc4_mode_funcs;
 	dev->mode_config.preferred_depth = 24;
 	dev->mode_config.async_page_flip = true;
 	dev->mode_config.allow_fb_modifiers = true;
-	dev->mode_config.normalize_zpos = true;
 
 	drm_modeset_lock_init(&vc4->ctm_state_lock);
 
 	ctm_state = kzalloc(sizeof(*ctm_state), GFP_KERNEL);
 	if (!ctm_state)
 		return -ENOMEM;
-	drm_atomic_private_obj_init(&vc4->ctm_manager, &ctm_state->base,
+
+	drm_atomic_private_obj_init(dev, &vc4->ctm_manager, &ctm_state->base,
 				    &vc4_ctm_state_funcs);
 
 	drm_mode_config_reset(dev);
-
-	if (dev->mode_config.num_connector)
-		drm_fb_cma_fbdev_init(dev, 32, 0);
 
 	drm_kms_helper_poll_init(dev);
 

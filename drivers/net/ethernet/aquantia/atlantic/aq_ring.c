@@ -29,8 +29,8 @@ static struct aq_ring_s *aq_ring_alloc(struct aq_ring_s *self,
 		goto err_exit;
 	}
 	self->dx_ring = dma_alloc_coherent(aq_nic_get_dev(aq_nic),
-						self->size * self->dx_size,
-						&self->dx_ring_pa, GFP_KERNEL);
+					   self->size * self->dx_size,
+					   &self->dx_ring_pa, GFP_KERNEL);
 	if (!self->dx_ring) {
 		err = -ENOMEM;
 		goto err_exit;
@@ -139,10 +139,10 @@ void aq_ring_queue_stop(struct aq_ring_s *ring)
 bool aq_ring_tx_clean(struct aq_ring_s *self)
 {
 	struct device *dev = aq_nic_get_dev(self->aq_nic);
-	unsigned int budget;
+	unsigned int budget = AQ_CFG_TX_CLEAN_BUDGET;
 
-	for (budget = AQ_CFG_TX_CLEAN_BUDGET;
-	     budget && self->sw_head != self->hw_head; budget--) {
+	for (; self->sw_head != self->hw_head && budget--;
+		self->sw_head = aq_ring_next_dx(self, self->sw_head)) {
 		struct aq_ring_buff_s *buff = &self->buff_ring[self->sw_head];
 
 		if (likely(buff->is_mapped)) {
@@ -167,7 +167,6 @@ bool aq_ring_tx_clean(struct aq_ring_s *self)
 
 		buff->pa = 0U;
 		buff->eop_index = 0xffffU;
-		self->sw_head = aq_ring_next_dx(self, self->sw_head);
 	}
 
 	return !!budget;

@@ -33,9 +33,7 @@ enum {
 enum snd_bcm2835_route {
 	AUDIO_DEST_AUTO = 0,
 	AUDIO_DEST_HEADPHONES = 1,
-	AUDIO_DEST_HDMI = 2,  // for backwards compatibility.
-	AUDIO_DEST_HDMI0 = 2,
-	AUDIO_DEST_HDMI1 = 3,
+	AUDIO_DEST_HDMI = 2,
 	AUDIO_DEST_MAX,
 };
 
@@ -47,7 +45,6 @@ enum snd_bcm2835_ctrl {
 
 struct bcm2835_vchi_ctx {
 	VCHI_INSTANCE_T vchi_instance;
-	VCHI_CONNECTION_T *vchi_connection;
 };
 
 /* definition of the chip-specific record */

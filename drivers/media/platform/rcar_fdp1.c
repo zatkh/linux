@@ -257,8 +257,6 @@ MODULE_PARM_DESC(debug, "activate debug info");
 #define FD1_IP_H3_ES1			0x02010101
 #define FD1_IP_M3W			0x02010202
 #define FD1_IP_H3			0x02010203
-#define FD1_IP_M3N			0x02010204
-#define FD1_IP_E3			0x02010205
 
 /* LUTs */
 #define FD1_LUT_DIF_ADJ			0x1000
@@ -1361,8 +1359,8 @@ static void device_frame_end(struct fdp1_dev *fdp1,
 static int fdp1_vidioc_querycap(struct file *file, void *priv,
 			   struct v4l2_capability *cap)
 {
-	strlcpy(cap->driver, DRIVER_NAME, sizeof(cap->driver));
-	strlcpy(cap->card, DRIVER_NAME, sizeof(cap->card));
+	strscpy(cap->driver, DRIVER_NAME, sizeof(cap->driver));
+	strscpy(cap->card, DRIVER_NAME, sizeof(cap->card));
 	snprintf(cap->bus_info, sizeof(cap->bus_info),
 			"platform:%s", DRIVER_NAME);
 	return 0;
@@ -2341,7 +2339,7 @@ static int fdp1_probe(struct platform_device *pdev)
 	vfd->lock = &fdp1->dev_mutex;
 	vfd->v4l2_dev = &fdp1->v4l2_dev;
 	video_set_drvdata(vfd, fdp1);
-	strlcpy(vfd->name, fdp1_videodev.name, sizeof(vfd->name));
+	strscpy(vfd->name, fdp1_videodev.name, sizeof(vfd->name));
 
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);
 	if (ret) {
@@ -2366,12 +2364,6 @@ static int fdp1_probe(struct platform_device *pdev)
 		break;
 	case FD1_IP_H3:
 		dprintk(fdp1, "FDP1 Version R-Car H3\n");
-		break;
-	case FD1_IP_M3N:
-		dprintk(fdp1, "FDP1 Version R-Car M3N\n");
-		break;
-	case FD1_IP_E3:
-		dprintk(fdp1, "FDP1 Version R-Car E3\n");
 		break;
 	default:
 		dev_err(fdp1->dev, "FDP1 Unidentifiable (0x%08x)\n",

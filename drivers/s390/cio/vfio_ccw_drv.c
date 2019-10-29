@@ -22,7 +22,7 @@
 #include "vfio_ccw_private.h"
 
 struct workqueue_struct *vfio_ccw_work_q;
-struct kmem_cache *vfio_ccw_io_region;
+static struct kmem_cache *vfio_ccw_io_region;
 
 /*
  * Helpers
@@ -40,30 +40,26 @@ int vfio_ccw_sch_quiesce(struct subchannel *sch)
 	if (ret != -EBUSY)
 		goto out_unlock;
 
-	iretry = 255;
 	do {
+		iretry = 255;
 
 		ret = cio_cancel_halt_clear(sch, &iretry);
+		while (ret == -EBUSY) {
+			/*
+			 * Flush all I/O and wait for
+			 * cancel/halt/clear completion.
+			 */
+			private->completion = &completion;
+			spin_unlock_irq(sch->lock);
 
-		if (ret == -EIO) {
-			pr_err("vfio_ccw: could not quiesce subchannel 0.%x.%04x!\n",
-			       sch->schid.ssid, sch->schid.sch_no);
-			break;
-		}
-
-		/*
-		 * Flush all I/O and wait for
-		 * cancel/halt/clear completion.
-		 */
-		private->completion = &completion;
-		spin_unlock_irq(sch->lock);
-
-		if (ret == -EBUSY)
 			wait_for_completion_timeout(&completion, 3*HZ);
 
-		private->completion = NULL;
-		flush_workqueue(vfio_ccw_work_q);
-		spin_lock_irq(sch->lock);
+			spin_lock_irq(sch->lock);
+			private->completion = NULL;
+			flush_workqueue(vfio_ccw_work_q);
+			ret = cio_cancel_halt_clear(sch, &iretry);
+		};
+
 		ret = cio_disable_subchannel(sch);
 	} while (ret == -EBUSY);
 out_unlock:
@@ -142,13 +138,13 @@ static int vfio_ccw_sch_probe(struct subchannel *sch)
 	if (ret)
 		goto out_free;
 
-	ret = vfio_ccw_mdev_reg(sch);
-	if (ret)
-		goto out_disable;
-
 	INIT_WORK(&private->io_work, vfio_ccw_sch_io_todo);
 	atomic_set(&private->avail, 1);
 	private->state = VFIO_CCW_STATE_STANDBY;
+
+	ret = vfio_ccw_mdev_reg(sch);
+	if (ret)
+		goto out_disable;
 
 	return 0;
 

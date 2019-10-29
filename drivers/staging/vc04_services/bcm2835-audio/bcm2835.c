@@ -6,13 +6,13 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/module.h>
-#include <linux/of.h>
 
 #include "bcm2835.h"
 
 static bool enable_hdmi;
 static bool enable_headphones;
 static bool enable_compat_alsa = true;
+static int num_channels = MAX_SUBSTREAMS;
 
 module_param(enable_hdmi, bool, 0444);
 MODULE_PARM_DESC(enable_hdmi, "Enables HDMI virtual audio device");
@@ -21,6 +21,8 @@ MODULE_PARM_DESC(enable_headphones, "Enables Headphones virtual audio device");
 module_param(enable_compat_alsa, bool, 0444);
 MODULE_PARM_DESC(enable_compat_alsa,
 		 "Enables ALSA compatibility virtual audio device");
+module_param(num_channels, int, 0644);
+MODULE_PARM_DESC(num_channels, "Number of audio channels (default: 8)");
 
 static void bcm2835_devm_free_vchi_ctx(struct device *dev, void *res)
 {
@@ -79,11 +81,7 @@ static int bcm2835_audio_alsa_newpcm(struct bcm2835_chip *chip,
 	if (err)
 		return err;
 
-	err = snd_bcm2835_new_pcm(chip, "bcm2835 IEC958/HDMI", 1, AUDIO_DEST_HDMI0, 1, true);
-	if (err)
-		return err;
-
-	err = snd_bcm2835_new_pcm(chip, "bcm2835 IEC958/HDMI1", 2, AUDIO_DEST_HDMI1, 1, true);
+	err = snd_bcm2835_new_pcm(chip, "bcm2835 IEC958/HDMI", 1, 0, 1, true);
 	if (err)
 		return err;
 
@@ -110,7 +108,7 @@ static struct bcm2835_audio_driver bcm2835_audio_alsa = {
 	.newctl = snd_bcm2835_new_ctl,
 };
 
-static struct bcm2835_audio_driver bcm2835_audio_hdmi0 = {
+static struct bcm2835_audio_driver bcm2835_audio_hdmi = {
 	.driver = {
 		.name = "bcm2835_hdmi",
 		.owner = THIS_MODULE,
@@ -120,20 +118,7 @@ static struct bcm2835_audio_driver bcm2835_audio_hdmi0 = {
 	.minchannels = 1,
 	.newpcm = bcm2835_audio_simple_newpcm,
 	.newctl = snd_bcm2835_new_hdmi_ctl,
-	.route = AUDIO_DEST_HDMI0
-};
-
-static struct bcm2835_audio_driver bcm2835_audio_hdmi1 = {
-	.driver = {
-		.name = "bcm2835_hdmi",
-		.owner = THIS_MODULE,
-	},
-	.shortname = "bcm2835 HDMI 1",
-	.longname  = "bcm2835 HDMI 1",
-	.minchannels = 1,
-	.newpcm = bcm2835_audio_simple_newpcm,
-	.newctl = snd_bcm2835_new_hdmi_ctl,
-	.route = AUDIO_DEST_HDMI1
+	.route = AUDIO_DEST_HDMI
 };
 
 static struct bcm2835_audio_driver bcm2835_audio_headphones = {
@@ -160,11 +145,7 @@ static struct bcm2835_audio_drivers children_devices[] = {
 		.is_enabled = &enable_compat_alsa,
 	},
 	{
-		.audio_driver = &bcm2835_audio_hdmi0,
-		.is_enabled = &enable_hdmi,
-	},
-	{
-		.audio_driver = &bcm2835_audio_hdmi1,
+		.audio_driver = &bcm2835_audio_hdmi,
 		.is_enabled = &enable_hdmi,
 	},
 	{
@@ -315,28 +296,19 @@ static int snd_add_child_devices(struct device *device, u32 numchans)
 static int snd_bcm2835_alsa_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	u32 numchans;
 	int err;
 
-	err = of_property_read_u32(dev->of_node, "brcm,pwm-channels",
-				   &numchans);
-	if (err) {
-		dev_err(dev, "Failed to get DT property 'brcm,pwm-channels'");
-		return err;
-	}
-
-	if (numchans == 0 || numchans > MAX_SUBSTREAMS) {
-		numchans = MAX_SUBSTREAMS;
-		dev_warn(dev,
-			 "Illegal 'brcm,pwm-channels' value, will use %u\n",
-			 numchans);
+	if (num_channels <= 0 || num_channels > MAX_SUBSTREAMS) {
+		num_channels = MAX_SUBSTREAMS;
+		dev_warn(dev, "Illegal num_channels value, will use %u\n",
+			 num_channels);
 	}
 
 	err = bcm2835_devm_add_vchi_ctx(dev);
 	if (err)
 		return err;
 
-	err = snd_add_child_devices(dev, numchans);
+	err = snd_add_child_devices(dev, num_channels);
 	if (err)
 		return err;
 
@@ -358,12 +330,6 @@ static int snd_bcm2835_alsa_resume(struct platform_device *pdev)
 
 #endif
 
-static const struct of_device_id snd_bcm2835_of_match_table[] = {
-	{ .compatible = "brcm,bcm2835-audio",},
-	{},
-};
-MODULE_DEVICE_TABLE(of, snd_bcm2835_of_match_table);
-
 static struct platform_driver bcm2835_alsa_driver = {
 	.probe = snd_bcm2835_alsa_probe,
 #ifdef CONFIG_PM
@@ -372,7 +338,6 @@ static struct platform_driver bcm2835_alsa_driver = {
 #endif
 	.driver = {
 		.name = "bcm2835_audio",
-		.of_match_table = snd_bcm2835_of_match_table,
 	},
 };
 module_platform_driver(bcm2835_alsa_driver);
@@ -380,3 +345,4 @@ module_platform_driver(bcm2835_alsa_driver);
 MODULE_AUTHOR("Dom Cobley");
 MODULE_DESCRIPTION("Alsa driver for BCM2835 chip");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:bcm2835_audio");

@@ -156,9 +156,8 @@ static int ltq_eiu_settype(struct irq_data *d, unsigned int type)
 			if (edge)
 				irq_set_handler(d->hwirq, handle_edge_irq);
 
-			ltq_eiu_w32((ltq_eiu_r32(LTQ_EIU_EXIN_C) &
-				    (~(7 << (i * 4)))) | (val << (i * 4)),
-				    LTQ_EIU_EXIN_C);
+			ltq_eiu_w32(ltq_eiu_r32(LTQ_EIU_EXIN_C) |
+				(val << (i * 4)), LTQ_EIU_EXIN_C);
 		}
 	}
 
@@ -311,13 +310,6 @@ int __init icu_of_init(struct device_node *node, struct device_node *parent)
 	/* tell oprofile which irq to use */
 	ltq_perfcount_irq = irq_create_mapping(ltq_domain, LTQ_PERF_IRQ);
 
-	/*
-	 * if the timer irq is not one of the mips irqs we need to
-	 * create a mapping
-	 */
-	if (MIPS_CPU_TIMER_IRQ != 7)
-		irq_create_mapping(ltq_domain, MIPS_CPU_TIMER_IRQ);
-
 	/* the external interrupts are optional and xway only */
 	eiu_node = of_find_compatible_node(NULL, NULL, "lantiq,eiu-xway");
 	if (eiu_node && !of_address_to_resource(eiu_node, 0, &res)) {
@@ -354,7 +346,7 @@ EXPORT_SYMBOL_GPL(get_c0_perfcount_int);
 
 unsigned int get_c0_compare_int(void)
 {
-	return MIPS_CPU_TIMER_IRQ;
+	return CP0_LEGACY_COMPARE_IRQ;
 }
 
 static struct of_device_id __initdata of_irq_ids[] = {

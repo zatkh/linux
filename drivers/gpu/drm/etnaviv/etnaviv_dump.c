@@ -118,13 +118,12 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 	unsigned int n_obj, n_bomap_pages;
 	size_t file_size, mmu_size;
 	__le64 *bomap, *bomap_start;
+	unsigned long flags;
 
 	/* Only catch the first event, or when manually re-armed */
 	if (!etnaviv_dump_core)
 		return;
 	etnaviv_dump_core = false;
-
-	mutex_lock(&gpu->mmu->lock);
 
 	mmu_size = etnaviv_iommu_dump_size(gpu->mmu);
 
@@ -136,13 +135,13 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 		    mmu_size + gpu->buffer.size;
 
 	/* Add in the active command buffers */
-	spin_lock(&gpu->sched.job_list_lock);
+	spin_lock_irqsave(&gpu->sched.job_list_lock, flags);
 	list_for_each_entry(s_job, &gpu->sched.ring_mirror_list, node) {
 		submit = to_etnaviv_submit(s_job);
 		file_size += submit->cmdbuf.size;
 		n_obj++;
 	}
-	spin_unlock(&gpu->sched.job_list_lock);
+	spin_unlock_irqrestore(&gpu->sched.job_list_lock, flags);
 
 	/* Add in the active buffer objects */
 	list_for_each_entry(vram, &gpu->mmu->mappings, mmu_node) {
@@ -168,7 +167,6 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 	iter.start = __vmalloc(file_size, GFP_KERNEL | __GFP_NOWARN | __GFP_NORETRY,
 			       PAGE_KERNEL);
 	if (!iter.start) {
-		mutex_unlock(&gpu->mmu->lock);
 		dev_warn(gpu->dev, "failed to allocate devcoredump file\n");
 		return;
 	}
@@ -185,14 +183,14 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 			      gpu->buffer.size,
 			      etnaviv_cmdbuf_get_va(&gpu->buffer));
 
-	spin_lock(&gpu->sched.job_list_lock);
+	spin_lock_irqsave(&gpu->sched.job_list_lock, flags);
 	list_for_each_entry(s_job, &gpu->sched.ring_mirror_list, node) {
 		submit = to_etnaviv_submit(s_job);
 		etnaviv_core_dump_mem(&iter, ETDUMP_BUF_CMD,
 				      submit->cmdbuf.vaddr, submit->cmdbuf.size,
 				      etnaviv_cmdbuf_get_va(&submit->cmdbuf));
 	}
-	spin_unlock(&gpu->sched.job_list_lock);
+	spin_unlock_irqrestore(&gpu->sched.job_list_lock, flags);
 
 	/* Reserve space for the bomap */
 	if (n_bomap_pages) {
@@ -217,7 +215,7 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 		mutex_lock(&obj->lock);
 		pages = etnaviv_gem_get_pages(obj);
 		mutex_unlock(&obj->lock);
-		if (pages) {
+		if (!IS_ERR(pages)) {
 			int j;
 
 			iter.hdr->data[0] = bomap - bomap_start;
@@ -235,8 +233,6 @@ void etnaviv_core_dump(struct etnaviv_gpu *gpu)
 		etnaviv_core_dump_header(&iter, ETDUMP_BUF_BO, iter.data +
 					 obj->base.size);
 	}
-
-	mutex_unlock(&gpu->mmu->lock);
 
 	etnaviv_core_dump_header(&iter, ETDUMP_BUF_END, iter.data);
 

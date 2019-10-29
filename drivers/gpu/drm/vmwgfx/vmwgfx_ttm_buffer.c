@@ -311,7 +311,13 @@ static dma_addr_t __vmw_piter_dma_addr(struct vmw_piter *viter)
 
 static dma_addr_t __vmw_piter_sg_addr(struct vmw_piter *viter)
 {
-	return sg_page_iter_dma_address(&viter->iter);
+	/*
+	 * FIXME: This driver wrongly mixes DMA and CPU SG list iteration and
+	 * needs revision. See
+	 * https://lore.kernel.org/lkml/20190104223531.GA1705@ziepe.ca/
+	 */
+	return sg_page_iter_dma_address(
+		container_of(&viter->iter, struct sg_dma_page_iter, base));
 }
 
 
@@ -448,11 +454,11 @@ static int vmw_ttm_map_dma(struct vmw_ttm_tt *vmw_tt)
 		if (unlikely(ret != 0))
 			return ret;
 
-		ret = __sg_alloc_table_from_pages
-			(&vmw_tt->sgt, vsgt->pages, vsgt->num_pages, 0,
-			 (unsigned long) vsgt->num_pages << PAGE_SHIFT,
-			 dma_get_max_seg_size(dev_priv->dev->dev),
-			 GFP_KERNEL);
+		ret = sg_alloc_table_from_pages(&vmw_tt->sgt, vsgt->pages,
+						vsgt->num_pages, 0,
+						(unsigned long)
+						vsgt->num_pages << PAGE_SHIFT,
+						GFP_KERNEL);
 		if (unlikely(ret != 0))
 			goto out_sg_alloc_fail;
 

@@ -55,7 +55,7 @@ struct pcm512x_priv {
 	unsigned long overclock_dsp;
 	int mute;
 	struct mutex mutex;
-	int lrclk_div;
+	unsigned int bclk_ratio;
 };
 
 /*
@@ -542,7 +542,7 @@ static unsigned long pcm512x_ncp_target(struct pcm512x_priv *pcm512x,
 
 static const u32 pcm512x_dai_rates[] = {
 	8000, 11025, 16000, 22050, 32000, 44100, 48000, 64000,
-	88200, 96000, 176400, 192000, 352800, 384000,
+	88200, 96000, 176400, 192000, 384000,
 };
 
 static const struct snd_pcm_hw_constraint_list constraints_slave = {
@@ -916,19 +916,21 @@ static int pcm512x_set_dividers(struct snd_soc_dai *dai,
 	int fssp;
 	int gpio;
 
-	if (pcm512x->lrclk_div)
-		lrclk_div = pcm512x->lrclk_div;
-	else
+	if (pcm512x->bclk_ratio > 0) {
+		lrclk_div = pcm512x->bclk_ratio;
+	} else {
 		lrclk_div = snd_soc_params_to_frame_size(params);
-	if (lrclk_div == 0) {
-		dev_err(dev, "No LRCLK?\n");
-		return -EINVAL;
+
+		if (lrclk_div == 0) {
+			dev_err(dev, "No LRCLK?\n");
+			return -EINVAL;
+		}
 	}
 
 	if (!pcm512x->pll_out) {
 		sck_rate = clk_get_rate(pcm512x->sclk);
-		bclk_div = params->rate_den * 64 / lrclk_div;
-		bclk_rate = DIV_ROUND_CLOSEST(sck_rate, bclk_div);
+		bclk_rate = params_rate(params) * lrclk_div;
+		bclk_div = DIV_ROUND_CLOSEST(sck_rate, bclk_rate);
 
 		mck_rate = sck_rate;
 	} else {
@@ -1387,6 +1389,19 @@ static int pcm512x_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
+static int pcm512x_set_bclk_ratio(struct snd_soc_dai *dai, unsigned int ratio)
+{
+	struct snd_soc_component *component = dai->component;
+	struct pcm512x_priv *pcm512x = snd_soc_component_get_drvdata(component);
+
+	if (ratio > 256)
+		return -EINVAL;
+
+	pcm512x->bclk_ratio = ratio;
+
+	return 0;
+}
+
 static int pcm512x_digital_mute(struct snd_soc_dai *dai, int mute)
 {
 	struct snd_soc_component *component = dai->component;
@@ -1434,33 +1449,12 @@ unlock:
 	return ret;
 }
 
-static int pcm512x_set_tdm_slot(struct snd_soc_dai *dai,
-	unsigned int tx_mask, unsigned int rx_mask,
-	int slots, int width)
-{
-	struct snd_soc_component *component = dai->component;
-	struct pcm512x_priv *pcm512x = snd_soc_component_get_drvdata(component);
-
-	switch (slots) {
-	case 0:
-		pcm512x->lrclk_div = 0;
-		return 0;
-	case 2:
-		if (tx_mask != 0x03 || rx_mask != 0x03)
-			return -EINVAL;
-		pcm512x->lrclk_div = slots * width;
-		return 0;
-	default:
-		return -EINVAL;
-	}
-}
-
 static const struct snd_soc_dai_ops pcm512x_dai_ops = {
 	.startup = pcm512x_dai_startup,
 	.hw_params = pcm512x_hw_params,
 	.set_fmt = pcm512x_set_fmt,
 	.digital_mute = pcm512x_digital_mute,
-	.set_tdm_slot = pcm512x_set_tdm_slot,
+	.set_bclk_ratio = pcm512x_set_bclk_ratio,
 };
 
 static struct snd_soc_dai_driver pcm512x_dai = {
@@ -1546,8 +1540,9 @@ int pcm512x_probe(struct device *dev, struct regmap *regmap)
 	pcm512x->supply_nb[2].notifier_call = pcm512x_regulator_event_2;
 
 	for (i = 0; i < ARRAY_SIZE(pcm512x->supplies); i++) {
-		ret = regulator_register_notifier(pcm512x->supplies[i].consumer,
-						  &pcm512x->supply_nb[i]);
+		ret = devm_regulator_register_notifier(
+						pcm512x->supplies[i].consumer,
+						&pcm512x->supply_nb[i]);
 		if (ret != 0) {
 			dev_err(dev,
 				"Failed to register regulator notifier: %d\n",

@@ -1,18 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2015 Microchip Technology
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/version.h>
 #include <linux/module.h>
@@ -25,6 +13,7 @@
 #include <linux/slab.h>
 #include <linux/if_vlan.h>
 #include <linux/uaccess.h>
+#include <linux/linkmode.h>
 #include <linux/list.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
@@ -438,20 +427,6 @@ struct lan78xx_net {
 static int msg_level = -1;
 module_param(msg_level, int, 0);
 MODULE_PARM_DESC(msg_level, "Override default message level");
-
-/* TSO seems to be having some issue with Selective Acknowledge (SACK) that
- * results in lost data never being retransmitted.
- * Disable it by default now, but adds a module parameter to enable it for
- * debug purposes (the full cause is not currently understood).
- */
-static bool enable_tso;
-module_param(enable_tso, bool, 0644);
-MODULE_PARM_DESC(enable_tso, "Enables TCP segmentation offload");
-
-#define INT_URB_MICROFRAMES_PER_MS	8
-static int int_urb_interval_ms = 8;
-module_param(int_urb_interval_ms, int, 0);
-MODULE_PARM_DESC(int_urb_interval_ms, "Override usb interrupt urb interval");
 
 static int lan78xx_read_reg(struct lan78xx_net *dev, u32 index, u32 *data)
 {
@@ -962,11 +937,9 @@ static int lan78xx_read_otp(struct lan78xx_net *dev, u32 offset,
 	ret = lan78xx_read_raw_otp(dev, 0, 1, &sig);
 
 	if (ret == 0) {
-		if (sig == OTP_INDICATOR_1)
-			offset = offset;
-		else if (sig == OTP_INDICATOR_2)
+		if (sig == OTP_INDICATOR_2)
 			offset += 0x100;
-		else
+		else if (sig != OTP_INDICATOR_1)
 			ret = -EINVAL;
 		if (!ret)
 			ret = lan78xx_read_raw_otp(dev, offset, length, data);
@@ -1041,7 +1014,7 @@ done:
 static void lan78xx_set_addr_filter(struct lan78xx_priv *pdata,
 				    int index, u8 addr[ETH_ALEN])
 {
-	u32	temp;
+	u32 temp;
 
 	if ((pdata) && (index > 0) && (index < NUM_OF_MAF)) {
 		temp = addr[3];
@@ -1614,18 +1587,17 @@ static int lan78xx_set_pause(struct net_device *net,
 		dev->fc_request_control |= FLOW_CTRL_TX;
 
 	if (ecmd.base.autoneg) {
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(fc) = { 0, };
 		u32 mii_adv;
-		u32 advertising;
 
-		ethtool_convert_link_mode_to_legacy_u32(
-			&advertising, ecmd.link_modes.advertising);
-
-		advertising &= ~(ADVERTISED_Pause | ADVERTISED_Asym_Pause);
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT,
+				   ecmd.link_modes.advertising);
+		linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT,
+				   ecmd.link_modes.advertising);
 		mii_adv = (u32)mii_advertise_flowctrl(dev->fc_request_control);
-		advertising |= mii_adv_to_ethtool_adv_t(mii_adv);
-
-		ethtool_convert_legacy_u32_to_link_mode(
-			ecmd.link_modes.advertising, advertising);
+		mii_adv_to_linkmode_adv_t(fc, mii_adv);
+		linkmode_or(ecmd.link_modes.advertising, fc,
+			    ecmd.link_modes.advertising);
 
 		phy_ethtool_ksettings_set(phydev, &ecmd);
 	}
@@ -1852,8 +1824,7 @@ static int lan78xx_mdio_init(struct lan78xx_net *dev)
 
 	node = of_get_child_by_name(dev->udev->dev.of_node, "mdio");
 	ret = of_mdiobus_register(dev->mdiobus, node);
-	if (node)
-		of_node_put(node);
+	of_node_put(node);
 	if (ret) {
 		netdev_err(dev->net, "can't register MDIO bus\n");
 		goto exit1;
@@ -2080,8 +2051,7 @@ static struct phy_device *lan7801_phy_init(struct lan78xx_net *dev)
 	phydev = phy_find_first(dev->mdiobus);
 	if (!phydev) {
 		netdev_dbg(dev->net, "PHY Not Found!! Registering Fixed PHY\n");
-		phydev = fixed_phy_register(PHY_POLL, &fphy_status, -1,
-					    NULL);
+		phydev = fixed_phy_register(PHY_POLL, &fphy_status, NULL);
 		if (IS_ERR(phydev)) {
 			netdev_err(dev->net, "No PHY/fixed_PHY found\n");
 			return NULL;
@@ -2124,6 +2094,7 @@ static struct phy_device *lan7801_phy_init(struct lan78xx_net *dev)
 
 static int lan78xx_phy_init(struct lan78xx_net *dev)
 {
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(fc) = { 0, };
 	int ret;
 	u32 mii_adv;
 	struct phy_device *phydev;
@@ -2183,29 +2154,17 @@ static int lan78xx_phy_init(struct lan78xx_net *dev)
 	}
 
 	/* MAC doesn't support 1000T Half */
-	phydev->supported &= ~SUPPORTED_1000baseT_Half;
+	phy_remove_link_mode(phydev, ETHTOOL_LINK_MODE_1000baseT_Half_BIT);
 
 	/* support both flow controls */
 	dev->fc_request_control = (FLOW_CTRL_RX | FLOW_CTRL_TX);
-	phydev->advertising &= ~(ADVERTISED_Pause | ADVERTISED_Asym_Pause);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT,
+			   phydev->advertising);
+	linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT,
+			   phydev->advertising);
 	mii_adv = (u32)mii_advertise_flowctrl(dev->fc_request_control);
-	phydev->advertising |= mii_adv_to_ethtool_adv_t(mii_adv);
-
-	if (of_property_read_bool(phydev->mdio.dev.of_node,
-				  "microchip,eee-enabled")) {
-		struct ethtool_eee edata;
-		memset(&edata, 0, sizeof(edata));
-		edata.cmd = ETHTOOL_SEEE;
-		edata.advertised = ADVERTISED_1000baseT_Full |
-				   ADVERTISED_100baseT_Full;
-		edata.eee_enabled = true;
-		edata.tx_lpi_enabled = true;
-		if (of_property_read_u32(dev->udev->dev.of_node,
-					 "microchip,tx-lpi-timer",
-					 &edata.tx_lpi_timer))
-			edata.tx_lpi_timer = 600; /* non-aggressive */
-		(void)lan78xx_set_eee(dev->net, &edata);
-	}
+	mii_adv_to_linkmode_adv_t(fc, mii_adv);
+	linkmode_or(phydev->advertising, fc, phydev->advertising);
 
 	if (phydev->mdio.dev.of_node) {
 		u32 reg;
@@ -2502,11 +2461,6 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 	int ret = 0;
 	unsigned long timeout;
 	u8 sig;
-	bool has_eeprom;
-	bool has_otp;
-
-	has_eeprom = !lan78xx_read_eeprom(dev, 0, 0, NULL);
-	has_otp = !lan78xx_read_otp(dev, 0, 0, NULL);
 
 	ret = lan78xx_read_reg(dev, HW_CFG, &buf);
 	buf |= HW_CFG_LRST_;
@@ -2560,9 +2514,6 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 
 	ret = lan78xx_read_reg(dev, HW_CFG, &buf);
 	buf |= HW_CFG_MEF_;
-	/* If no valid EEPROM and no valid OTP, enable the LEDs by default */
-	if (!has_eeprom && !has_otp)
-	    buf |= HW_CFG_LED0_EN_ | HW_CFG_LED1_EN_;
 	ret = lan78xx_write_reg(dev, HW_CFG, buf);
 
 	ret = lan78xx_read_reg(dev, USB_CFG0, &buf);
@@ -2618,9 +2569,6 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 			buf |= MAC_CR_AUTO_DUPLEX_ | MAC_CR_AUTO_SPEED_;
 		}
 	}
-	/* If no valid EEPROM and no valid OTP, enable AUTO negotiation */
-	if (!has_eeprom && !has_otp)
-	    buf |= MAC_CR_AUTO_DUPLEX_ | MAC_CR_AUTO_SPEED_;
 	ret = lan78xx_write_reg(dev, MAC_CR, buf);
 
 	ret = lan78xx_read_reg(dev, MAC_TX, &buf);
@@ -2738,7 +2686,7 @@ static void lan78xx_terminate_urbs(struct lan78xx_net *dev)
 
 static int lan78xx_stop(struct net_device *net)
 {
-	struct lan78xx_net		*dev = netdev_priv(net);
+	struct lan78xx_net *dev = netdev_priv(net);
 
 	if (timer_pending(&dev->stat_monitor))
 		del_timer_sync(&dev->stat_monitor);
@@ -2988,6 +2936,11 @@ static int lan78xx_bind(struct lan78xx_net *dev, struct usb_interface *intf)
 	int i;
 
 	ret = lan78xx_get_endpoints(dev, intf);
+	if (ret) {
+		netdev_warn(dev->net, "lan78xx_get_endpoints failed: %d\n",
+			    ret);
+		return ret;
+	}
 
 	dev->data[0] = (unsigned long)kzalloc(sizeof(*pdata), GFP_KERNEL);
 
@@ -3017,14 +2970,8 @@ static int lan78xx_bind(struct lan78xx_net *dev, struct usb_interface *intf)
 	if (DEFAULT_RX_CSUM_ENABLE)
 		dev->net->features |= NETIF_F_RXCSUM;
 
-	if (DEFAULT_TSO_CSUM_ENABLE) {
-		dev->net->features |= NETIF_F_SG;
-		/* Use module parameter to control TCP segmentation offload as
-		 * it appears to cause issues.
-		 */
-		if (enable_tso)
-			dev->net->features |= NETIF_F_TSO | NETIF_F_TSO6;
-	}
+	if (DEFAULT_TSO_CSUM_ENABLE)
+		dev->net->features |= NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_SG;
 
 	if (DEFAULT_VLAN_RX_OFFLOAD)
 		dev->net->features |= NETIF_F_HW_VLAN_CTAG_RX;
@@ -3122,7 +3069,7 @@ static void lan78xx_rx_vlan_offload(struct lan78xx_net *dev,
 
 static void lan78xx_skb_return(struct lan78xx_net *dev, struct sk_buff *skb)
 {
-	int		status;
+	int status;
 
 	if (test_bit(EVENT_RX_PAUSED, &dev->flags)) {
 		skb_queue_tail(&dev->rxq_pause, skb);
@@ -3250,7 +3197,7 @@ static int rx_submit(struct lan78xx_net *dev, struct urb *urb, gfp_t flags)
 	size_t size = dev->rx_urb_size;
 	int ret = 0;
 
-	skb = netdev_alloc_skb(dev->net, size);
+	skb = netdev_alloc_skb_ip_align(dev->net, size);
 	if (!skb) {
 		usb_free_urb(urb);
 		return -ENOMEM;
@@ -3389,9 +3336,9 @@ static void lan78xx_tx_bh(struct lan78xx_net *dev)
 	count = 0;
 	length = 0;
 	spin_lock_irqsave(&tqp->lock, flags);
-	for (skb = tqp->next; pkt_cnt < tqp->qlen; skb = skb->next) {
+	skb_queue_walk(tqp, skb) {
 		if (skb_is_gso(skb)) {
-			if (pkt_cnt) {
+			if (!skb_queue_is_first(tqp, skb)) {
 				/* handle previous packets first */
 				break;
 			}
@@ -3682,10 +3629,10 @@ static void intr_complete(struct urb *urb)
 
 static void lan78xx_disconnect(struct usb_interface *intf)
 {
-	struct lan78xx_net		*dev;
-	struct usb_device		*udev;
-	struct net_device		*net;
-	struct phy_device		*phydev;
+	struct lan78xx_net *dev;
+	struct usb_device *udev;
+	struct net_device *net;
+	struct phy_device *phydev;
 
 	dev = usb_get_intfdata(intf);
 	usb_set_intfdata(intf, NULL);
@@ -3803,7 +3750,6 @@ static int lan78xx_probe(struct usb_interface *intf,
 	ret = lan78xx_bind(dev, intf);
 	if (ret < 0)
 		goto out2;
-	strcpy(netdev->name, "eth%d");
 
 	if (netdev->mtu > (dev->hard_mtu - netdev->hard_header_len))
 		netdev->mtu = dev->hard_mtu - netdev->hard_header_len;
@@ -3821,12 +3767,7 @@ static int lan78xx_probe(struct usb_interface *intf,
 	dev->pipe_intr = usb_rcvintpipe(dev->udev,
 					dev->ep_intr->desc.bEndpointAddress &
 					USB_ENDPOINT_NUMBER_MASK);
-	if (int_urb_interval_ms <= 0)
-		period = dev->ep_intr->desc.bInterval;
-	else
-		period = int_urb_interval_ms * INT_URB_MICROFRAMES_PER_MS;
-
-	netif_notice(dev, probe, netdev, "int urb period %d\n", period);
+	period = dev->ep_intr->desc.bInterval;
 
 	maxp = usb_maxpacket(dev->udev, dev->pipe_intr, 0);
 	buf = kmalloc(maxp, GFP_KERNEL);
@@ -3851,7 +3792,7 @@ static int lan78xx_probe(struct usb_interface *intf,
 	ret = register_netdev(netdev);
 	if (ret != 0) {
 		netif_err(dev, probe, netdev, "couldn't register the device\n");
-		goto out4;
+		goto out3;
 	}
 
 	usb_set_intfdata(intf, dev);
@@ -3866,14 +3807,12 @@ static int lan78xx_probe(struct usb_interface *intf,
 
 	ret = lan78xx_phy_init(dev);
 	if (ret < 0)
-		goto out5;
+		goto out4;
 
 	return 0;
 
-out5:
-	unregister_netdev(netdev);
 out4:
-	usb_free_urb(dev->urb_intr);
+	unregister_netdev(netdev);
 out3:
 	lan78xx_unbind(dev, intf);
 out2:

@@ -124,7 +124,7 @@ static inline struct sk_buff *dequeue_head(struct fq_codel_flow *flow)
 	struct sk_buff *skb = flow->head;
 
 	flow->head = skb->next;
-	skb->next = NULL;
+	skb_mark_not_on_list(skb);
 	return skb;
 }
 
@@ -600,6 +600,8 @@ static unsigned long fq_codel_find(struct Qdisc *sch, u32 classid)
 static unsigned long fq_codel_bind(struct Qdisc *sch, unsigned long parent,
 			      u32 classid)
 {
+	/* we cannot bypass queue discipline anymore */
+	sch->flags &= ~TCQ_F_CAN_BYPASS;
 	return 0;
 }
 

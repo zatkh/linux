@@ -72,10 +72,6 @@
 #define GENET_RDMA_REG_OFF	(priv->hw_params->rdma_offset + \
 				TOTAL_DESC * DMA_DESC_SIZE)
 
-static bool skip_umac_reset = true;
-module_param(skip_umac_reset, bool, 0444);
-MODULE_PARM_DESC(skip_umac_reset, "Skip UMAC reset step");
-
 static inline void bcmgenet_writel(u32 value, void __iomem *offset)
 {
 	/* MIPS chips strapped for BE will automagically configure the
@@ -1173,7 +1169,7 @@ static int bcmgenet_power_down(struct bcmgenet_priv *priv,
 		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 static void bcmgenet_power_up(struct bcmgenet_priv *priv,
@@ -1997,11 +1993,6 @@ static void reset_umac(struct bcmgenet_priv *priv)
 	bcmgenet_rbuf_ctrl_set(priv, 0);
 	udelay(10);
 
-	if (skip_umac_reset) {
-		pr_warn("Skipping UMAC reset\n");
-		return;
-	}
-
 	/* disable MAC while updating its registers */
 	bcmgenet_umac_writel(priv, 0, UMAC_CMD);
 
@@ -2156,7 +2147,7 @@ static void bcmgenet_init_tx_ring(struct bcmgenet_priv *priv,
 
 	bcmgenet_tdma_ring_writel(priv, index, 0, TDMA_PROD_INDEX);
 	bcmgenet_tdma_ring_writel(priv, index, 0, TDMA_CONS_INDEX);
-	bcmgenet_tdma_ring_writel(priv, index, 10, DMA_MBUF_DONE_THRESH);
+	bcmgenet_tdma_ring_writel(priv, index, 1, DMA_MBUF_DONE_THRESH);
 	/* Disable rate control for now */
 	bcmgenet_tdma_ring_writel(priv, index, flow_period_val,
 				  TDMA_FLOW_PERIOD);
@@ -3095,42 +3086,39 @@ static void bcmgenet_timeout(struct net_device *dev)
 	netif_tx_wake_all_queues(dev);
 }
 
-#define MAX_MDF_FILTER	17
+#define MAX_MC_COUNT	16
 
 static inline void bcmgenet_set_mdf_addr(struct bcmgenet_priv *priv,
 					 unsigned char *addr,
-					 int *i)
+					 int *i,
+					 int *mc)
 {
+	u32 reg;
+
 	bcmgenet_umac_writel(priv, addr[0] << 8 | addr[1],
 			     UMAC_MDF_ADDR + (*i * 4));
 	bcmgenet_umac_writel(priv, addr[2] << 24 | addr[3] << 16 |
 			     addr[4] << 8 | addr[5],
 			     UMAC_MDF_ADDR + ((*i + 1) * 4));
+	reg = bcmgenet_umac_readl(priv, UMAC_MDF_CTRL);
+	reg |= (1 << (MAX_MC_COUNT - *mc));
+	bcmgenet_umac_writel(priv, reg, UMAC_MDF_CTRL);
 	*i += 2;
+	(*mc)++;
 }
 
 static void bcmgenet_set_rx_mode(struct net_device *dev)
 {
 	struct bcmgenet_priv *priv = netdev_priv(dev);
 	struct netdev_hw_addr *ha;
-	int i, nfilter;
+	int i, mc;
 	u32 reg;
 
 	netif_dbg(priv, hw, dev, "%s: %08X\n", __func__, dev->flags);
 
-	/* Number of filters needed */
-	nfilter = netdev_uc_count(dev) + netdev_mc_count(dev) + 2;
-
-	/*
-	 * Turn on promicuous mode for three scenarios
-	 * 1. IFF_PROMISC flag is set
-	 * 2. IFF_ALLMULTI flag is set
-	 * 3. The number of filters needed exceeds the number filters
-	 *    supported by the hardware.
-	*/
+	/* Promiscuous mode */
 	reg = bcmgenet_umac_readl(priv, UMAC_CMD);
-	if ((dev->flags & (IFF_PROMISC | IFF_ALLMULTI)) ||
-	    (nfilter > MAX_MDF_FILTER)) {
+	if (dev->flags & IFF_PROMISC) {
 		reg |= CMD_PROMISC;
 		bcmgenet_umac_writel(priv, reg, UMAC_CMD);
 		bcmgenet_umac_writel(priv, 0, UMAC_MDF_CTRL);
@@ -3140,24 +3128,32 @@ static void bcmgenet_set_rx_mode(struct net_device *dev)
 		bcmgenet_umac_writel(priv, reg, UMAC_CMD);
 	}
 
+	/* UniMac doesn't support ALLMULTI */
+	if (dev->flags & IFF_ALLMULTI) {
+		netdev_warn(dev, "ALLMULTI is not supported\n");
+		return;
+	}
+
 	/* update MDF filter */
 	i = 0;
+	mc = 0;
 	/* Broadcast */
-	bcmgenet_set_mdf_addr(priv, dev->broadcast, &i);
+	bcmgenet_set_mdf_addr(priv, dev->broadcast, &i, &mc);
 	/* my own address.*/
-	bcmgenet_set_mdf_addr(priv, dev->dev_addr, &i);
+	bcmgenet_set_mdf_addr(priv, dev->dev_addr, &i, &mc);
+	/* Unicast list*/
+	if (netdev_uc_count(dev) > (MAX_MC_COUNT - mc))
+		return;
 
-	/* Unicast */
-	netdev_for_each_uc_addr(ha, dev)
-		bcmgenet_set_mdf_addr(priv, ha->addr, &i);
-
+	if (!netdev_uc_empty(dev))
+		netdev_for_each_uc_addr(ha, dev)
+			bcmgenet_set_mdf_addr(priv, ha->addr, &i, &mc);
 	/* Multicast */
-	netdev_for_each_mc_addr(ha, dev)
-		bcmgenet_set_mdf_addr(priv, ha->addr, &i);
+	if (netdev_mc_empty(dev) || netdev_mc_count(dev) >= (MAX_MC_COUNT - mc))
+		return;
 
-	/* Enable filters */
-	reg = GENMASK(MAX_MDF_FILTER - 1, MAX_MDF_FILTER - nfilter);
-	bcmgenet_umac_writel(priv, reg, UMAC_MDF_CTRL);
+	netdev_for_each_mc_addr(ha, dev)
+		bcmgenet_set_mdf_addr(priv, ha->addr, &i, &mc);
 }
 
 /* Set the hardware MAC address. */
@@ -3580,12 +3576,9 @@ static int bcmgenet_probe(struct platform_device *pdev)
 	netif_set_real_num_rx_queues(priv->dev, priv->hw_params->rx_queues + 1);
 
 	/* Set default coalescing parameters */
-	for (i = 0; i < priv->hw_params->rx_queues; i++) {
+	for (i = 0; i < priv->hw_params->rx_queues; i++)
 		priv->rx_rings[i].rx_max_coalesced_frames = 1;
-		priv->rx_rings[i].rx_coalesce_usecs = 50;
-	}
 	priv->rx_rings[DESC_INDEX].rx_max_coalesced_frames = 1;
-	priv->rx_rings[DESC_INDEX].rx_coalesce_usecs = 50;
 
 	/* libphy will determine the link state */
 	netif_carrier_off(dev);
@@ -3619,36 +3612,6 @@ static int bcmgenet_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int bcmgenet_suspend(struct device *d)
-{
-	struct net_device *dev = dev_get_drvdata(d);
-	struct bcmgenet_priv *priv = netdev_priv(dev);
-	int ret = 0;
-
-	if (!netif_running(dev))
-		return 0;
-
-	netif_device_detach(dev);
-
-	bcmgenet_netif_stop(dev);
-
-	if (!device_may_wakeup(d))
-		phy_suspend(dev->phydev);
-
-	/* Prepare the device for Wake-on-LAN and switch to the slow clock */
-	if (device_may_wakeup(d) && priv->wolopts) {
-		ret = bcmgenet_power_down(priv, GENET_POWER_WOL_MAGIC);
-		clk_prepare_enable(priv->clk_wol);
-	} else if (priv->internal_phy) {
-		ret = bcmgenet_power_down(priv, GENET_POWER_PASSIVE);
-	}
-
-	/* Turn off the clocks */
-	clk_disable_unprepare(priv->clk);
-
-	return ret;
-}
-
 static int bcmgenet_resume(struct device *d)
 {
 	struct net_device *dev = dev_get_drvdata(d);
@@ -3724,6 +3687,39 @@ out_clk_disable:
 	if (priv->internal_phy)
 		bcmgenet_power_down(priv, GENET_POWER_PASSIVE);
 	clk_disable_unprepare(priv->clk);
+	return ret;
+}
+
+static int bcmgenet_suspend(struct device *d)
+{
+	struct net_device *dev = dev_get_drvdata(d);
+	struct bcmgenet_priv *priv = netdev_priv(dev);
+	int ret = 0;
+
+	if (!netif_running(dev))
+		return 0;
+
+	netif_device_detach(dev);
+
+	bcmgenet_netif_stop(dev);
+
+	if (!device_may_wakeup(d))
+		phy_suspend(dev->phydev);
+
+	/* Prepare the device for Wake-on-LAN and switch to the slow clock */
+	if (device_may_wakeup(d) && priv->wolopts) {
+		ret = bcmgenet_power_down(priv, GENET_POWER_WOL_MAGIC);
+		clk_prepare_enable(priv->clk_wol);
+	} else if (priv->internal_phy) {
+		ret = bcmgenet_power_down(priv, GENET_POWER_PASSIVE);
+	}
+
+	/* Turn off the clocks */
+	clk_disable_unprepare(priv->clk);
+
+	if (ret)
+		bcmgenet_resume(d);
+
 	return ret;
 }
 #endif /* CONFIG_PM_SLEEP */

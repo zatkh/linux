@@ -33,6 +33,7 @@
 #include <linux/pm_runtime.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_atomic_helper.h>
 
 #include "uapi/drm/vc4_drm.h"
 #include "vc4_drv.h"
@@ -69,9 +70,6 @@ static int vc4_get_param_ioctl(struct drm_device *dev, void *data,
 	int ret;
 
 	if (args->pad != 0)
-		return -EINVAL;
-
-	if (!vc4->v3d)
 		return -EINVAL;
 
 	switch (args->param) {
@@ -177,11 +175,9 @@ static struct drm_driver vc4_drm_driver = {
 	.driver_features = (DRIVER_MODESET |
 			    DRIVER_ATOMIC |
 			    DRIVER_GEM |
-			    DRIVER_HAVE_IRQ |
 			    DRIVER_RENDER |
 			    DRIVER_PRIME |
 			    DRIVER_SYNCOBJ),
-	.lastclose = drm_fb_helper_lastclose,
 	.open = vc4_open,
 	.postclose = vc4_close,
 	.irq_handler = vc4_irq,
@@ -251,30 +247,11 @@ static void vc4_match_add_drivers(struct device *dev,
 	}
 }
 
-static void vc4_kick_out_firmware_fb(void)
-{
-	struct apertures_struct *ap;
-
-	ap = alloc_apertures(1);
-	if (!ap)
-		return;
-
-	/* Since VC4 is a UMA device, the simplefb node may have been
-	 * located anywhere in memory.
-	 */
-	ap->ranges[0].base = 0;
-	ap->ranges[0].size = ~0;
-
-	drm_fb_helper_remove_conflicting_framebuffers(ap, "vc4drmfb", false);
-	kfree(ap);
-}
-
 static int vc4_drm_bind(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *drm;
 	struct vc4_dev *vc4;
-	struct device_node *node;
 	int ret = 0;
 
 	dev->coherent_dma_mask = DMA_BIT_MASK(32);
@@ -282,13 +259,6 @@ static int vc4_drm_bind(struct device *dev)
 	vc4 = devm_kzalloc(dev, sizeof(*vc4), GFP_KERNEL);
 	if (!vc4)
 		return -ENOMEM;
-
-	/* If VC4 V3D is missing, don't advertise render nodes. */
-	node = of_find_compatible_node(NULL, NULL, "brcm,bcm2835-v3d");
-	if (node)
-		of_node_put(node);
-	else
-		vc4_drm_driver.driver_features &= ~DRIVER_RENDER;
 
 	drm = drm_dev_alloc(&vc4_drm_driver, dev);
 	if (IS_ERR(drm))
@@ -309,13 +279,15 @@ static int vc4_drm_bind(struct device *dev)
 	if (ret)
 		goto gem_destroy;
 
-	vc4_kick_out_firmware_fb();
+	drm_fb_helper_remove_conflicting_framebuffers(NULL, "vc4drmfb", false);
 
 	ret = drm_dev_register(drm, 0);
 	if (ret < 0)
 		goto unbind_all;
 
 	vc4_kms_load(drm);
+
+	drm_fbdev_generic_setup(drm, 32);
 
 	return 0;
 
@@ -336,7 +308,7 @@ static void vc4_drm_unbind(struct device *dev)
 
 	drm_dev_unregister(drm);
 
-	drm_fb_cma_fbdev_fini(drm);
+	drm_atomic_helper_shutdown(drm);
 
 	drm_mode_config_cleanup(drm);
 
@@ -358,7 +330,6 @@ static struct platform_driver *const component_drivers[] = {
 	&vc4_txp_driver,
 	&vc4_hvs_driver,
 	&vc4_crtc_driver,
-	&vc4_firmware_kms_driver,
 	&vc4_v3d_driver,
 };
 
