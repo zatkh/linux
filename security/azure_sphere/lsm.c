@@ -2124,15 +2124,15 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 static struct security_hook_list azure_sphere_hooks[] = {
 
-    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
+	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
     LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
     LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
     LSM_HOOK_INIT(setprocattr, azure_sphere_security_setprocattr),
 
-
+*/
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 /*
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),

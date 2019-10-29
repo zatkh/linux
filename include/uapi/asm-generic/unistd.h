@@ -832,9 +832,16 @@ __SYSCALL(__NR_io_uring_setup, sys_io_uring_setup)
 __SYSCALL(__NR_io_uring_enter, sys_io_uring_enter)
 #define __NR_io_uring_register 427
 __SYSCALL(__NR_io_uring_register, sys_io_uring_register)
+#define __NR_set_task_domain 428
+__SYSCALL(__NR_set_task_domain, sys_set_task_domain)
+#define __NR_difc_enter_domain 429
+__SYSCALL(__NR_difc_enter_domain, sys_difc_enter_domain_wrapper)
+#define __NR_difc_exit_domain 430
+__SYSCALL(__NR_difc_exit_domain, sys_difc_exit_domain_wrapper)
+
 
 #undef __NR_syscalls
-#define __NR_syscalls 428
+#define __NR_syscalls 431
 
 /*
  * 32 bit systems traditionally used different

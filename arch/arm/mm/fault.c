@@ -518,6 +518,151 @@ do_bad(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	return 1;
 }
 
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+/* 
+static void change_domain_access(unsigned int domain, unsigned int type)
+{
+    do {
+        struct thread_info *thread = current_thread_info();
+        unsigned int dom_ = thread->cpu_domain;
+        dom_ &= ~domain_val(domain, DOMAIN_MANAGER);
+        thread->cpu_domain = dom_ | domain_val(domain, type);
+        do {
+            __asm__ __volatile__(
+                    "mcr	p15, 0, %0, c3, c0	@ set domain"
+                    : : "r" (thread->cpu_domain));
+            isb();
+        } while (0);
+    } while (0);
+}
+*/
+
+
+
+static inline unsigned int get_pmd_domain(pmd_t *pmd)
+{
+	switch (pmd_val(*pmd) & PMD_DOMAIN_MASK) {
+	case PMD_DOMAIN(DOMAIN_KERNEL):
+		return DOMAIN_KERNEL;
+	case PMD_DOMAIN(DOMAIN_USER):
+		return DOMAIN_USER;
+	case PMD_DOMAIN(DOMAIN_IO):
+		return DOMAIN_IO;
+	case PMD_DOMAIN(DOMAIN_VECTORS):
+		return DOMAIN_VECTORS;
+	case PMD_DOMAIN(DOMAIN_SANDBOX):
+		return DOMAIN_SANDBOX;	
+	case PMD_DOMAIN(DOMAIN_TRUSTED):
+		return DOMAIN_TRUSTED;
+	case PMD_DOMAIN(DOMAIN_UNTRUSTED):
+		return DOMAIN_UNTRUSTED;
+	default:
+		return -1; //just for now we keep track of registerd domains 
+	}
+}
+
+static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+{
+	unsigned long dacr = 0;
+	unsigned int domain;
+	int domain_copy;
+	struct task_struct * s_tsk;
+	struct task_struct * d_tsk;
+	int ret_val=-1;
+    pgd_t *pgd;
+    pud_t *pud;
+    pmd_t *pmd;
+
+	printk(KERN_INFO "[do_difc_domain_fault] enter\n");
+	printk("[do_difc_domain_fault] pid = %d, tid = %d\n", task_tgid_vnr(current), task_pid_vnr(current));
+	printk("[do_difc_domain_fault] domain fault at 0x%08lx, fsr=0x%08x\n", addr, fsr);
+	printk("[do_difc_domain_fault] domain fault pc=0x%08lx, sp=0x%08lx\n", regs->ARM_pc, regs->ARM_sp);
+	
+
+/* 
+	print_symbol("PC is at %s\n", instruction_pointer(regs));
+	print_symbol("LR is at %s\n", regs->ARM_lr);
+	printk("pc : [<%08lx>]    lr : [<%08lx>]    psr: %08lx\n"
+	       "sp : %08lx  ip : %08lx  fp : %08lx\n",
+		regs->ARM_pc, regs->ARM_lr, regs->ARM_cpsr,
+		regs->ARM_sp, regs->ARM_ip, regs->ARM_fp);
+
+*/
+
+    pgd = pgd_offset(current->mm, addr);
+    pud = pud_offset(pgd, addr);
+    pmd = pmd_offset(pud, addr);
+    if (addr & SECTION_SIZE)
+       { pmd++;}
+
+	domain=get_pmd_domain(pmd);
+	domain_copy=domain;
+	if(domain<0)
+		printk("[do_difc_domain_fault] not registered domain\n");
+
+
+	printk("[do_difc_domain_fault] pmd_domain %u\n",domain);
+
+
+    __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+
+	
+	s_tsk = find_task_by_vpid(task_tgid_vnr(current));
+	d_tsk = find_task_by_vpid(task_pid_vnr(current));
+
+/*
+	if (s_tsk && d_tsk) {
+		task_lock(s_tsk);
+		task_lock(d_tsk);
+
+		ret_val=security_tasks_labels_allowed(s_tsk,d_tsk);
+
+		task_unlock(s_tsk);
+		task_unlock(d_tsk);
+
+	}
+	
+*/
+	//modify_domain(DOMAIN_SANDBOX,DOMAIN_CLIENT);
+	//modify_domain(DOMAIN_UNTRUSTED,DOMAIN_CLIENT);
+	
+if(ret_val==0)
+	{	
+		printk("[do_difc_domain_fault] difc check was ok, making domain(%u) accessable\n",domain);
+		modify_domain(domain_copy,DOMAIN_CLIENT);
+	}
+else
+	{
+		printk("[do_difc_domain_fault] difc check was not ok! domain(%u) remains NoAcc\n",domain);
+			do_exit(SIGKILL);
+
+	}
+
+//check dacr is changed
+	  __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+
+
+// should we do difc checking here?the problem with doing it here is we need a way to 
+// stop other threads while we make the doman accessable in case the violating thread
+// actually has a valid capabilities for accessing the domain
+
+while(1){} //stop here for now 
+
+    return 0;
+
+}
+
+#endif
+
 struct fsr_info {
 	int	(*fn)(unsigned long addr, unsigned int fsr, struct pt_regs *regs);
 	int	sig;
