@@ -79,10 +79,8 @@ int mm_udom_alloc(struct mm_struct *mm)
 
 	ret = ffz(mm_udom_allocation_map(mm));//skip the first three domains
 
-    printk("ret:%d \n",ret);
 
 	mm_set_udom_allocated(mm, ret);
-	    printk("ret:%d \n",ret);
 
 
 	return ret;
@@ -135,4 +133,29 @@ asmlinkage long sys_udom_alloc(unsigned long flags, unsigned long init_val)
 out:
 	up_write(&current->mm->mmap_sem);
 	return ret;
+}
+
+asmlinkage long sys_udom_free(unsigned long udom)
+{
+
+	int ret;
+	unsigned long dacr = 0;
+
+	down_write(&current->mm->mmap_sem);
+
+
+	modify_domain(udom,DOMAIN_CLIENT);
+
+	mm_udom_free(current->mm, udom);
+
+	__asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("allocated udom:%d, dacr=0x%lx\n",udom, dacr);
+
+out:
+	up_write(&current->mm->mmap_sem);
+	return ret;
+
+
 }
