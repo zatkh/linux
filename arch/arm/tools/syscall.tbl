@@ -444,3 +444,4 @@
 428	common	set_task_domain		sys_set_task_domain
 429	common	difc_enter_domain		sys_difc_enter_domain_wrapper
 430	common	difc_exit_domain		sys_difc_exit_domain_wrapper
+431	common	udom_alloc		sys_udom_alloc

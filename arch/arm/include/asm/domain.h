@@ -62,6 +62,33 @@
 //#define DOMAIN_MANAGER	1
 //#endif
 
+#define udom_alloc_mask(udom) (0x1 << udom)
+
+#define mm_udom_allocation_map(mm) (mm->context.udom_allocation_map)
+
+#define __mm_udom_allocated(mm, udom) {	\
+	mm_udom_allocation_map(mm) |= udom_alloc_mask(udom); \
+}
+
+#define __mm_udom_free(mm, udom) {	\
+	mm_udom_allocation_map(mm) &= ~udom_alloc_mask(udom);	\
+}
+
+#define __mm_udom_is_allocated(mm, udom)	\
+	(mm_udom_allocation_map(mm) & udom_alloc_mask(udom))
+
+#define __mm_udom_is_reserved(udom) (reserved_allocation_mask & \
+				       udom_alloc_mask(udom))
+
+
+#define mm_set_udom_allocated(mm, udom) do {		\
+	mm_udom_allocation_map(mm) |= (1U << udom);	\
+} while (0)
+#define mm_set_udom_free(mm, udom) do {			\
+	mm_udom_allocation_map(mm) &= ~(1U << udom);	\
+} while (0)
+
+
 #define domain_mask(dom)	((3) << (2 * (dom)))
 #define domain_val(dom,type)	((type) << (2 * (dom)))
 
@@ -97,7 +124,6 @@
 
 #ifndef __ASSEMBLY__
 
-#ifdef CONFIG_CPU_CP15_MMU
 static inline unsigned int get_domain(void)
 {
 	unsigned int domain;
@@ -117,18 +143,6 @@ static inline void set_domain(unsigned val)
 	  : : "r" (val) : "memory");
 	isb();
 }
-#else
-static inline unsigned int get_domain(void)
-{
-	return 0;
-}
-
-static inline void set_domain(unsigned val)
-{
-}
-#endif
-
-#ifdef CONFIG_CPU_USE_DOMAINS
 #define modify_domain(dom,type)					\
 	do {							\
 		unsigned int domain = get_domain();		\
@@ -137,9 +151,7 @@ static inline void set_domain(unsigned val)
 		set_domain(domain);				\
 	} while (0)
 
-#else
-static inline void modify_domain(unsigned dom, unsigned type)	{ }
-#endif
+
 
 /*
  * Generate the T (user) versions of the LDR/STR and related
@@ -166,3 +178,4 @@ static inline void modify_domain(unsigned dom, unsigned type)	{ }
 #endif /* __ASSEMBLY__ */
 
 #endif /* !__ASM_PROC_DOMAIN_H */
+

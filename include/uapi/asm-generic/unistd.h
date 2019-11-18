@@ -838,10 +838,12 @@ __SYSCALL(__NR_set_task_domain, sys_set_task_domain)
 __SYSCALL(__NR_difc_enter_domain, sys_difc_enter_domain_wrapper)
 #define __NR_difc_exit_domain 430
 __SYSCALL(__NR_difc_exit_domain, sys_difc_exit_domain_wrapper)
+#define __NR_udom_alloc 431
+__SYSCALL(__NR_udom_alloc, sys_udom_alloc)
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 431
+#define __NR_syscalls 432
 
 /*
  * 32 bit systems traditionally used different
