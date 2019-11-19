@@ -96,3 +96,38 @@ int mm_udom_free(struct mm_struct *mm, int udom)
 
 	return 0;
 }
+
+
+
+static inline
+int udom_get(struct mm_struct *mm, int udom)
+{
+
+
+	return 0;
+}
+
+static inline
+int udom_set(int udom, unsigned val)
+{
+	/*	unsigned long dacr = 0;
+	unsigned int domain;
+
+		domain &= ~domain_mask(dom);			
+		domain = domain | domain_val(dom, type);	
+		set_domain(domain);		*/		
+	
+}
+
+
+
+/*
+ * Try to dedicate one of the protection keys to be used as an
+ * execute-only protection key.
+ */
+extern int __execute_only_udom(struct mm_struct *mm);
+static inline int execute_only_udom(struct mm_struct *mm)
+{
+
+	return __execute_only_udom(mm);
+}

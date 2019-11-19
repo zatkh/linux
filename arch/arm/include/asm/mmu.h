@@ -32,8 +32,10 @@ typedef struct {
 	 * bit unset -> key available for allocation
 	 */
 	u32 udom_allocation_map;
-	s16 execute_only_udom; /* key holding execute-only protection */
-
+	s16 execute_only_udom; /* udom holding execute-only protection */
+	s16 read_only_udom ; /* udom holding read-only protection */
+	s16 write_only_udom ; /* udom holding write-only protection */
+	
 #endif
 } mm_context_t;
 

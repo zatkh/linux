@@ -40,6 +40,9 @@ init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 		mm->context.udom_allocation_map = 0xf;
 		/* -1 means unallocated or invalid */
 		mm->context.execute_only_udom = -1;
+		mm->context.read_only_udom = -1;
+		mm->context.write_only_udom = -1;
+
 	
 #endif
 
@@ -114,6 +117,8 @@ init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 		mm->context.udom_allocation_map = 0xf;
 		/* -1 means unallocated or invalid */
 		mm->context.execute_only_udom = -1;
+		mm->context.read_only_udom = -1;
+		mm->context.write_only_udom = -1;
 	
 #endif
 

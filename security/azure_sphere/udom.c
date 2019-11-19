@@ -66,3 +66,57 @@ out:
 
 
 }
+
+int __execute_only_udom(struct mm_struct *mm)
+{
+	bool need_to_set_mm_udom = false;
+	int execute_only_udom = mm->context.execute_only_udom;
+	int ret;
+
+	/* Do we need to assign a udom for mm's execute-only maps? */
+	if (execute_only_udom == -1) {
+		/* Go allocate one to use, which might fail */
+		execute_only_udom = mm_udom_alloc(mm);
+		if (execute_only_udom < 0)
+			return -1;
+		need_to_set_mm_udom = true;
+	}
+
+	/*
+	 * We do not want to go through the relatively costly
+	 * dance to set DACR if we do not need to.  Check it
+	 * first and assume that if the execute-only udom is
+	 * write-disabled that we do not have to set it
+	 * ourselves.  We need preempt off so that nobody
+	 * can make fpregs inactive.
+	 */
+	/*preempt_disable();
+	if (!need_to_set_mm_udom &&
+	    current->thread.fpu.initialized &&
+	    !__pkru_allows_read(read_pkru(), execute_only_udom)) {
+		preempt_enable();
+		return execute_only_udom;
+	}
+	preempt_enable();
+*/
+	/*
+	 * Set up PKRU so that it denies access for everything
+	 * other than execution.
+	 */
+	ret = arch_set_user_udom_access(current, execute_only_udom,
+			PKEY_DISABLE_ACCESS);
+	/*
+	 * If the PKRU-set operation failed somehow, just return
+	 * 0 and effectively disable execute-only support.
+	 */
+	if (ret) {
+		mm_set_udom_free(mm, execute_only_udom);
+		return -1;
+	}
+
+	/* We got one, store it and use it from here on out */
+	if (need_to_set_mm_udom)
+		mm->context.execute_only_udom = execute_only_udom;
+	return execute_only_udom;
+}
+
