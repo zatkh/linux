@@ -979,6 +979,8 @@ asmlinkage long sys_pwritev2(unsigned long fd, const struct iovec __user *vec,
 			    rwf_t flags);
 asmlinkage long sys_pkey_mprotect(unsigned long start, size_t len,
 				  unsigned long prot, int pkey);
+asmlinkage long sys_udom_mprotect(unsigned long start, size_t len,
+				  unsigned long prot, int udom);				  
 asmlinkage long sys_pkey_alloc(unsigned long flags, unsigned long init_val);
 asmlinkage long sys_pkey_free(int pkey);
 asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags,

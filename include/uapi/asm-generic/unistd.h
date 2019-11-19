@@ -842,9 +842,12 @@ __SYSCALL(__NR_difc_exit_domain, sys_difc_exit_domain_wrapper)
 __SYSCALL(__NR_udom_alloc, sys_udom_alloc)
 #define __NR_udom_free 432
 __SYSCALL(__NR_udom_free, sys_udom_free)
+#define __NR_udom_mprotect 433
+__SYSCALL(__NR_udom_mprotect, sys_udom_mprotect)
+
 
 #undef __NR_syscalls
-#define __NR_syscalls 433
+#define __NR_syscalls 434
 
 /*
  * 32 bit systems traditionally used different
