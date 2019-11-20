@@ -1,30 +1,4 @@
 #include <linux/mm.h>
-#include <linux/device.h>
-#include <linux/lsm_hooks.h>
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/mount.h>
-#include <linux/kernel.h>
-#include <linux/binfmts.h>
-#include <linux/types.h>
-#include <linux/security.h>
-#include <linux/file.h>
-#include <linux/dcache.h>
-#include <linux/cred.h>
-#include <linux/uaccess.h>
-#include <linux/mman.h>
-#include <linux/fs.h>
-#include <linux/miscdevice.h>
-
-#include <azure-sphere/security.h>
-
-#include <asm/syscall.h>
-#include <linux/compat.h>
-#include <linux/slab.h>
-#include <linux/syscalls.h>	
-#include <linux/mm.h>
-
-#include <asm/elf.h>
 #include <asm/unistd.h>
 #include <asm/domain.h>
 #include <asm/page.h>
@@ -35,9 +9,9 @@
 
 #define arch_max_udom() 16
 
-int udom_total; /* total udoms as per device tree */
-u32 initial_allocation_mask; /*  bits set for the initially allocated keys */
-u32 reserved_allocation_mask; /* bits set for reserved keys */
+extern int udom_total; /* total udoms as per device tree */
+extern u32 initial_allocation_mask; /*  bits set for the initially allocated keys */
+extern u32 reserved_allocation_mask; /* bits set for reserved keys */
 
 
 static inline bool mm_udom_is_allocated(struct mm_struct *mm, int udom)
@@ -98,24 +72,36 @@ int mm_udom_free(struct mm_struct *mm, int udom)
 }
 
 
-
+// this should check if a task has the right capabilty to get udom info
+// it shouldn\t get info to all tasks, so basically should check the task caps
 static inline
-int udom_get(struct mm_struct *mm, int udom)
-{
+int udom_get(int udom)
+{	
+		unsigned long dacr = 0;						
+	unsigned int domain = get_domain();	
+		domain &= domain_mask(udom);
+	
+
+	__asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
 
 
-	return 0;
+	int ret= (domain >> (2 * (udom)));	
+
+	return  ret;	
+
 }
 
 static inline
 int udom_set(int udom, unsigned val)
 {
-	/*	unsigned long dacr = 0;
-	unsigned int domain;
+	unsigned int domain = get_domain();		
+	domain &= ~domain_mask(udom);			
+	domain = domain | domain_val(udom, val);	
+	set_domain(domain);				
 
-		domain &= ~domain_mask(dom);			
-		domain = domain | domain_val(dom, type);	
-		set_domain(domain);		*/		
+	return 0;
 	
 }
 

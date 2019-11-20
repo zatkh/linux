@@ -1,8 +1,36 @@
 
+#include <linux/device.h>
+#include <linux/lsm_hooks.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/mount.h>
+#include <linux/kernel.h>
+#include <linux/binfmts.h>
+#include <linux/types.h>
+#include <linux/security.h>
+#include <linux/file.h>
+#include <linux/dcache.h>
+#include <linux/cred.h>
+#include <linux/uaccess.h>
+#include <linux/mman.h>
+#include <linux/fs.h>
+#include <linux/miscdevice.h>
 
+#include <azure-sphere/security.h>
+
+#include <asm/syscall.h>
+#include <linux/compat.h>
+#include <linux/slab.h>
+#include <linux/syscalls.h>	
+
+#include <asm/elf.h>
 #include <asm/udom.h>
 
 #include "lsm.h"
+
+int udom_total; /* total udoms as per device tree */
+u32 initial_allocation_mask; /*  bits set for the initially allocated keys */
+u32 reserved_allocation_mask; /* bits set for reserved keys */
 
 
 
@@ -55,6 +83,11 @@ asmlinkage int sys_udom_free(unsigned long udom)
 
 	mm_udom_free(current->mm, udom);
 
+	int udom_client_acc= udom_get(DOMAIN_KERNEL);
+	if(udom_client_acc==DOMAIN_CLIENT)
+	    printk("client udom acc:%d\n",udom_client_acc);
+
+
 	__asm__ __volatile__(
             "mrc p15, 0, %[result], c3, c0, 0\n"
             : [result] "=r" (dacr) : );
@@ -103,8 +136,8 @@ int __execute_only_udom(struct mm_struct *mm)
 	 * Set up PKRU so that it denies access for everything
 	 * other than execution.
 	 */
-	ret = arch_set_user_udom_access(current, execute_only_udom,
-			PKEY_DISABLE_ACCESS);
+	//ret = arch_set_user_udom_access(current, execute_only_udom,
+	//		PKEY_DISABLE_ACCESS);
 	/*
 	 * If the PKRU-set operation failed somehow, just return
 	 * 0 and effectively disable execute-only support.

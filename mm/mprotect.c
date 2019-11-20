@@ -580,8 +580,9 @@ out:
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 // for now start addr should be allighned the same as difc_set_domain, this is assumption
+
 static int do_mprotect_udom(unsigned long start, size_t len,
-		unsigned long prot, int udom)
+		unsigned long prot, int pkey)
 {
 	unsigned long nstart, end, tmp, reqprot;
 	struct vm_area_struct *vma, *prev;
@@ -615,7 +616,7 @@ static int do_mprotect_udom(unsigned long start, size_t len,
 	 * them use it here.
 	 */
 	error = -EINVAL;
-	if ((udom != -1) && !mm_udom_is_allocated(current->mm, udom))
+	if ((pkey != -1) && !mm_pkey_is_allocated(current->mm, pkey))
 		goto out;
 
 	vma = find_vma(current->mm, start);
@@ -646,7 +647,7 @@ static int do_mprotect_udom(unsigned long start, size_t len,
 	for (nstart = start ; ; ) {
 		unsigned long mask_off_old_flags;
 		unsigned long newflags;
-		int new_vma_udom;
+		int new_vma_pkey;
 
 		/* Here we know that vma->vm_start <= nstart < vma->vm_end. */
 
@@ -662,7 +663,7 @@ static int do_mprotect_udom(unsigned long start, size_t len,
 		mask_off_old_flags = VM_READ | VM_WRITE | VM_EXEC |
 					VM_FLAGS_CLEAR;
 
-		new_vma_udom = arch_override_mprotect_pkey(vma, prot, udom);
+		new_vma_pkey = arch_override_mprotect_pkey(vma, prot, pkey);
 		newflags = calc_vm_prot_bits(prot, new_vma_pkey);
 		newflags |= (vma->vm_flags & ~mask_off_old_flags);
 
@@ -700,7 +701,6 @@ out:
 	up_write(&current->mm->mmap_sem);
 	return error;
 }
-
 
 SYSCALL_DEFINE4(udom_mprotect, unsigned long, start, size_t, len,
 		unsigned long, prot, int, udom)
