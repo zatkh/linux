@@ -844,10 +844,15 @@ __SYSCALL(__NR_udom_alloc, sys_udom_alloc)
 __SYSCALL(__NR_udom_free, sys_udom_free)
 #define __NR_udom_mprotect 433
 __SYSCALL(__NR_udom_mprotect, sys_udom_mprotect)
+#define __NR_udom_get 434
+__SYSCALL(__NR_udom_get, sys_udom_get)
+#define __NR_udom_set 435
+__SYSCALL(__NR_udom_set, sys_udom_set)
+
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 434
+#define __NR_syscalls 436
 
 /*
  * 32 bit systems traditionally used different

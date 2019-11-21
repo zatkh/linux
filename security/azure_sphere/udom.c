@@ -100,6 +100,22 @@ out:
 
 }
 
+asmlinkage int sys_udom_get(int udom)
+{	
+	
+
+	return  udom_get(udom);	
+
+}
+
+asmlinkage int sys_udom_set(int udom, unsigned val)
+{
+			
+	return udom_set(udom,val);
+	
+}
+
+
 int __execute_only_udom(struct mm_struct *mm)
 {
 	bool need_to_set_mm_udom = false;
