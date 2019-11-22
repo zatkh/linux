@@ -425,6 +425,11 @@ sys_mmap2:
 		b	sys_mmap_pgoff
 ENDPROC(sys_mmap2)
 
+sys_udom_mmap:
+		str	r5, [sp, #4]
+		b	sys_udom_mmap_pgoff
+ENDPROC(sys_udom_mmap)
+
 #ifdef CONFIG_OABI_COMPAT
 
 /*

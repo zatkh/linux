@@ -449,4 +449,6 @@
 433	common	udom_mprotect		sys_udom_mprotect
 434	common	udom_get		sys_udom_get
 435	common	udom_set		sys_udom_set
+436	common	udom_mmap		sys_udom_mmap
+
 

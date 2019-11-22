@@ -848,11 +848,13 @@ __SYSCALL(__NR_udom_mprotect, sys_udom_mprotect)
 __SYSCALL(__NR_udom_get, sys_udom_get)
 #define __NR_udom_set 435
 __SYSCALL(__NR_udom_set, sys_udom_set)
+#define __NR_udom_mmap 436
+__SYSCALL(__NR_udom_mmap, sys_udom_mmap)
 
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 436
+#define __NR_syscalls 437
 
 /*
  * 32 bit systems traditionally used different
