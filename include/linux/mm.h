@@ -2334,6 +2334,16 @@ extern unsigned long do_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot, unsigned long flags,
 	vm_flags_t vm_flags, unsigned long pgoff, unsigned long *populate,
 	struct list_head *uf);
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+
+extern unsigned long udom_do_mmap(unsigned long udom_id,struct file *file, unsigned long addr,
+unsigned long len, unsigned long prot, unsigned long flags,
+vm_flags_t vm_flags, unsigned long pgoff, unsigned long *populate,
+struct list_head *uf);
+#endif
+
+
 extern int __do_munmap(struct mm_struct *, unsigned long, size_t,
 		       struct list_head *uf, bool downgrade);
 extern int do_munmap(struct mm_struct *, unsigned long, size_t,
@@ -2347,6 +2357,19 @@ do_mmap_pgoff(struct file *file, unsigned long addr,
 {
 	return do_mmap(file, addr, len, prot, flags, 0, pgoff, populate, uf);
 }
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+static inline unsigned long
+udom_do_mmap_pgoff(unsigned long udom_id,struct file *file, unsigned long addr,
+	unsigned long len, unsigned long prot, unsigned long flags,
+	unsigned long pgoff, unsigned long *populate,
+	struct list_head *uf)
+{
+	return udom_do_mmap(udom_id,file, addr, len, prot, flags, 0, pgoff, populate, uf);
+}
+
+#endif
 
 #ifdef CONFIG_MMU
 extern int __mm_populate(unsigned long addr, unsigned long len,
