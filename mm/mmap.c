@@ -1633,15 +1633,27 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 			unsigned long pgoff, unsigned long *populate,
 			struct list_head *uf)
 {
-			printk("udom_do_mmap udom_id:%ld \n",udom_id);
 
 	struct mm_struct *mm = current->mm;
+	unsigned int i;
+	pgd_t *pgd;
+    pud_t *pud;
+    pmd_t *pmd;
+	unsigned long counts=0;
+	unsigned long dacr = 0;
+	int domain_copy=udom_id;
+
 	int pkey = 0;
 
 	*populate = 0;
 
+
 	if (!len)
 		return -EINVAL;
+
+	counts=len/SECTION_SIZE;
+	printk("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
+	
 
 	/*
 	 * Does the application expect PROT_READ to imply PROT_EXEC?
@@ -1687,11 +1699,12 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 			return -EEXIST;
 	}
 
-	if (prot == PROT_EXEC) {
+/*	if (prot == PROT_EXEC) {
 		pkey = execute_only_pkey(mm);
 		if (pkey < 0)
 			pkey = 0;
 	}
+*/// for ro/wo/eo prot we dedicate specific uTiles
 
 	/* Do simple checking here so the lower-level routines won't have
 	 * to. we assume access permissions have been handled by the open
@@ -1810,6 +1823,35 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 	    ((vm_flags & VM_LOCKED) ||
 	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
 		*populate = len;
+
+
+	spin_lock(&mm->page_table_lock);
+    pgd = pgd_offset(mm, addr);
+    pud = pud_offset(pgd, addr);
+    pmd = pmd_offset(pud, addr);
+	//ptep = pte_offset_map(pmd, addr);
+	
+    if (addr & SECTION_SIZE)
+        pmd++;
+
+	for (i = 0; i < counts; ++i) {
+		printk(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+        *pmd = (*pmd & 0xfffffe1f) | (domain_copy << 5);
+        flush_pmd_entry(pmd);
+		printk(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+
+        pmd++;
+    }
+    spin_unlock(&mm->page_table_lock);	
+	//if labeld thread make it no access //DOMAIN_MANAGER
+	modify_domain(domain_copy,DOMAIN_MANAGER);
+
+
+	__asm__ __volatile__(
+    "mrc p15, 0, %[result], c3, c0, 0\n"
+    : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+
 	return addr;
 }
 
@@ -1857,6 +1899,12 @@ unsigned long udom_ksys_mmap_pgoff(unsigned long udom_id, unsigned long addr, un
 
 
 	retval = udom_vm_mmap_pgoff(udom_id,file, addr, len, prot, flags, 0);
+//retval = vm_mmap_pgoff(file, addr, len, prot, flags, 0);
+
+
+
+
+
 out_fput:
 	if (file)
 		fput(file);
