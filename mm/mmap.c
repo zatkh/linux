@@ -1844,7 +1844,7 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
     }
     spin_unlock(&mm->page_table_lock);	
 	//if labeld thread make it no access //DOMAIN_MANAGER
-	modify_domain(domain_copy,DOMAIN_MANAGER);
+	modify_domain(domain_copy,DOMAIN_CLIENT);
 
 
 	__asm__ __volatile__(
