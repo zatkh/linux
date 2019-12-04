@@ -417,6 +417,11 @@ sys_difc_exit_domain_wrapper:
 		b	sys_difc_exit_domain
 ENDPROC(sys_difc_exit_domain_wrapper)
 
+sys_udom_mmap:
+		str	r5, [sp, #4]
+		b	sys_udom_mmap_pgoff
+ENDPROC(sys_udom_mmap)
+
 /*
  * Note: off_4k (r5) is always units of 4K.  If we can't do the requested
  * offset, we return EINVAL.

@@ -618,7 +618,7 @@ static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_
 	s_tsk = find_task_by_vpid(task_tgid_vnr(current));
 	d_tsk = find_task_by_vpid(task_pid_vnr(current));
 
-
+/*
 	if (s_tsk && d_tsk) {
 		task_lock(s_tsk);
 		task_lock(d_tsk);
@@ -630,6 +630,7 @@ static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_
 
 	}
 	
+*/
 	//modify_domain(DOMAIN_SANDBOX,DOMAIN_CLIENT);
 	//modify_domain(DOMAIN_UNTRUSTED,DOMAIN_CLIENT);
 	
@@ -656,7 +657,7 @@ else
 // stop other threads while we make the doman accessable in case the violating thread
 // actually has a valid capabilities for accessing the domain
 
-//while(1){} //stop here for now 
+while(1){} //stop here for now 
 
     return 0;
 

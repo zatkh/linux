@@ -425,4 +425,10 @@
 408	common	set_task_domain		sys_set_task_domain
 409	common	difc_enter_domain		sys_difc_enter_domain_wrapper
 410	common	difc_exit_domain		sys_difc_exit_domain_wrapper
+411	common	udom_alloc		sys_udom_alloc
+412	common	udom_free		sys_udom_free
+413	common	udom_mprotect		sys_udom_mprotect
+414	common	udom_get		sys_udom_get
+415	common	udom_set		sys_udom_set
+416	common	udom_mmap		sys_udom_mmap
 

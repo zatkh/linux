@@ -38,7 +38,7 @@
 
 #include <azure-sphere/security.h>
 
-#ifdef CONFIG_EXTENDED_LSM
+#ifdef CONFIG_EXTENDED_LSM_DIFC
 
 #include <asm/syscall.h>
 #include <linux/compat.h>
@@ -54,7 +54,7 @@
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
 
-#endif /*CONFIG_EXTENDED_LSM */
+#endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 #include "lsm.h"
 
@@ -102,6 +102,7 @@ static int debug = 1;
 
 
 #ifdef CONFIG_EXTENDED_LSM
+
 
 struct syscall_argdesc (*seccomp_syscalls_argdesc)[] = NULL;
 
@@ -151,6 +152,9 @@ void __init seccomp_init(void)
 	pr_info("[seccomp_init] initializing seccomp-based sandboxing\n");
 	init_argdesc();
 }
+
+
+#endif /* CONFIG_EXTENDED_LSM */
 
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
@@ -1691,7 +1695,6 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
-#endif /* CONFIG_EXTENDED_LSM */
 
 
 //btw why this is not actually setting pgid, just a dummy?
@@ -2121,17 +2124,17 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 static struct security_hook_list azure_sphere_hooks[] = {
 
-    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
+	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
     LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
     LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
     LSM_HOOK_INIT(setprocattr, azure_sphere_security_setprocattr),
 
-
+*/
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-
+/*
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
@@ -2144,11 +2147,12 @@ static struct security_hook_list azure_sphere_hooks[] = {
 	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
 	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 
-
+*/
 #endif
 
 
 };
+
 
 
 static int __init azure_sphere_lsm_init(void)
