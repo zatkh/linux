@@ -51,6 +51,8 @@
 #include <asm/cacheflush.h>
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
+#include <asm/udom.h>
+
 
 #include "internal.h"
 
@@ -1844,12 +1846,15 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
     }
     spin_unlock(&mm->page_table_lock);	
 	//if labeld thread make it no access //DOMAIN_MANAGER
-	modify_domain(domain_copy,DOMAIN_CLIENT);
+
+		dacr=get_dacr();
+		    printk("dacr=0x%lx\n", dacr);
 
 
-	__asm__ __volatile__(
-    "mrc p15, 0, %[result], c3, c0, 0\n"
-    : [result] "=r" (dacr) : );
+	modify_udom(domain_copy,DOMAIN_MANAGER);
+
+
+	dacr=get_dacr();
     printk("dacr=0x%lx\n", dacr);
 
 	return addr;

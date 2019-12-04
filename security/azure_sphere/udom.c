@@ -34,6 +34,9 @@ u32 reserved_allocation_mask; /* bits set for reserved keys */
 
 
 
+
+
+
 //set current task labels
 asmlinkage long sys_udom_alloc(unsigned long flags, unsigned long init_val)
 {

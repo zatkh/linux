@@ -14,6 +14,37 @@ extern u32 initial_allocation_mask; /*  bits set for the initially allocated key
 extern u32 reserved_allocation_mask; /* bits set for reserved keys */
 
 
+static inline unsigned int get_dacr(void)
+{
+	unsigned int dacr;
+
+ __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+	
+	return dacr;
+}
+
+static inline void set_dacr(unsigned val)
+{
+	asm volatile(
+	"mcr	p15, 0, %0, c3, c0	@ set domain"
+	  : : "r" (val) : "memory");
+	isb();
+}
+
+static inline void modify_udom(unsigned dom,int type)
+{	
+
+		unsigned int domain = get_dacr();		
+		domain &= ~domain_mask(dom);			
+		domain = domain | domain_val(dom, type);	
+		set_dacr(domain);				
+
+
+}
+
+
 static inline bool mm_udom_is_allocated(struct mm_struct *mm, int udom)
 {
 	if (udom < 3 || udom >= arch_max_udom())
