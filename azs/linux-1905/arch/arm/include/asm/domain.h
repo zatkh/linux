@@ -94,21 +94,15 @@
 
 #ifdef CONFIG_CPU_SW_DOMAIN_PAN
 #define DACR_INIT \
-	(domain_val(DOMAIN_USER, DOMAIN_NOACCESS) | \
+	(domain_val(DOMAIN_USER, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_KERNEL, DOMAIN_MANAGER) | \
 	 domain_val(DOMAIN_IO, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_SANDBOX, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_TRUSTED, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_UNTRUSTED, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_VECTORS, DOMAIN_CLIENT))
 #else
 #define DACR_INIT \
 	(domain_val(DOMAIN_USER, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_KERNEL, DOMAIN_MANAGER) | \
 	 domain_val(DOMAIN_IO, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_SANDBOX, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_TRUSTED, DOMAIN_CLIENT) | \
-	 domain_val(DOMAIN_UNTRUSTED, DOMAIN_CLIENT) | \
 	 domain_val(DOMAIN_VECTORS, DOMAIN_CLIENT))
 #endif
 
@@ -118,7 +112,7 @@
 	domain_val(DOMAIN_VECTORS, DOMAIN_CLIENT)
 
 #define DACR_UACCESS_DISABLE	\
-	(__DACR_DEFAULT | domain_val(DOMAIN_USER, DOMAIN_NOACCESS))
+	(__DACR_DEFAULT | domain_val(DOMAIN_USER, DOMAIN_CLIENT))
 #define DACR_UACCESS_ENABLE	\
 	(__DACR_DEFAULT | domain_val(DOMAIN_USER, DOMAIN_CLIENT))
 
@@ -138,10 +132,11 @@ static inline unsigned int get_domain(void)
 
 static inline void set_domain(unsigned val)
 {
-	asm volatile(
+/*	asm volatile(
 	"mcr	p15, 0, %0, c3, c0	@ set domain"
 	  : : "r" (val) : "memory");
 	isb();
+	*/
 }
 #define modify_domain(dom,type)					\
 	do {							\
