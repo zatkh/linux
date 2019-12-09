@@ -113,8 +113,9 @@ asmlinkage int sys_udom_get(int udom)
 
 asmlinkage int sys_udom_set(int udom, unsigned val)
 {
-			
-	return udom_set(udom,val);
+	//check labels here to make sure not every body can change udom permissions		
+	 modify_udom(udom,val);
+	 return 0;
 	
 }
 

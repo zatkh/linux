@@ -1850,8 +1850,13 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 		dacr=get_dacr();
 		    printk("dacr=0x%lx\n", dacr);
 
-
-	modify_udom(domain_copy,DOMAIN_MANAGER);
+	if(prot ==PROT_NONE)
+		{
+			modify_udom(domain_copy,DOMAIN_NOACCESS);
+		}
+	else{
+			modify_udom(domain_copy,DOMAIN_CLIENT);
+	}	
 
 
 	dacr=get_dacr();
