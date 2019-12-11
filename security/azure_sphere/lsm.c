@@ -53,6 +53,8 @@
 #include <asm/pgtable.h>
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
+#include <asm/udom.h>
+
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
@@ -1762,7 +1764,8 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 
 static void azure_sphere_cred_free(struct cred *cred)
 {
-	struct azure_sphere_task_cred *tsec = cred->security;	
+	struct azure_sphere_task_cred *tsec = cred->security;
+	kfree(table);
 	kfree(tsec);
 //	difc_lsm_debug("successfull free\n");
 
@@ -1827,6 +1830,14 @@ static void azure_sphere_cred_init_security(void)
 	tsec->is_app_man = true;
     tsec->capabilities = AZURE_SPHERE_CAP_ALL;
     cred->security = tsec;
+
+
+	alloc_hash();
+    if (table == NULL) {
+        panic("couldn't allocate udoms hash_table.\n");
+ 
+    }
+
 	difc_lsm_debug("[azure_sphere_cred_init_security] initialized, tsec->tcb %d\n",tsec->tcb);
 
 
@@ -2125,8 +2136,10 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 static struct security_hook_list azure_sphere_hooks[] = {
 
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
+	LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
+
+
 	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
-    LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
     LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
     LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
