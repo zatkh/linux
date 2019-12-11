@@ -454,5 +454,7 @@
 441 common udom_mprotect_exec sys_udom_mprotect_exec
 442 common mprotect_exec sys_mprotect_exec
 443 common udom_munmap sys_udom_munmap
+444 common alloc_label sys_alloc_label
+445 common set_task_label sys_set_task_label
 
 

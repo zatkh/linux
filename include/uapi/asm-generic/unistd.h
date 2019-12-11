@@ -864,10 +864,15 @@ __SYSCALL(__NR_udom_mprotect_exec, sys_udom_mprotect_exec)
 __SYSCALL(__NR_mprotect_exec, sys_mprotect_exec)
 #define __NR_udom_munmap 443
 __SYSCALL(__NR_udom_munmap, sys_udom_munmap)
+#define __NR_alloc_label 444
+__SYSCALL(__NR_alloc_label, sys_alloc_label)
+#define __NR_set_task_label 445
+__SYSCALL(__NR_set_task_label, sys_set_task_label)
+
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 444
+#define __NR_syscalls 446
 
 /*
  * 32 bit systems traditionally used different

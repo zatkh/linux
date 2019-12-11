@@ -635,6 +635,19 @@ static void __init lsm_early_task(struct task_struct *task)
 	RC;							\
 })
 
+
+#define call_int_hook_no_check(FUNC, ...) ({			\
+	int RC;						\
+	do {							\
+		struct security_hook_list *P;			\
+								\
+		hlist_for_each_entry(P, &security_hook_heads.FUNC, list) { \
+			RC = P->hook.FUNC(__VA_ARGS__);		\
+		}						\
+	} while (0);						\
+	RC;							\
+})
+
 /* Security operations */
 
 int security_binder_set_context_mgr(struct task_struct *mgr)
@@ -2348,3 +2361,40 @@ void security_bpf_prog_free(struct bpf_prog_aux *aux)
 	call_void_hook(bpf_prog_free_security, aux);
 }
 #endif /* CONFIG_BPF_SYSCALL */
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+{
+
+	return call_int_hook_no_check(set_task_label,tsk, label,  op_type, label_type, bulk_label);
+}
+
+int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.check_tasks_labels_allowed, list) {
+		rc = hp->hook.check_tasks_labels_allowed(s_tsk,d_tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
+
+
+
+int security_check_task_labeled (struct task_struct *tsk)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.check_task_labeled, list) {
+		rc = hp->hook.check_task_labeled(tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
+#endif /* CONFIG_EXTENDED_LSM_DIFC */

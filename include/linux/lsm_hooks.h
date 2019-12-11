@@ -29,6 +29,11 @@
 #include <linux/init.h>
 #include <linux/rculist.h>
 
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+typedef uint64_t label_t;
+#endif
+
 /**
  * union security_list_options - Linux Security Module hook function list
  *
@@ -1798,6 +1803,19 @@ union security_list_options {
 	int (*bpf_prog_alloc_security)(struct bpf_prog_aux *aux);
 	void (*bpf_prog_free_security)(struct bpf_prog_aux *aux);
 #endif /* CONFIG_BPF_SYSCALL */
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	int  (*set_task_label) (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label);
+	void*  (*copy_user_label) (const char __user *label);
+	int  (*check_tasks_labels_allowed) (struct task_struct *s_tsk,struct task_struct *d_tsk);
+	int (*check_task_labeled) (struct task_struct *tsk);
+
+
+
+#endif
+
 };
 
 struct security_hook_heads {
@@ -2035,6 +2053,16 @@ struct security_hook_heads {
 	struct hlist_head bpf_prog_alloc_security;
 	struct hlist_head bpf_prog_free_security;
 #endif /* CONFIG_BPF_SYSCALL */
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	struct hlist_head set_task_label;
+	struct hlist_head copy_user_label;
+	struct hlist_head check_tasks_labels_allowed;
+	struct hlist_head check_task_labeled;
+	
+#endif
+
 } __randomize_layout;
 
 /*
