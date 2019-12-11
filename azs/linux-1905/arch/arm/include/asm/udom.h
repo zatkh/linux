@@ -5,13 +5,84 @@
 #include <asm/pgtable.h>
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
+#include <linux/slab.h>
 
-
+#define TABLE_SIZE 0x4000
 #define arch_max_udom() 16
+
+typedef struct _mpt_node {
+  void* buf;
+  size_t len;
+  int prot;
+  int udom;
+  int id;
+  struct _mpt_node* next;
+  /* 
+  _mpt_node(void* b, size_t l, int p) {
+    buf = b;
+    len = l;
+    prot = p;
+    udom = -1; 
+    next = NULL;
+  } */
+  //std::atomic_int cnt;
+} mpt_node;
+
+
+typedef struct _HashEntry {
+	int key;
+	mpt_node value;
+} HashEntry;
+
+
+extern char *table;
+extern int *udom_arr;
+extern HashEntry *mmap_table;
+
+void alloc_hash(void); 
+   
+mpt_node* hash_get(int key);    
+
+void hash_put(int key, mpt_node* value);
+
+
+
+
 
 extern int udom_total; /* total udoms as per device tree */
 extern u32 initial_allocation_mask; /*  bits set for the initially allocated keys */
 extern u32 reserved_allocation_mask; /* bits set for reserved keys */
+
+
+static inline unsigned int get_dacr(void)
+{
+	unsigned int dacr;
+
+ __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+	
+	return dacr;
+}
+
+static inline void set_dacr(unsigned val)
+{
+	asm volatile(
+	"mcr	p15, 0, %0, c3, c0	@ set domain"
+	  : : "r" (val) : "memory");
+	isb();
+}
+
+static inline void modify_udom(unsigned dom,int type)
+{	
+
+		unsigned int domain = get_dacr();		
+		domain &= ~domain_mask(dom);			
+		domain = domain | domain_val(dom, type);	
+		set_dacr(domain);				
+
+
+}
 
 
 static inline bool mm_udom_is_allocated(struct mm_struct *mm, int udom)

@@ -431,4 +431,11 @@
 414	common	udom_get		sys_udom_get
 415	common	udom_set		sys_udom_set
 416	common	udom_mmap		sys_udom_mmap
+417	common	udom_mmap_cache		sys_udom_mmap_cache
+418 common udom_mprotect_set sys_udom_mprotect_set
+419 common udom_mprotect_evict sys_udom_mprotect_evict
+420 common udom_mprotect_grouping sys_udom_mprotect_grouping
+421 common udom_mprotect_exec sys_udom_mprotect_exec
+422 common mprotect_exec sys_mprotect_exec
+423 common udom_munmap sys_udom_munmap
 

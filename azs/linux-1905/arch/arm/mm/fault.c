@@ -27,6 +27,8 @@
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
+#include <asm/udom.h>
+
 
 #include "fault.h"
 
@@ -609,16 +611,14 @@ static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_
 	printk("[do_difc_domain_fault] pmd_domain %u\n",domain);
 
 
-    __asm__ __volatile__(
-            "mrc p15, 0, %[result], c3, c0, 0\n"
-            : [result] "=r" (dacr) : );
-    printk("dacr=0x%lx\n", dacr);
+    dacr=get_dacr();
+		    printk("dacr=0x%lx\n", dacr);
 
-	
+	/*
 	s_tsk = find_task_by_vpid(task_tgid_vnr(current));
 	d_tsk = find_task_by_vpid(task_pid_vnr(current));
 
-/*
+
 	if (s_tsk && d_tsk) {
 		task_lock(s_tsk);
 		task_lock(d_tsk);
@@ -630,7 +630,7 @@ static int do_difc_domain_fault(unsigned long addr, unsigned int fsr, struct pt_
 
 	}
 	
-*/
+
 	//modify_domain(DOMAIN_SANDBOX,DOMAIN_CLIENT);
 	//modify_domain(DOMAIN_UNTRUSTED,DOMAIN_CLIENT);
 	
@@ -656,7 +656,7 @@ else
 // should we do difc checking here?the problem with doing it here is we need a way to 
 // stop other threads while we make the doman accessable in case the violating thread
 // actually has a valid capabilities for accessing the domain
-
+*/
 while(1){} //stop here for now 
 
     return 0;
