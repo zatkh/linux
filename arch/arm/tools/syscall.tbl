@@ -408,9 +408,6 @@
 391	common	copy_file_range		sys_copy_file_range
 392	common	preadv2			sys_preadv2
 393	common	pwritev2		sys_pwritev2
-394	common	pkey_mprotect		sys_pkey_mprotect
-395	common	pkey_alloc		sys_pkey_alloc
-396	common	pkey_free		sys_pkey_free
 397	common	statx			sys_statx
 398	common	rseq			sys_rseq
 399	common	io_pgetevents		sys_io_pgetevents_time32
@@ -450,5 +447,12 @@
 434	common	udom_get		sys_udom_get
 435	common	udom_set		sys_udom_set
 436	common	udom_mmap		sys_udom_mmap
+437	common	udom_mmap_cache		sys_udom_mmap_cache
+438 common udom_mprotect_set sys_udom_mprotect_set
+439 common udom_mprotect_evict sys_udom_mprotect_evict
+440 common udom_mprotect_grouping sys_udom_mprotect_grouping
+441 common udom_mprotect_exec sys_udom_mprotect_exec
+442 common mprotect_exec sys_mprotect_exec
+443 common udom_munmap sys_udom_munmap
 
 

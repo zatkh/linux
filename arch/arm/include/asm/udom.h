@@ -5,9 +5,49 @@
 #include <asm/pgtable.h>
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
+#include <linux/slab.h>
 
-
+#define TABLE_SIZE 0x4000
 #define arch_max_udom() 16
+
+typedef struct _mpt_node {
+  void* buf;
+  size_t len;
+  int prot;
+  int udom;
+  int id;
+  struct _mpt_node* next;
+  /* 
+  _mpt_node(void* b, size_t l, int p) {
+    buf = b;
+    len = l;
+    prot = p;
+    udom = -1; 
+    next = NULL;
+  } */
+  //std::atomic_int cnt;
+} mpt_node;
+
+
+typedef struct _HashEntry {
+	int key;
+	mpt_node value;
+} HashEntry;
+
+
+extern char *table;
+extern int *udom_arr;
+extern HashEntry *mmap_table;
+
+void alloc_hash(void); 
+   
+mpt_node* hash_get(int key);    
+
+void hash_put(int key, mpt_node* value);
+
+
+
+
 
 extern int udom_total; /* total udoms as per device tree */
 extern u32 initial_allocation_mask; /*  bits set for the initially allocated keys */

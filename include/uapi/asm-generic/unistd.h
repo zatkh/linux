@@ -850,11 +850,24 @@ __SYSCALL(__NR_udom_get, sys_udom_get)
 __SYSCALL(__NR_udom_set, sys_udom_set)
 #define __NR_udom_mmap 436
 __SYSCALL(__NR_udom_mmap, sys_udom_mmap)
-
+#define __NR_udom_mmap_cache 437
+__SYSCALL(__NR_udom_mmap_cache, sys_udom_mmap_cache)
+#define __NR_udom_mprotect_set 438
+__SYSCALL(__NR_udom_mprotect_set, sys_udom_mprotect_set)
+#define __NR_udom_mprotect_evict 439
+__SYSCALL(__NR_udom_mprotect_evict, sys_udom_mprotect_evict)
+#define __NR_udom_mprotect_grouping 440
+__SYSCALL(__NR_udom_mprotect_grouping, sys_udom_mprotect_grouping)
+#define __NR_udom_mprotect_exec 441
+__SYSCALL(__NR_udom_mprotect_exec, sys_udom_mprotect_exec)
+#define __NR_mprotect_exec 442
+__SYSCALL(__NR_mprotect_exec, sys_mprotect_exec)
+#define __NR_udom_munmap 443
+__SYSCALL(__NR_udom_munmap, sys_udom_munmap)
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 437
+#define __NR_syscalls 444
 
 /*
  * 32 bit systems traditionally used different
