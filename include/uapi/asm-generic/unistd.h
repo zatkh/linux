@@ -868,11 +868,14 @@ __SYSCALL(__NR_udom_munmap, sys_udom_munmap)
 __SYSCALL(__NR_alloc_label, sys_alloc_label)
 #define __NR_set_task_label 445
 __SYSCALL(__NR_set_task_label, sys_set_task_label)
+#define __NR_udom_clone 446
+__SYSCALL(__NR_udom_clone, sys_udom_clone)
+
 
 
 
 #undef __NR_syscalls
-#define __NR_syscalls 446
+#define __NR_syscalls 447
 
 /*
  * 32 bit systems traditionally used different

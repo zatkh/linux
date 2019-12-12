@@ -456,5 +456,7 @@
 443 common udom_munmap sys_udom_munmap
 444 common alloc_label sys_alloc_label
 445 common set_task_label sys_set_task_label
+446 common udom_clone sys_udom_clone
+
 
 

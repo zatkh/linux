@@ -26,10 +26,4 @@
 
 struct task_struct;
 
-// Check if the caller is holding a given azure sphere capability
-bool azure_sphere_capable(azure_sphere_capability_t cap);
-
-// Get component id of p
-bool azure_sphere_get_component_id(struct azure_sphere_guid *component_id, struct task_struct *p);
-
 #endif

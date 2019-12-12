@@ -1663,15 +1663,27 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
     }
     spin_unlock(&mm->page_table_lock);
     difc_lsm_debug(" addr=0x%lx, counts=%ld\n", addr, counts);
+	//isb();
 	unlabeled_task = is_task_labeled(current);
 
-
+/* 
+		  __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+*/
 	if(!unlabeled_task)
 		{
 			difc_lsm_debug(" task is labedl so make its domain(%d) NoAcc\n",domain);
 			modify_domain(domain_copy,DOMAIN_NOACCESS);
 
+/* 	
+	__asm__ __volatile__(
+    "mrc p15, 0, %[result], c3, c0, 0\n"
+    : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
 
+*/
 		}
 	else
 	{
@@ -2135,11 +2147,6 @@ static struct security_hook_list azure_sphere_hooks[] = {
 
 */
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-
-	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
-	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
-	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 /*
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
@@ -2154,7 +2161,6 @@ static struct security_hook_list azure_sphere_hooks[] = {
 	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 
 */
-
 #endif
 
 
