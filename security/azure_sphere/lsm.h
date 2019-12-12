@@ -23,17 +23,18 @@
 #include <linux/types.h>
 #include <azure-sphere/security.h>
 
+
+extern struct lsm_blob_sizes azs_blob_sizes;
+static inline struct azure_sphere_task_cred *azs_cred(const struct cred *cred)
+{
+	return cred->security + azs_blob_sizes.lbs_cred;
+}
+
 #ifndef CONFIG_EXTENDED_LSM
 #include <linux/syscalls.h>	
 
 extern const struct syscall_argdesc __start_syscalls_argdesc[];
 extern const struct syscall_argdesc __stop_syscalls_argdesc[];
-extern struct lsm_blob_sizes azs_blob_sizes;
-
-
-
-
-
 
 
 #endif /* CONFIG_EXTENDED_LSM */

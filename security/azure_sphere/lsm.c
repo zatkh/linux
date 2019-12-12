@@ -54,11 +54,11 @@
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
+#include "lsm.h"
 
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
-#include "lsm.h"
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
@@ -1771,21 +1771,13 @@ static void azure_sphere_cred_free(struct cred *cred)
 
 }
 
-struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
-	.lbs_task = sizeof(struct azure_sphere_task_cred),
-};
-
-
-static inline struct azure_sphere_task_cred* azs_cred(const struct cred *cred)
-{
-	return cred->security + azs_blob_sizes.lbs_cred;
-}
-
 
 static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	struct azure_sphere_task_cred *old_tsec=azs_cred(old);
-	struct azure_sphere_task_cred *tsec=azs_cred(new);;
+	const struct azure_sphere_task_cred *old_tsec=azs_cred(old);
+	struct azure_sphere_task_cred *tsec=azs_cred(new);
+
+	*tsec = *old_tsec;
 /*
 	old_tsec = old->security;
 
@@ -2145,11 +2137,18 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
-static struct security_hook_list azure_sphere_hooks[] = {
+
+struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
+	.lbs_cred = sizeof(struct azure_sphere_task_cred),
+
+};
+
+
+static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
-	LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
+	//LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
 
 
 	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
