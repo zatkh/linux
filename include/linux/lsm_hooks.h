@@ -30,9 +30,7 @@
 #include <linux/rculist.h>
 
 
-#ifdef CONFIG_EXTENDED_LSM_DIFC
-typedef uint64_t label_t;
-#endif
+
 
 /**
  * union security_list_options - Linux Security Module hook function list

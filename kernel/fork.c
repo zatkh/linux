@@ -2324,7 +2324,8 @@ long _udom_do_fork(const char __user * label, unsigned long clone_flags,
 		get_task_struct(p);
 	}
 
-	//difc_set_task_label
+	//difc_set_task_label: set_task_label(0, REPLACE_LABEL, 0, &cur_label);
+	security_set_task_label(p,0,REPLACE_LABEL, 0, label);
 
 	wake_up_new_task(p);
 

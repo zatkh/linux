@@ -2364,11 +2364,12 @@ void security_bpf_prog_free(struct bpf_prog_aux *aux)
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+/*int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
 {
 
 	return call_int_hook_no_check(set_task_label,tsk, label,  op_type, label_type, bulk_label);
 }
+*/
 
 int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk)
 {
@@ -2397,4 +2398,21 @@ int security_check_task_labeled (struct task_struct *tsk)
 	}
 	return -EOPNOTSUPP;
 }
+
+int security_set_task_label (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.set_task_label, list) {
+		rc = hp->hook.set_task_label(tsk,label,op_type,label_type,bulk_label);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+
+
+}
+
+
 #endif /* CONFIG_EXTENDED_LSM_DIFC */

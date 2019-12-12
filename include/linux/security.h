@@ -32,6 +32,20 @@
 #include <linux/mm.h>
 #include <linux/fs.h>
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+typedef uint64_t label_t;
+
+#define SECRECY_LABEL  0
+#define INTEGRITY_LABEL  1
+
+#define ADD_LABEL     0
+#define REMOVE_LABEL  1
+#define REPLACE_LABEL 2
+
+#define CAPS_INIT 1
+
+#endif
+
 struct linux_binprm;
 struct cred;
 struct rlimit;
@@ -1822,6 +1836,8 @@ extern void *security_copy_user_label(const char __user *label);
 //extern int security_inode_set_label(struct inode *inode, void __user *label);
 extern int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk);
 extern int security_check_task_labeled(struct task_struct *tsk);
+extern int security_set_task_label (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label);
+
 //int security_path_chmod(const struct path *path, umode_t mode);
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */

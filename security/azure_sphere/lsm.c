@@ -72,14 +72,7 @@ static int debug = 1;
 #define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
 #define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
 
-#define SECRECY_LABEL  0
-#define INTEGRITY_LABEL  1
 
-#define ADD_LABEL     0
-#define REMOVE_LABEL  1
-#define REPLACE_LABEL 2
-
-#define CAPS_INIT 1
 
 #define difc_lsm_debug(fmt, arg...)					\
 	do {							\
@@ -195,10 +188,10 @@ difc_lsm_debug("after creds check\n");
 	if((new_cap & MINUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
 
-difc_lsm_debug("before spinlock\n");
+//difc_lsm_debug("before spinlock\n");
 	////spin_lock(&tsec->cap_lock);
 
-	difc_lsm_debug("after spinlock\n");
+//	difc_lsm_debug("after spinlock\n");
 	
 	list_for_each_entry(cap_seg, &tsec->capList, list){
 		if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
@@ -227,7 +220,7 @@ difc_lsm_debug("before spinlock\n");
 
 	// in case we want to give appman extra capabilities to declassify or etc
 
-	difc_lsm_debug("before commit\n");
+	//difc_lsm_debug("before commit\n");
 
 	cred->security = tsec;
 	commit_creds(cred);
@@ -2047,8 +2040,6 @@ return 0;
 asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int label_type, void *bulk_label)
 {
 
-	difc_lsm_debug(" enter %d\n",operation_type);
-	return 0;
 	return difc_set_task_label(current,  label,  operation_type,  label_type, bulk_label);
 
 }
@@ -2056,7 +2047,7 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 // map an address to a specific domain
  asmlinkage int sys_set_task_domain(unsigned long addr, unsigned long counts, int domain)
  {
-	difc_lsm_debug(" enter\n");
+	//difc_lsm_debug(" enter\n");
 	if(domain >= 0 && domain <16)
 		{
 			difc_set_domain(addr,counts, domain);
@@ -2159,18 +2150,19 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
 */
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-/*
+
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
-	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
+	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
+	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
+	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+/*	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_set_label,difc_inode_set_label),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
-	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
-	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+
 
 */
 #endif
