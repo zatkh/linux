@@ -1771,11 +1771,22 @@ static void azure_sphere_cred_free(struct cred *cred)
 
 }
 
+struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
+	.lbs_task = sizeof(struct azure_sphere_task_cred),
+};
+
+
+static inline struct azure_sphere_task_cred* azs_cred(const struct cred *cred)
+{
+	return cred->security + azs_blob_sizes.lbs_cred;
+}
+
+
 static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	const struct azure_sphere_task_cred *old_tsec;
-	struct azure_sphere_task_cred *tsec;
-
+	struct azure_sphere_task_cred *old_tsec=azs_cred(old);
+	struct azure_sphere_task_cred *tsec=azs_cred(new);;
+/*
 	old_tsec = old->security;
 
 	tsec = kmemdup(old_tsec, sizeof(struct azure_sphere_task_cred), gfp);
@@ -1783,6 +1794,7 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 		return -ENOMEM;
 
 	new->security = tsec;
+	*/
 	return 0;
 }
 
@@ -2136,6 +2148,7 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 static struct security_hook_list azure_sphere_hooks[] = {
 
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
+	LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
 	LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
 
 
@@ -2201,5 +2214,7 @@ static int __init azure_sphere_lsm_init(void)
 
 DEFINE_LSM(AzureSphere) = {
 	.name = "AzureSphere",
-	.init = azure_sphere_lsm_init,
+	.blobs = &azs_blob_sizes,
+	.init = azure_sphere_lsm_init,	
+
 };
