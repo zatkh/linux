@@ -438,4 +438,5 @@
 421 common udom_mprotect_exec sys_udom_mprotect_exec
 422 common mprotect_exec sys_mprotect_exec
 423 common udom_munmap sys_udom_munmap
+424 common udom_clone sys_udom_clone
 

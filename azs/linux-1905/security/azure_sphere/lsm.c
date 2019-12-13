@@ -54,11 +54,11 @@
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
+#include "lsm.h"
 
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
-#include "lsm.h"
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
@@ -72,14 +72,7 @@ static int debug = 1;
 #define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
 #define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
 
-#define SECRECY_LABEL  0
-#define INTEGRITY_LABEL  1
 
-#define ADD_LABEL     0
-#define REMOVE_LABEL  1
-#define REPLACE_LABEL 2
-
-#define CAPS_INIT 1
 
 #define difc_lsm_debug(fmt, arg...)					\
 	do {							\
@@ -195,10 +188,10 @@ difc_lsm_debug("after creds check\n");
 	if((new_cap & MINUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
 
-difc_lsm_debug("before spinlock\n");
+//difc_lsm_debug("before spinlock\n");
 	////spin_lock(&tsec->cap_lock);
 
-	difc_lsm_debug("after spinlock\n");
+//	difc_lsm_debug("after spinlock\n");
 	
 	list_for_each_entry(cap_seg, &tsec->capList, list){
 		if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
@@ -227,7 +220,7 @@ difc_lsm_debug("before spinlock\n");
 
 	// in case we want to give appman extra capabilities to declassify or etc
 
-	difc_lsm_debug("before commit\n");
+	//difc_lsm_debug("before commit\n");
 
 	cred->security = tsec;
 	commit_creds(cred);
@@ -305,7 +298,7 @@ static inline int add_label(struct label_struct *lables_list, label_t label, int
 	label_t index, l;
 	labelList_t list;
 
-	difc_lsm_debug("start adding %llu to the labels\n", label);
+	//difc_lsm_debug("start adding %llu to the labels\n", label);
 	
     switch(label_type){
 	case SECRECY_LABEL: list = lables_list->sList; break;
@@ -317,7 +310,7 @@ static inline int add_label(struct label_struct *lables_list, label_t label, int
 	//check for not repeated label
 	list_for_each_label(index, l, list)
 	  if(label == l){
-	    difc_lsm_debug("Label already exists\n");
+	   // difc_lsm_debug("Label already exists\n");
 			return -EEXIST;
 	  }
 	//check the first cell for not exceeding max number of labells
@@ -409,7 +402,7 @@ static int __difc_set_task_label(struct task_struct *tsk, struct label_struct *l
 		return -EPERM;
 	}
 
-	difc_lsm_debug("Found the capability \n");
+	//difc_lsm_debug("Found the capability \n");
 
 	if(operation_type == ADD_LABEL){
 		if((cap & PLUS_CAPABILITY)){
@@ -588,7 +581,7 @@ static int difc_set_task_label(struct task_struct *tsk, label_t label, int opera
 		return return_val;
 	} 
  
-	difc_lsm_debug("not a replace operation, so add/remove then %d\n", operation_type);
+	//difc_lsm_debug("not a replace operation, so add/remove then %d\n", operation_type);
 	return_val=__difc_set_task_label(tsk, &tsec->label, label, operation_type, label_type, 0);
 
 	cred->security = tsec;
@@ -1765,16 +1758,19 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 static void azure_sphere_cred_free(struct cred *cred)
 {
 	struct azure_sphere_task_cred *tsec = cred->security;
-	kfree(table);	
+	kfree(table);
 	kfree(tsec);
 //	difc_lsm_debug("successfull free\n");
 
 }
 
+
 static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	const struct azure_sphere_task_cred *old_tsec;
-	struct azure_sphere_task_cred *tsec;
+	const struct azure_sphere_task_cred *old_tsec;//=azs_cred(old);
+	struct azure_sphere_task_cred *tsec;//=azs_cred(new);
+
+//	*tsec = *old_tsec;
 
 	old_tsec = old->security;
 
@@ -1783,6 +1779,7 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 		return -ENOMEM;
 
 	new->security = tsec;
+	
 	return 0;
 }
 
@@ -1831,11 +1828,13 @@ static void azure_sphere_cred_init_security(void)
     tsec->capabilities = AZURE_SPHERE_CAP_ALL;
     cred->security = tsec;
 
+
 	alloc_hash();
     if (table == NULL) {
         panic("couldn't allocate udoms hash_table.\n");
  
     }
+
 	difc_lsm_debug("[azure_sphere_cred_init_security] initialized, tsec->tcb %d\n",tsec->tcb);
 
 
@@ -2041,8 +2040,6 @@ return 0;
 asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int label_type, void *bulk_label)
 {
 
-	difc_lsm_debug(" enter %d\n",operation_type);
-	return 0;
 	return difc_set_task_label(current,  label,  operation_type,  label_type, bulk_label);
 
 }
@@ -2050,7 +2047,7 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 // map an address to a specific domain
  asmlinkage int sys_set_task_domain(unsigned long addr, unsigned long counts, int domain)
  {
-	difc_lsm_debug(" enter\n");
+	//difc_lsm_debug(" enter\n");
 	if(domain >= 0 && domain <16)
 		{
 			difc_set_domain(addr,counts, domain);
@@ -2131,13 +2128,21 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
-static struct security_hook_list azure_sphere_hooks[] = {
+
+/*struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
+	.lbs_cred = sizeof(struct azure_sphere_task_cred),
+
+};
+*/
+
+static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
     LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
-	LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
+	LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
+	//LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
+
 
 	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
-    LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
     LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
     LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
@@ -2145,18 +2150,19 @@ static struct security_hook_list azure_sphere_hooks[] = {
 
 */
 #ifdef CONFIG_EXTENDED_LSM_DIFC
-/*
+
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
-	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
+	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
+	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
+	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+/*	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_set_label,difc_inode_set_label),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
-	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
-	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+
 
 */
 #endif
@@ -2165,13 +2171,16 @@ static struct security_hook_list azure_sphere_hooks[] = {
 };
 
 
-
 static int __init azure_sphere_lsm_init(void)
 {
+	/*
     if (!security_module_enable("AzureSphere")) {
         printk(KERN_INFO "Azure Sphere LSM disabled by boot time parameter");
 		return 0;
 	}
+	*/
+    printk(KERN_INFO "Azure Sphere LSM enabled by boot time parameter");
+
 	difc_caps_kcache = 
 		kmem_cache_create("difc_cap_segment",
 				  sizeof(struct cap_segment),
@@ -2190,6 +2199,8 @@ static int __init azure_sphere_lsm_init(void)
 
     return 0;
 }
+
+
 
 security_initcall(azure_sphere_lsm_init);
 
