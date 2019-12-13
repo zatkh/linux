@@ -298,7 +298,7 @@ static inline int add_label(struct label_struct *lables_list, label_t label, int
 	label_t index, l;
 	labelList_t list;
 
-	difc_lsm_debug("start adding %llu to the labels\n", label);
+	//difc_lsm_debug("start adding %llu to the labels\n", label);
 	
     switch(label_type){
 	case SECRECY_LABEL: list = lables_list->sList; break;
@@ -310,7 +310,7 @@ static inline int add_label(struct label_struct *lables_list, label_t label, int
 	//check for not repeated label
 	list_for_each_label(index, l, list)
 	  if(label == l){
-	    difc_lsm_debug("Label already exists\n");
+	   // difc_lsm_debug("Label already exists\n");
 			return -EEXIST;
 	  }
 	//check the first cell for not exceeding max number of labells
@@ -402,7 +402,7 @@ static int __difc_set_task_label(struct task_struct *tsk, struct label_struct *l
 		return -EPERM;
 	}
 
-	difc_lsm_debug("Found the capability \n");
+	//difc_lsm_debug("Found the capability \n");
 
 	if(operation_type == ADD_LABEL){
 		if((cap & PLUS_CAPABILITY)){
@@ -581,7 +581,7 @@ static int difc_set_task_label(struct task_struct *tsk, label_t label, int opera
 		return return_val;
 	} 
  
-	difc_lsm_debug("not a replace operation, so add/remove then %d\n", operation_type);
+	//difc_lsm_debug("not a replace operation, so add/remove then %d\n", operation_type);
 	return_val=__difc_set_task_label(tsk, &tsec->label, label, operation_type, label_type, 0);
 
 	cred->security = tsec;
