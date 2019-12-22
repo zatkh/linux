@@ -1570,7 +1570,7 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 		return -EINVAL;
 
 	counts=len/SECTION_SIZE;
-	printk("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
+	//printk("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
 	
 
 	/*
@@ -1752,17 +1752,17 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
         pmd++;
 
 	for (i = 0; i < counts; ++i) {
-		printk(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+		//printk(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
         *pmd = (*pmd & 0xfffffe1f) | (domain_copy << 5);
         flush_pmd_entry(pmd);
-		printk(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+		//printk(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
 
         pmd++;
     }
     spin_unlock(&mm->page_table_lock);	
 	//if labeld thread make it no access //DOMAIN_MANAGER
-		dacr=get_dacr();
-		    printk("dacr=0x%lx\n", dacr);
+		//dacr=get_dacr();
+		    //printk("dacr=0x%lx\n", dacr);
 
 
 	if(prot ==PROT_NONE)
@@ -1775,8 +1775,8 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 
 
 
-	dacr=get_dacr();
-    printk("dacr=0x%lx\n", dacr);
+	//dacr=get_dacr();
+   // printk("dacr=0x%lx\n", dacr);
 
 
 	return addr;

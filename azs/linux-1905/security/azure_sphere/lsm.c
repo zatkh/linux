@@ -165,7 +165,7 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
 	int is_max=0;
 
 	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
-	difc_lsm_debug("after kalloc\n");
+	//difc_lsm_debug("after kalloc\n");
   	cred = prepare_creds();
     if (!cred) {
         return -ENOMEM;
@@ -177,17 +177,17 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
         return -ENOENT;
     }
 
-difc_lsm_debug("after creds check\n");
+    //difc_lsm_debug("after creds check\n");
 
 	//get the requested t+ or t- cpabilty
 	new_cap |= (cap_type & (PLUS_CAPABILITY| MINUS_CAPABILITY));
-
+/*
 	if((new_cap & PLUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with PLUS_CAPABILITY \n");
 
 	if((new_cap & MINUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
-
+*/
 //difc_lsm_debug("before spinlock\n");
 	////spin_lock(&tsec->cap_lock);
 
@@ -205,7 +205,7 @@ difc_lsm_debug("after creds check\n");
 		INIT_LIST_HEAD(&cap_seg->list);
 		list_add_tail(&cap_seg->list, &tsec->capList);
 	}
-	difc_lsm_debug("after caplist list for ech entry\n");
+	//difc_lsm_debug("after caplist list for ech entry\n");
 		
 	cap_seg->caps[++(cap_seg->caps[0])] = new_cap;
 
@@ -214,7 +214,7 @@ difc_lsm_debug("after creds check\n");
 		tsec->tcb=APPMAN_TCB;
 	else
 		tsec->tcb=REGULAR_TCB;
-	difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
+	//difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
 
 	////spin_unlock(&tsec->cap_lock);
 
@@ -320,7 +320,7 @@ static inline int add_label(struct label_struct *lables_list, label_t label, int
 	}
     // add the lable to the list
     list[++(*list)] = label;
-	difc_lsm_debug("added the label to the list\n");
+	//difc_lsm_debug("added the label to the list\n");
 
 	return 0;
 }
@@ -872,7 +872,7 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 
 	if(input_label)
 	{
-		difc_lsm_debug(" inode lables_list is not empty, check if labing is allowed\n");
+		//difc_lsm_debug(" inode lables_list is not empty, check if labing is allowed\n");
 
 	 	lret = check_labaling_allowed(&tsec->label, input_label);
 		rret = check_replacing_labels_allowed(current, &tsec->label, input_label);
@@ -1067,7 +1067,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 	
 	list_for_each_entry(cap_seg, &tsec->capList, list){
 			if(cap_seg->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
+		//	difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
 			break;
 		}
 	}	
@@ -1082,16 +1082,16 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+				//difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
-
+/*
 			if((cap_type & PLUS_CAPABILITY)){
 				difc_lsm_debug("plus cap\n");
 			}
 			if((cap_type & MINUS_CAPABILITY)){			
 				difc_lsm_debug("minus cap\n");}
-
+*/
 			if(found_cap)
 			{
 				cap_seg->caps[i+1] = cap_seg->caps[i+2];
@@ -1115,7 +1115,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+			//	difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
 
@@ -1196,7 +1196,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 
 	list_for_each_entry(cap_seg, &tsec->capList, list){
 			if(cap_seg->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
+			//difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
 			break;
 		}
 	}	
@@ -1212,20 +1212,20 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 
 			if(( cap & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+				//difc_lsm_debug("cap[%d] matches the label \n",i+1);
 			}
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+				//difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
 
-			if((cap_type & PLUS_CAPABILITY)){
+	/*		if((cap_type & PLUS_CAPABILITY)){
 				difc_lsm_debug("plus cap\n");
 			}
 			if((cap_type & MINUS_CAPABILITY)){			
 				difc_lsm_debug("minus cap\n");}
-
+*/
 			if(found_cap)
 			{
 			cap_seg->caps[i+1] = cap_seg->caps[i+2];
@@ -1265,7 +1265,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+			//	difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
 
@@ -1376,7 +1376,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 
 	list_for_each_entry(sus_caps, &tsec->suspendedCaps, list){
 			if(sus_caps->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",sus_caps->caps[0]);
+			//difc_lsm_debug("not empty caplist %lld \n",sus_caps->caps[0]);
 			break;
 		}
 	}	
@@ -1391,7 +1391,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+				//difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
 
@@ -1434,7 +1434,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 
 			if(( temp & CAP_LABEL_MASK) == label)
 			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
+				//difc_lsm_debug("cap[%d] matches the label \n",i+1);
 				found_cap=1;
 			}		
 
@@ -2004,7 +2004,7 @@ int azure_sphere_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot
 // allocate a new label fro one or group of threads
 asmlinkage long sys_alloc_label(int type, int group_mode){
 
-	difc_lsm_debug("enter, group_mode: %d,%d\n",type,group_mode);
+//	difc_lsm_debug("enter, group_mode: %d,%d\n",type,group_mode);
 
 	return difc_alloc_label(type,group_mode);
 	//return 0;
@@ -2014,7 +2014,7 @@ asmlinkage long sys_alloc_label(int type, int group_mode){
 
 asmlinkage long sys_permanent_declassify(void __user *ucap_list, unsigned int ucap_list_size, int cap_type,int label_type){
 
-	difc_lsm_debug("enter\n");
+	//difc_lsm_debug("enter\n");
 	return difc_permanent_declassify(ucap_list, ucap_list_size, cap_type,label_type);
 	return 0;
 
@@ -2022,15 +2022,15 @@ asmlinkage long sys_permanent_declassify(void __user *ucap_list, unsigned int uc
 
 asmlinkage long sys_temporarily_declassify(void __user *ucap_list, int ucap_list_size, int cap_type,int label_type){
 
-	difc_lsm_debug("enter %d\n",ucap_list_size);
+//	difc_lsm_debug("enter %d\n",ucap_list_size);
 	return difc_temporarily_declassify(ucap_list, ucap_list_size, cap_type,label_type);
-	return 0;
+//	return 0;
 }
 
 
 asmlinkage long sys_restore_suspended_capabilities(void __user *ucap_list, unsigned int ucap_list_size, int cap_type, int label_type){
 
-	difc_lsm_debug("enter\n");
+//	difc_lsm_debug("enter\n");
 	return difc_restore_suspended_capabilities(ucap_list, ucap_list_size, cap_type,label_type);
 return 0;
 }
@@ -2065,7 +2065,7 @@ asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int 
 asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, unsigned int ucap_list_size, int cap_type)
 {
 
-	difc_lsm_debug(" enter\n");
+	//difc_lsm_debug(" enter\n");
 	return difc_send_task_capabilities(pid,ucap_list,ucap_list_size,cap_type);
 	return 0;
 }
@@ -2078,7 +2078,7 @@ asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
         unsigned long stack, struct pt_regs *regs)
 {
 
-		difc_lsm_debug("enter \n");
+		//difc_lsm_debug("enter \n");
 		return 0;
 
 	unsigned long dacr = 0;

@@ -967,6 +967,11 @@ asmlinkage long sys_pkey_mprotect(unsigned long start, size_t len,
 
 asmlinkage long sys_udom_mprotect(unsigned long start, size_t len,
 				  unsigned long prot, int udom);
+
+
+asmlinkage long sys_udom_mmap_pgoff (unsigned long udom_id, unsigned long addr, unsigned long len,
+		unsigned long prot, unsigned long flags,
+		unsigned long fd);				  
 				  
 asmlinkage long sys_pkey_alloc(unsigned long flags, unsigned long init_val);
 asmlinkage long sys_pkey_free(int pkey);
