@@ -64,6 +64,9 @@ extern void tlb_remove_table(struct mmu_gather *tlb, void *table);
  */
 struct mmu_gather {
 	struct mm_struct	*mm;
+	#ifdef CONFIG_SW_UDOM
+	    int smv_id;
+#endif
 #ifdef CONFIG_HAVE_RCU_TABLE_FREE
 	struct mmu_table_batch	*batch;
 	unsigned int		need_flush;

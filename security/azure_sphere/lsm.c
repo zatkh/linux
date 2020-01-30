@@ -60,6 +60,10 @@
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/mm.h>
+#endif
+
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 static struct kmem_cache *difc_obj_kcache;

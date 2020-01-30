@@ -20,6 +20,13 @@ config EXTENDED_LSM_DIFC
 	help
 		This adds difc support to the extended Azure Sphere LSM.
 
+config SW_UDOM
+	bool "supports sw based utiles"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds support for sw-based utiles.
+
 config AZURE_SPHERE_MMAP_EXEC_PROTECTION
 	bool "Azure Sphere mmap protection"
 	depends on SECURITY_AZURE_SPHERE
