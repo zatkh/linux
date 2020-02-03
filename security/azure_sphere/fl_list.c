@@ -1,5 +1,6 @@
 #include "include/weir_objsec.h"
 
+
 //INIT
 int init_list(struct tag_list** list_pointer_address){
 	*list_pointer_address = (struct tag_list*)kmalloc(sizeof(struct tag_list), GFP_KERNEL);
