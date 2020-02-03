@@ -210,9 +210,9 @@ difc_lsm_debug("after creds check\n");
 	cap_seg->caps[++(cap_seg->caps[0])] = new_cap;
 
 //labeling mark
-	if(tsec->is_app_man)
-		tsec->tcb=APPMAN_TCB;
-	else
+//	if(tsec->is_app_man)
+//		tsec->tcb=APPMAN_TCB;
+//	else
 		tsec->tcb=REGULAR_TCB;
 	difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
 
@@ -1697,10 +1697,6 @@ static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
 {
     struct azure_sphere_task_cred *tsec = p->cred->security;
 
-    if (!tsec->is_app_man && !tsec->job_control_allowed) {
-        return -ENOSYS;
-    }
-
     return 0;
 }
 
@@ -1824,8 +1820,6 @@ static void azure_sphere_cred_init_security(void)
 
 	//spin_unlock(&tsec->cap_lock);
 
-	tsec->is_app_man = true;
-    tsec->capabilities = AZURE_SPHERE_CAP_ALL;
     cred->security = tsec;
 
 
@@ -1840,91 +1834,11 @@ static void azure_sphere_cred_init_security(void)
 
 }	
 
-bool azure_sphere_capable(azure_sphere_capability_t cap)
-{
-    const struct cred *cred;
-    const struct azure_sphere_task_cred *tsec;
-    bool ret = false;
 
-    cred = get_task_cred(current);
-    tsec = cred->security;
-    if (!cred->security) {
-        put_cred(cred);
-        return false;
-    }
 
-    ret = ((tsec->capabilities & cap) == cap);
-
-    put_cred(cred);
-    return ret;
-}
-
-bool azure_sphere_get_component_id(struct azure_sphere_guid *component_id, struct task_struct *p)
-{
-    const struct cred *cred;
-    const struct azure_sphere_task_cred *tsec;
-
-    cred = get_task_cred(p);
-    tsec = cred->security;
-    if (!cred->security) {
-        put_cred(cred);
-        return false;
-    }
-
-    *component_id = tsec->component_id.guid;
-
-    put_cred(cred);
-
-    return true;
-}
-
-static int azure_sphere_security_getprocattr(struct task_struct *p, char *name, char **value)
-{
-    const struct cred *cred;
-    const struct azure_sphere_task_cred *tsec;
-    int ret = 0;
-
-    cred = get_task_cred(p);
-    tsec = cred->security;
-
-    //if no security entry then fail
-    if (!tsec) {
-        put_cred(cred);
-        return -ENOENT;
-    }
-
-    if (strcmp(name, "exec") == 0) {
-        *value = kmalloc(sizeof(*tsec), GFP_KERNEL);
-        if (*value == NULL) {
-            ret = -ENOMEM;
-        } else {
-            memcpy(*value, tsec, sizeof(*tsec));
-            ret = sizeof(*tsec);
-        }
-    } else if (strcmp(name, "current") == 0) {
-        int tenant_id_strlen = strnlen(tsec->daa_tenant_id, sizeof(tsec->daa_tenant_id));
-        int len = 5 + 36 + 1 + 5 + tenant_id_strlen + 1 + 15 + 1; // "CID: " + <guid> + "\n" + "TID: " + <tenant id> + "\n" + "CAPS: 00000000\n" + NULL
-        *value = kmalloc(len, GFP_KERNEL);
-        if (*value == NULL) {
-            ret = -ENOMEM;
-        } else {
-            ret = snprintf(*value, len, "CID: %08X-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX\nTID: %.*s\nCAPS: %08X\n", 
-                tsec->component_id.guid.data1, tsec->component_id.guid.data2, tsec->component_id.guid.data3, 
-                tsec->component_id.guid.data4[0], tsec->component_id.guid.data4[1], tsec->component_id.guid.data4[2], tsec->component_id.guid.data4[3],
-                tsec->component_id.guid.data4[4], tsec->component_id.guid.data4[5], tsec->component_id.guid.data4[6], tsec->component_id.guid.data4[7],
-                tenant_id_strlen, tsec->daa_tenant_id, tsec->capabilities);
-        }
-    } else {
-        ret = -ENOTSUPP;
-    }
-
-    put_cred(cred);
-    return ret;    
-}
 
 static int azure_sphere_security_setprocattr(const char *name, void *value, size_t size) 
 {
-    struct azure_sphere_security_set_process_details *data = value;
     struct cred *cred;
     struct azure_sphere_task_cred *tsec;
     int ret;
@@ -1934,7 +1848,7 @@ static int azure_sphere_security_setprocattr(const char *name, void *value, size
         return -EINVAL;
     }
 
-    if (value == NULL || size < sizeof(*data)) {
+    if (value == NULL ) {
         return -EINVAL;
     }
 
@@ -1949,19 +1863,6 @@ static int azure_sphere_security_setprocattr(const char *name, void *value, size
         ret = -ENOENT;
         goto error;
     }
-
-    if (!tsec->is_app_man) {
-        ret = -EPERM;
-        goto error;
-    }
-
-
-    memcpy(&tsec->component_id, data->component_id, sizeof(tsec->component_id));
-    memset(&tsec->daa_tenant_id, 0, sizeof(tsec->daa_tenant_id));
-    memcpy(&tsec->daa_tenant_id, data->daa_tenant_id, strnlen(data->daa_tenant_id, sizeof(tsec->daa_tenant_id) - 1));
-    tsec->is_app_man = false;
-    tsec->job_control_allowed = data->job_control_allowed;
-    tsec->capabilities = data->capabilities;
 
    	return commit_creds(cred);
 	//return 0;
@@ -2145,7 +2046,6 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
     LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
     LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
-    LSM_HOOK_INIT(getprocattr, azure_sphere_security_getprocattr),
     LSM_HOOK_INIT(setprocattr, azure_sphere_security_setprocattr),
 
 */

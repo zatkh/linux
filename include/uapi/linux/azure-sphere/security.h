@@ -82,15 +82,6 @@ struct azure_sphere_guid {
 
 // exposed through /proc/<pid>/attr/exec
 struct azure_sphere_task_cred {
-    union {
-        u8     raw_bytes[16];
-        struct azure_sphere_guid guid;
-    } component_id;
-    char   daa_tenant_id[64];
-    bool   is_app_man : 1;
-    bool   job_control_allowed : 1;
-    unsigned int : 0;
-    u32 capabilities;
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
@@ -98,7 +89,7 @@ struct azure_sphere_task_cred {
 	struct list_head capList; // list of task's capabilities
 	struct list_head suspendedCaps;//can be used for fork/clone to temporarly drop caps
 	spinlock_t cap_lock; // lock capabilities.
-	int tcb;  //special integrity tag, part of TCB
+	int tcb;  //special tag: fthread=1 ethread=2 not_labeld=3
 
 #endif    
 };
