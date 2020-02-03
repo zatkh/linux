@@ -1,5 +1,5 @@
 #obj-$(CONFIG_EXTENDED_LSM) := seccomp.o 
-obj-$(CONFIG_SECURITY_AZURE_SPHERE) := udom.o lsm.o fl_list.o #checker_fs.o
+obj-$(CONFIG_SECURITY_AZURE_SPHERE) := udom.o lsm.o fl_list.o fl_netlink.o #checker_fs.o
 EXTRA_CFLAGS += -Isecurity/azure_sphere/include
 
 

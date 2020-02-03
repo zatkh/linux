@@ -56,7 +56,7 @@ int send_to_uspace(char* msg)
         //printk("\nknetlink_process: reply nlmsg len %d type %d pid %d seq %d\n",nlh->nlmsg_len, nlh->nlmsg_type, nlh->nlmsg_pid, nlh->nlmsg_seq);
         strlcpy(payload, msg,nlh->nlmsg_len);
         *(payload + strlen(msg)) = '\0';
-        NETLINK_CB(rskb).pid = 0; //from kernel
+       // NETLINK_CB(rskb).pid = 0; //from kernel //ztodo
         NETLINK_CB(rskb).dst_group= 0;  // unicast 
         //printk("Message to be sent=%s\n", (char*)(NLMSG_DATA(nlh)));
 
@@ -142,9 +142,18 @@ static void nl_receive_initial(struct sk_buff *skb)
 int kernel_socket_create()
 {
 //      printk("Call to netlink_kernel_create");
-        nl_sk = netlink_kernel_create(&init_net,NETLINK_HELLO,0, nl_receive_initial,NULL, THIS_MODULE);
-        if(nl_sk==NULL) {
-                printk("Couldnot create socket");
-	}
+
+	struct netlink_kernel_cfg cfg = {
+		.input	= nl_receive_initial,
+	
+	};
+
+	nl_sk = netlink_kernel_create(&init_net, NETLINK_HELLO, &cfg);
+	if (nl_sk == NULL)
+		panic("FL_LSM:  Cannot create netlink socket.");
+	return 0;
+
+       // nl_sk = netlink_kernel_create(&init_net,NETLINK_HELLO,0, nl_receive_initial,NULL, THIS_MODULE);
+
         return 0;
 }

@@ -56,6 +56,13 @@
 #include <asm/udom.h>
 #include "lsm.h"
 
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+#include "weir_lsm.h"
+#include "weir_objsec.h"
+#include "weir_netlink.h"
+
+#endif
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
@@ -68,6 +75,16 @@ static struct kmem_cache *difc_caps_kcache;
 atomic_t max_caps_num;
 typedef label_t* labelList_t;
 static int debug = 1;
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+struct tag_list* globalpos;
+struct tag_list* globalneg;
+
+unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
+
+#endif
+
 
 #define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
 #define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
@@ -150,6 +167,44 @@ void __init seccomp_init(void)
 
 */
 #endif /* CONFIG_EXTENDED_LSM */
+
+
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+
+
+//List shims
+int add_tag(struct tag_list* orig_list, tag_t value){
+	int ret = add_list(orig_list, value);
+	return ret;
+}
+bool exists_tag(struct tag_list* orig_list, tag_t value){
+	bool ret = exists_list(orig_list, value);
+	return ret;
+}
+int remove_tag(struct tag_list* orig_list, tag_t value){
+	int ret = remove_list(orig_list, value);
+	return ret;
+}
+int copy_lists(struct tag_list* orig_list, struct tag_list* new_list){
+	int ret=0;
+	if(orig_list==NULL){
+	    ret=-1;
+	    return ret;
+	}
+	if(new_list==NULL){
+	    ret=init_list(&new_list);
+	    if(ret==ENOMEM)
+		return ret;
+	}
+	ret=copy_list(orig_list, new_list);
+	return ret;
+}
+
+
+#endif
+
 
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
@@ -1744,6 +1799,13 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 		return -ENOMEM;
 
 	
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+mutex_init(&tsec->lock);
+	tsec->pid = current->pid;
+	tsec->seclabel=NULL;
+	tsec->poscaps=NULL;
+	tsec->negcaps=NULL;
+#endif
 	cred->security = tsec;
 	difc_lsm_debug(" end of azure_sphere_cred_alloc_blank\n");
 
@@ -1754,8 +1816,24 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 static void azure_sphere_cred_free(struct cred *cred)
 {
 	struct task_security_struct *tsec = cred->security;
-	kfree(table);
-	kfree(tsec);
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+	if(tsec!=NULL){//In the unlikely case when tsec is NULL
+	    //LOCK on TSEC
+	    mutex_lock(&tsec->lock);
+	    if(tsec->seclabel!=NULL){	 kfree(tsec->seclabel);
+		//printk("Freeing seclabel for pid current = %d\n", current->pid);
+	    }
+	    if(tsec->poscaps!=NULL)	 kfree(tsec->poscaps);
+	    if(tsec->negcaps!=NULL)	 kfree(tsec->negcaps);
+	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
+	    mutex_unlock(&tsec->lock);
+		kfree(table);
+		kfree(tsec);
+	}
+
+#endif
 //	difc_lsm_debug("successfull free\n");
 
 }
@@ -1765,6 +1843,63 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 {
 	const struct task_security_struct *old_tsec=azs_cred(old);
 	struct task_security_struct *tsec=azs_cred(new);
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+	//printk("WEIR: in prepare for pid %d\n", current->pid);
+	if(old==NULL || new==NULL)
+	    return 0;
+
+	if(old_tsec==NULL){
+	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
+	    if (!tsec)
+		return -ENOMEM;
+	    mutex_init(&tsec->lock);
+	    //tsec->uid = current->uid;
+	    tsec->pid = current->pid;
+	    tsec->seclabel=NULL;
+	    tsec->poscaps=NULL;
+	    tsec->negcaps=NULL;
+
+	} else{
+	    //tsec = kmemdup(old_tsec, sizeof(struct task_security_struct), gfp);
+	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
+	    if (!tsec)
+		return -ENOMEM;
+	    mutex_init(&tsec->lock);
+	    tsec->seclabel=NULL;
+	    tsec->poscaps=NULL;
+	    tsec->negcaps=NULL;
+
+	    //LOCK on OLD_TSEC
+	    mutex_lock(&old_tsec->lock);
+	    
+	    //Commenting this as we have chosen to make deep copies.
+	    //*tsec = *old_tsec;
+
+	    tsec->pid = old_tsec->pid;
+	    tsec->uid = old_tsec->uid;
+
+	    if(old_tsec->seclabel!=NULL){
+		//printk("Copying seclabel for pid current = %d old_tsec = %d\n", current->pid, old_tsec->pid);
+		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->seclabel);
+		copy_lists(old_tsec->seclabel, tsec->seclabel);
+	    }
+	    if(old_tsec->poscaps!=NULL){
+		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->poscaps);
+		copy_lists(old_tsec->poscaps, tsec->poscaps);
+	    }
+	    if(old_tsec->negcaps!=NULL){
+		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->negcaps);
+		copy_lists(old_tsec->negcaps, tsec->negcaps);
+	    }
+    
+	    mutex_unlock(&old_tsec->lock);
+	}
+#endif
 
 	*tsec = *old_tsec;
 /*
@@ -1784,6 +1919,41 @@ static void azure_sphere_cred_transfer(struct cred *new, const struct cred *old)
 	const struct task_security_struct *old_tsec = old->security;
 	struct task_security_struct *tsec = new->security;
 
+	if(new == NULL || old == NULL)
+	    return;
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+mutex_lock(&old_tsec->lock);
+	if(old_tsec==NULL || tsec==NULL)
+	    return;
+
+	tsec->pid = old_tsec->pid;	   
+	tsec->uid = old_tsec->uid;
+	
+	if(old_tsec->seclabel!=NULL){
+	    if(tsec->seclabel == NULL){
+		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->seclabel);
+	    }
+	    copy_lists(old_tsec->seclabel, tsec->seclabel);
+	}
+	if(old_tsec->poscaps!=NULL){
+	    if(tsec->poscaps == NULL){
+		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->poscaps);
+	    }
+	    copy_lists(old_tsec->poscaps, tsec->poscaps);
+	}
+	if(old_tsec->negcaps!=NULL){
+	    if(tsec->negcaps == NULL){
+		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		init_list2(tsec->negcaps);
+	    }
+	    copy_lists(old_tsec->negcaps, tsec->negcaps);
+	}
+	mutex_unlock(&old_tsec->lock);
+#endif
 	*tsec = *old_tsec;
 }
 
@@ -1817,6 +1987,9 @@ static void azure_sphere_cred_init_security(void)
 	sus_seg->caps[0]=0;
 	list_add_tail(&sus_seg->list, &tsec->suspendedCaps);
 
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+	tsec->pid = current->pid;
+#endif
 
 	//spin_unlock(&tsec->cap_lock);
 

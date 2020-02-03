@@ -15,10 +15,10 @@
 #include <linux/sched.h>
 #include <linux/cred.h>
 #include <linux/file.h>
-#include <linux/lsm.h>
+#include <linux/lsm_hooks.h>
 #include <linux/security.h>
 #include <linux/xattr.h>
-#include<linux/slab.h>
+#include <linux/slab.h>
 
 //Constants
 #define MAX_LABEL_SIZE 50

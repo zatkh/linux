@@ -134,7 +134,7 @@ struct task_security_struct* get_task_security_from_task_struct_unlocked(struct 
 	//printk("WEIR: cred NULL\n");
 	return NULL;
     }
-    return lsm_get_cred(cred, &weir_ops);
+    return cred->security;
 }
 //get task security struct from pid
 struct task_security_struct* get_task_security_from_task_struct(struct task_struct* task){
@@ -146,7 +146,7 @@ struct task_security_struct* get_task_security_from_task_struct(struct task_stru
 	//printk("WEIR: cred NULL\n");
 	return NULL;
     }
-    return lsm_get_cred(cred, &weir_ops);
+    return cred->security;
 }
 
 //get task security struct from pid
@@ -544,193 +544,8 @@ out:
     //rcu_read_unlock();
     return ret;
 }
-/* HOOKS */
-/*
- * allocate the weir part of blank credentials
- */
-
-static int weir_cred_alloc_blank(struct cred *cred, gfp_t gfp)
-{
-	struct task_security_struct *tsec;
-
-	//printk("WEIR: in alloc for pid %d\n", current->pid);
-	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	if (!tsec)
-		return -ENOMEM;
-	mutex_init(&tsec->lock);
-	tsec->pid = current->pid;
-	tsec->seclabel=NULL;
-	tsec->poscaps=NULL;
-	tsec->negcaps=NULL;
-	lsm_set_cred(cred, tsec, &weir_ops);
-	//printk("WEIR: out alloc for pid %d\n", current->pid);
-	return 0;
-}
 
 
-/*
- * detach and free the weir part of a set of credentials
- */
-static void weir_cred_free(struct cred *cred)
-{
-	struct task_security_struct *tsec = lsm_get_cred(cred, &weir_ops);
-	/*
-	 * cred->security == NULL if security_cred_alloc_blank() or
-	 * security_prepare_creds() returned an error.
-	 */
-	//BUG_ON(tsec && (unsigned long) tsec < PAGE_SIZE);
-	lsm_set_cred(cred, NULL, &weir_ops);
-	if(tsec!=NULL){//In the unlikely case when tsec is NULL
-	    //LOCK on TSEC
-	    mutex_lock(&tsec->lock);
-	    if(tsec->seclabel!=NULL){	 kfree(tsec->seclabel);
-		//printk("Freeing seclabel for pid current = %d\n", current->pid);
-	    }
-	    if(tsec->poscaps!=NULL)	 kfree(tsec->poscaps);
-	    if(tsec->negcaps!=NULL)	 kfree(tsec->negcaps);
-	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
-	    mutex_unlock(&tsec->lock);
-	    kfree(tsec);
-	}
-	//printk("WEIR: free for pid %d\n", current->pid);
-}
-
-/*
- * prepare a new set of credentials for modification
- */
-static int weir_cred_prepare(struct cred *new, const struct cred *old,
-				gfp_t gfp)
-{
-	struct task_security_struct *old_tsec;
-	struct task_security_struct *tsec;
-
-	old_tsec=lsm_get_cred(old, &weir_ops);
-
-	//printk("WEIR: in prepare for pid %d\n", current->pid);
-	if(old==NULL || new==NULL)
-	    return 0;
-
-	if(old_tsec==NULL){
-	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	    if (!tsec)
-		return -ENOMEM;
-	    mutex_init(&tsec->lock);
-	    //tsec->uid = current->uid;
-	    tsec->pid = current->pid;
-	    tsec->seclabel=NULL;
-	    tsec->poscaps=NULL;
-	    tsec->negcaps=NULL;
-
-	} else{
-	    //tsec = kmemdup(old_tsec, sizeof(struct task_security_struct), gfp);
-	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	    if (!tsec)
-		return -ENOMEM;
-	    mutex_init(&tsec->lock);
-	    tsec->seclabel=NULL;
-	    tsec->poscaps=NULL;
-	    tsec->negcaps=NULL;
-
-	    //LOCK on OLD_TSEC
-	    mutex_lock(&old_tsec->lock);
-	    
-	    //Commenting this as we have chosen to make deep copies.
-	    //*tsec = *old_tsec;
-
-	    tsec->pid = old_tsec->pid;
-	    tsec->uid = old_tsec->uid;
-
-	    if(old_tsec->seclabel!=NULL){
-		//printk("Copying seclabel for pid current = %d old_tsec = %d\n", current->pid, old_tsec->pid);
-		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->seclabel);
-		copy_lists(old_tsec->seclabel, tsec->seclabel);
-	    }
-	    if(old_tsec->poscaps!=NULL){
-		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->poscaps);
-		copy_lists(old_tsec->poscaps, tsec->poscaps);
-	    }
-	    if(old_tsec->negcaps!=NULL){
-		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->negcaps);
-		copy_lists(old_tsec->negcaps, tsec->negcaps);
-	    }
-    
-	    mutex_unlock(&old_tsec->lock);
-	}
-	lsm_set_cred(new, tsec, &weir_ops);
-	//printk("WEIR: out prepare for pid %d\n", current->pid);
-	return 0;
-}
-
-/*
- * transfer the weir data to a blank set of creds
- */
-static void weir_cred_transfer(struct cred *new, const struct cred *old)
-{
-	struct task_security_struct *old_tsec;
-	struct task_security_struct *tsec;
-
-	//printk("WEIR: in transfer for pid %d\n", current->pid);
-	if(new == NULL || old == NULL)
-	    return;
-	old_tsec = lsm_get_cred(old, &weir_ops);
-	tsec = lsm_get_cred(new, &weir_ops);
-
-	mutex_lock(&old_tsec->lock);
-	if(old_tsec==NULL || tsec==NULL)
-	    return;
-
-	tsec->pid = old_tsec->pid;	   
-	tsec->uid = old_tsec->uid;
-	
-	if(old_tsec->seclabel!=NULL){
-	    if(tsec->seclabel == NULL){
-		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->seclabel);
-	    }
-	    copy_lists(old_tsec->seclabel, tsec->seclabel);
-	}
-	if(old_tsec->poscaps!=NULL){
-	    if(tsec->poscaps == NULL){
-		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->poscaps);
-	    }
-	    copy_lists(old_tsec->poscaps, tsec->poscaps);
-	}
-	if(old_tsec->negcaps!=NULL){
-	    if(tsec->negcaps == NULL){
-		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
-		init_list2(tsec->negcaps);
-	    }
-	    copy_lists(old_tsec->negcaps, tsec->negcaps);
-	}
-	mutex_unlock(&old_tsec->lock);
-	//printk("WEIR: out transfer for pid %d\n", current->pid);
-}
-
-/*
- * transfer the weir data to a blank set of creds
- */
-/*
-static void weir_cred_transfer(struct cred *new, const struct cred *old)
-{
-	const struct task_security_struct *old_tsec;
-	struct task_security_struct *tsec;
-
-	//printk("WEIR: in transfer for pid %d\n", current->pid);
-	if(new == NULL || old == NULL)
-	    return;
-	old_tsec = lsm_get_cred(old, &weir_ops);
-	tsec = lsm_get_cred(new, &weir_ops);
-
-	if(old_tsec==NULL || tsec==NULL)
-	    return;
-	*tsec = *old_tsec;
-	printk("WEIR: out transfer for pid %d\n", current->pid);
-}
-*/
 
 int getFilePath(struct file *file, char **pathname)
 {
@@ -754,7 +569,8 @@ int getFilePath(struct file *file, char **pathname)
 	
 static int weir_file_permission(struct file *file, int mask)
 {
-	const struct task_security_struct *tsec = lsm_get_cred(current_cred(), &weir_ops);
+	const struct cred *cred=get_current_cred();
+	const struct task_security_struct *tsec = cred->security;
 	struct inode *inode = file->f_path.dentry->d_inode;
 	int uid = inode->i_uid;
 	int euid = current->cred->euid;
@@ -890,28 +706,6 @@ out:
 }
 
 /*
- * initialise the security for the init task
- */
-static void cred_init_security(void)
-{
-	int rc;
-	struct cred *cred = (struct cred *) current->real_cred;
-	struct task_security_struct *tsec;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-	if (!tsec)
-		panic("WEIR:  Failed to initialize initial task.\n");
-
-	tsec->pid = current->pid;
-	rc = lsm_set_init_cred(cred, tsec, &weir_ops);
-	if (rc){
-		//printk("WEIR:  Failed to initialize initial task.\n");
-		//panic("WEIR:	Failed to initialize initial task.\n");
-	}
-	//printk("WEIR: Init task security allocated.\n");
-}
-
-/*
  * Socket bind
  */
 static int weir_socket_bind(struct socket *sock, struct sockaddr *address, int addrlen)
@@ -957,6 +751,8 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
     //*fsec = lsm_get_file(file, &selinux_ops);
     return binder_check(to, from);	
 }
+
+/*
 struct security_operations weir_ops = {
 	.name =				"weir",
 	.cred_alloc_blank   =		weir_cred_alloc_blank,
@@ -974,11 +770,15 @@ struct security_operations weir_ops = {
 
 };  
 
+*/
+
 /**
  * weir_init - initialize the weir-lsm system
  *
  * Returns 0
  */
+
+/*
 static __init int weir_init(void)
 {
 	printk(KERN_INFO "WEIR:  Enabling...\n");
@@ -988,7 +788,7 @@ static __init int weir_init(void)
 		return 0;
 	}
 	printk(KERN_INFO "WEIR:  Initializing.\n");
-	/* Set the security state for the initial task. */
+	// Set the security state for the initial task. 
 	if(false)
 	    cred_init_security();
 
@@ -996,3 +796,4 @@ static __init int weir_init(void)
 }
 
 security_initcall(weir_init);
+*/

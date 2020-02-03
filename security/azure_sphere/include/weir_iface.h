@@ -11,8 +11,8 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/uaccess.h>
-#include<linux/slab.h>
-#include<linux/miscdevice.h>
+#include <linux/slab.h>
+#include <linux/miscdevice.h>
 #include "weir_objsec.h"
 //Constants
 #define WEIRIO 'w'

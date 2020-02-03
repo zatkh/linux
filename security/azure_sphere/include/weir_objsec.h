@@ -23,8 +23,8 @@ extern tag_t* get_label(pid_t pid);
 extern void change_global(tag_t t, int pos, int add);
 extern void change_proccap(pid_t pid, tag_t t, int pos, int add);
 extern void add_tag_to_label(pid_t pid, tag_t t);
-  
+
 extern struct security_operations weir_ops;
-*/  
+   */ 
 
 #endif  /* _SECURITY_WEIR_OBJSEC_H */
