@@ -160,11 +160,11 @@ static label_t difc_alloc_label(int cap_type, int group_mode)
 
 	capability_t new_cap = atomic_inc_return(&max_caps_num);
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	struct cap_segment *cap_seg;
 	int is_max=0;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 	difc_lsm_debug("after kalloc\n");
   	cred = prepare_creds();
     if (!cred) {
@@ -229,7 +229,7 @@ difc_lsm_debug("after creds check\n");
 }
 
 // get capability of a label
-static inline capability_t cred_get_capability(struct azure_sphere_task_cred *tsec, label_t label)
+static inline capability_t cred_get_capability(struct task_security_struct *tsec, label_t label)
 {
 
 	capability_t index, cap;
@@ -263,7 +263,7 @@ static void *difc_copy_user_label(const char __user *label)
 static inline int is_task_labeled(struct task_struct *tsk)
 {
 	const struct cred *cred;
-    struct azure_sphere_task_cred *tsec;
+    struct task_security_struct *tsec;
 	
     cred = get_task_cred(tsk);
     tsec = cred->security;
@@ -369,10 +369,10 @@ static int __difc_set_task_label(struct task_struct *tsk, struct label_struct *l
 {
 
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	capability_t cap;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
 	if(tsk != current)
 	{
@@ -539,10 +539,10 @@ static int difc_set_task_label(struct task_struct *tsk, label_t label, int opera
 	int return_val;
 	struct label_struct *user_label;
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
   	cred = prepare_creds();
     if (!cred) {
@@ -648,8 +648,8 @@ static int difc_tasks_labels_allowed(struct task_struct *s_tsk,struct task_struc
 
 	const struct cred *scred;
 	const struct cred *rcred;
-	struct azure_sphere_task_cred *tsec;
-	struct azure_sphere_task_cred *rsec;
+	struct task_security_struct *tsec;
+	struct task_security_struct *rsec;
 	int unlabeled_source_tsk, unlabeled_dest_tsk;
 
 
@@ -847,7 +847,7 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 {
 	const struct cred *cred;
 	struct object_security_struct *isec = inode->i_security;
-    struct azure_sphere_task_cred *tsec;
+    struct task_security_struct *tsec;
 	struct label_struct *input_label = (struct label_struct *)lables_list;
 	int lret;
 	int rret;
@@ -906,7 +906,7 @@ static int difc_inode_permission (struct inode *inode, int mask)
 
 	const struct cred *cred ;
 	struct object_security_struct *isec = inode->i_security;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 
 	int unlabeled_inode, unlabeled_task;
 	int ret_val = 0;
@@ -1026,7 +1026,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 {
 	
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	int ret_val=0;
 	int found_cap = 0;
 	capability_t *capList;
@@ -1038,7 +1038,7 @@ static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap
 	int len;
 
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
   	cred = prepare_creds();
     if (!cred) {
@@ -1151,7 +1151,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 {
 	
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	int ret_val=0;
 	int found_cap = 0;
 	int not_max  = 0;
@@ -1164,7 +1164,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 	label_t label;
 	int len;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
   	cred = prepare_creds();
     if (!cred) {
@@ -1332,7 +1332,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 {
 	
 	struct cred *cred ;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	int ret_val=0;
 	int found_cap = 0;
 	int not_max  = 0;
@@ -1345,7 +1345,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 	label_t label;
 	int len;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
   	cred = prepare_creds();
     if (!cred) {
@@ -1486,14 +1486,14 @@ static int difc_send_task_capabilities(pid_t pid, void __user *ucap_list, unsign
 
 	struct cred *cred;
 	const struct cred *rcred;
-	struct azure_sphere_task_cred *tsec;// curent cred
-	struct azure_sphere_task_cred *rsec;// reciver cred
+	struct task_security_struct *tsec;// curent cred
+	struct task_security_struct *rsec;// reciver cred
 	struct task_struct *dest_task = pid_task(find_vpid(pid), PIDTYPE_PID); 
 	capability_t *capList;
 	int ret_val=0;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
-	rsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
+	rsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 
 
   	cred = prepare_creds();
@@ -1695,17 +1695,17 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 //btw why this is not actually setting pgid, just a dummy?
 static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
 {
-    struct azure_sphere_task_cred *tsec = p->cred->security;
+    struct task_security_struct *tsec = p->cred->security;
 
     return 0;
 }
 
-static struct azure_sphere_task_cred *azure_sphere_new_task(struct azure_sphere_task_cred *task,
-					struct azure_sphere_task_cred *forked, gfp_t gfp)
+static struct task_security_struct *azure_sphere_new_task(struct task_security_struct *task,
+					struct task_security_struct *forked, gfp_t gfp)
 {
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), gfp);
+	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
 	if (tsec == NULL)
 		return NULL;
 
@@ -1726,10 +1726,10 @@ static struct azure_sphere_task_cred *azure_sphere_new_task(struct azure_sphere_
 static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	difc_lsm_debug(" azure_sphere_cred_alloc_blank\n");
 /*
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), gfp);
+	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
 	if (!tsec)
 		return -ENOMEM;
 
@@ -1753,7 +1753,7 @@ static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 
 static void azure_sphere_cred_free(struct cred *cred)
 {
-	struct azure_sphere_task_cred *tsec = cred->security;
+	struct task_security_struct *tsec = cred->security;
 	kfree(table);
 	kfree(tsec);
 //	difc_lsm_debug("successfull free\n");
@@ -1763,14 +1763,14 @@ static void azure_sphere_cred_free(struct cred *cred)
 
 static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
-	const struct azure_sphere_task_cred *old_tsec=azs_cred(old);
-	struct azure_sphere_task_cred *tsec=azs_cred(new);
+	const struct task_security_struct *old_tsec=azs_cred(old);
+	struct task_security_struct *tsec=azs_cred(new);
 
 	*tsec = *old_tsec;
 /*
 	old_tsec = old->security;
 
-	tsec = kmemdup(old_tsec, sizeof(struct azure_sphere_task_cred), gfp);
+	tsec = kmemdup(old_tsec, sizeof(struct task_security_struct), gfp);
 	if (!tsec)
 		return -ENOMEM;
 
@@ -1781,8 +1781,8 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 
 static void azure_sphere_cred_transfer(struct cred *new, const struct cred *old)
 {
-	const struct azure_sphere_task_cred *old_tsec = old->security;
-	struct azure_sphere_task_cred *tsec = new->security;
+	const struct task_security_struct *old_tsec = old->security;
+	struct task_security_struct *tsec = new->security;
 
 	*tsec = *old_tsec;
 }
@@ -1790,13 +1790,13 @@ static void azure_sphere_cred_transfer(struct cred *new, const struct cred *old)
 static void azure_sphere_cred_init_security(void)
 {
 	struct cred *cred = (struct cred *) current->real_cred;
-	struct azure_sphere_task_cred *tsec;
+	struct task_security_struct *tsec;
 	struct cap_segment *cap_seg;
 	struct cap_segment *sus_seg;
 
 
 
-	tsec = kzalloc(sizeof(struct azure_sphere_task_cred), GFP_KERNEL);
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
 	if (!tsec)
 		panic("Failed to initialize initial task security object.\n");
 
@@ -1840,7 +1840,7 @@ static void azure_sphere_cred_init_security(void)
 static int azure_sphere_security_setprocattr(const char *name, void *value, size_t size) 
 {
     struct cred *cred;
-    struct azure_sphere_task_cred *tsec;
+    struct task_security_struct *tsec;
     int ret;
 
     // Can only set in binary format
@@ -2031,7 +2031,7 @@ asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
 
 
 struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
-	.lbs_cred = sizeof(struct azure_sphere_task_cred),
+	.lbs_cred = sizeof(struct task_security_struct),
 
 };
 

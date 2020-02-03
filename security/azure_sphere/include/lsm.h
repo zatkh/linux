@@ -26,7 +26,7 @@
 
 
 extern struct lsm_blob_sizes azs_blob_sizes;
-static inline struct azure_sphere_task_cred *azs_cred(const struct cred *cred)
+static inline struct task_security_struct *azs_cred(const struct cred *cred)
 {
 	return cred->security + azs_blob_sizes.lbs_cred;
 }

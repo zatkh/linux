@@ -22,6 +22,9 @@
 #define __UAPI_AZURE_SPHERE_SECURITY_H
 #include <linux/types.h>
 #include <linux/init.h>
+#include <linux/list.h>
+#include <linux/slab.h>
+#include <linux/mutex.h>
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 // labels and capabilities related variables & data structs should be here
@@ -71,17 +74,25 @@ struct object_security_struct {
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
-// Newer kernels have a good UUID framework - switch to that
-// when available
-struct azure_sphere_guid {
-    u32 data1;
-    u16 data2;
-    u16 data3;
-    u8 data4[8];
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+typedef s64 tag_t;
+
+//Tag list for the seclabel, poscaps, negcaps
+struct tag_list{
+	tag_t t;
+	struct list_head list;
 };
 
+
+struct file_security_struct {
+	struct tag_list* seclabel; /* Secrecy label  */
+	struct mutex lock;
+};
+#endif //CONFIG_EXTENDED_FLOATING_DIFC//
+
 // exposed through /proc/<pid>/attr/exec
-struct azure_sphere_task_cred {
+struct task_security_struct {
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
@@ -91,7 +102,19 @@ struct azure_sphere_task_cred {
 	spinlock_t cap_lock; // lock capabilities.
 	int tcb;  //special tag: fthread=1 ethread=2 not_labeld=3
 
-#endif    
+#endif  
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+    pid_t pid;         
+    uid_t uid;
+	struct tag_list* seclabel; /* Secrecy label  */
+	struct tag_list* poscaps; /* + capabilities */
+	struct tag_list* negcaps; /* - capabilities */
+	struct mutex lock;
+#endif //CONFIG_EXTENDED_FLOATING_DIFC//
+
+
+
 };
 
 
