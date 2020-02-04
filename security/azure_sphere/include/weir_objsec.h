@@ -17,14 +17,14 @@ extern void union_list(struct tag_list* A, struct tag_list* B, struct tag_list**
 extern bool dominates(struct tag_list* A, struct tag_list* B);
 extern bool equals(struct tag_list* A, struct tag_list* B);
 //Other Functions
-/*extern int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, tag_t* neg, int secsize, int possize, int negsize);
+extern int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, tag_t* neg, int secsize, int possize, int negsize);
 extern int get_label_size(pid_t pid);
 extern tag_t* get_label(pid_t pid);
 extern void change_global(tag_t t, int pos, int add);
 extern void change_proccap(pid_t pid, tag_t t, int pos, int add);
 extern void add_tag_to_label(pid_t pid, tag_t t);
 
-extern struct security_operations weir_ops;
-   */ 
+//extern struct security_operations weir_ops;
+    
 
 #endif  /* _SECURITY_WEIR_OBJSEC_H */
