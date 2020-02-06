@@ -192,6 +192,32 @@ static struct task_security_struct *new_task_difc(gfp_t gfp) {
 	return tsp;
 } 
 
+static void difc_free_label(struct list_head *label) {
+	struct tag *t, *t_next;
+	list_for_each_entry_safe(t, t_next, label, next) {
+		list_del_rcu(&t->next);
+		kmem_cache_free(tag_struct, t);
+	}
+}
+
+
+
+static int difc_copy_label(struct list_head *old, struct list_head *new) {
+	struct tag *t;
+	
+	list_for_each_entry(t, old, next) {
+		struct tag *new_tag;
+		new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+		if (new_tag == NULL)
+			goto out;
+		new_tag->content = t->content;
+		list_add_tail(&new_tag->next, new);
+	}
+	return 0;
+
+out:
+	return -ENOMEM;
+}
 
 
 
@@ -2382,47 +2408,89 @@ mutex_init(&tsec->lock);
 
 }
 
-static void azure_sphere_cred_free(struct cred *cred)
-{
-	struct task_security_struct *tsec = cred->security;
 
-#ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
-	if(tsec!=NULL){//In the unlikely case when tsec is NULL
-	    //LOCK on TSEC
-	    mutex_lock(&tsec->lock);
-	    if(tsec->seclabel!=NULL){	 kfree(tsec->seclabel);
-		//printk("Freeing seclabel for pid current = %d\n", current->pid);
-	    }
-	    if(tsec->poscaps!=NULL)	 kfree(tsec->poscaps);
-	    if(tsec->negcaps!=NULL)	 kfree(tsec->negcaps);
-	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
-	    mutex_unlock(&tsec->lock);
-		kfree(table);
-		kfree(tsec);
+static void difc_cred_free(struct cred *cred) {
+
+	struct task_security_struct *tsp=azs_cred(cred);
+
+	if (tsp == NULL)
+		return;
+	cred->security = NULL;
+/*	
+ 	if(!list_empty(&tsp->ilabel))
+	{	
+		difc_free_label(&tsp->ilabel);
+		list_del(&tsp->ilabel);
 	}
 
-#endif
-//	difc_lsm_debug("successfull free\n");
+	if(!list_empty(&tsp->slabel))
+	{
+		difc_free_label(&tsp->slabel);
+		list_del(&tsp->slabel);
+	}
 
+	if(!list_empty(&tsp->olabel))
+	{
+		difc_free_label(&tsp->olabel);
+		list_del(&tsp->olabel);
+	}
+*/	
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+	    mutex_lock(&tsp->lock);
+	    if(tsp->seclabel!=NULL){	 kfree(tsp->seclabel);
+		//printk("Freeing seclabel for pid current = %d\n", current->pid);
+	    }
+	    if(tsp->poscaps!=NULL)	 kfree(tsp->poscaps);
+	    if(tsp->negcaps!=NULL)	 kfree(tsp->negcaps);
+	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
+	    mutex_unlock(&tsp->lock);
+
+#endif
+
+	//kfree(table);
+	kfree(tsp);
 }
 
 
-static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
+
+
+static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp)
 {
 	const struct task_security_struct *old_tsec=azs_cred(old);
 	struct task_security_struct *tsec=azs_cred(new);
+	int rc=0;
 
+
+//	if(old==NULL || new==NULL)
+//	    return 0;
+
+//	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
+//	tsec = new_task_difc(gfp);
+
+	if (!tsec)
+		return -ENOMEM;
+
+
+	tsec->confined = old_tsec->confined;	
+/*	rc = difc_copy_label(&old_tsec->slabel, &tsec->slabel);
+	if (rc != 0)
+		return rc;
+
+	rc = difc_copy_label(&old_tsec->ilabel, &tsec->ilabel);
+	if (rc != 0)
+		return rc;
+*/
+
+// for floating threads we need a deep copy but for explicit one no inheritance
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
 	//printk("WEIR: in prepare for pid %d\n", current->pid);
-	if(old==NULL || new==NULL)
-	    return 0;
+
 
 	if(old_tsec==NULL){
-	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	    if (!tsec)
-		return -ENOMEM;
+
 	    mutex_init(&tsec->lock);
 	    //tsec->uid = current->uid;
 	    tsec->pid = current->pid;
@@ -2431,10 +2499,7 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 	    tsec->negcaps=NULL;
 
 	} else{
-	    //tsec = kmemdup(old_tsec, sizeof(struct task_security_struct), gfp);
-	    tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	    if (!tsec)
-		return -ENOMEM;
+
 	    mutex_init(&tsec->lock);
 	    tsec->seclabel=NULL;
 	    tsec->poscaps=NULL;
@@ -2470,16 +2535,10 @@ static int azure_sphere_cred_prepare(struct cred *new, const struct cred *old, g
 	}
 #endif
 
-	*tsec = *old_tsec;
-/*
-	old_tsec = old->security;
+//	*tsec = *old_tsec;
+		//new->security = tsec;
 
-	tsec = kmemdup(old_tsec, sizeof(struct task_security_struct), gfp);
-	if (!tsec)
-		return -ENOMEM;
 
-	new->security = tsec;
-	*/
 	return 0;
 }
 
@@ -2781,8 +2840,8 @@ struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
 static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
     LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
-	LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
-	//LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
+	LSM_HOOK_INIT(cred_free, difc_cred_free),
+	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
 
 
 	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
@@ -2793,10 +2852,10 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 */
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
-	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
-	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+//	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
+//	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
+//	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
+//	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 /*	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
