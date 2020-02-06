@@ -55,6 +55,8 @@
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
 #include "lsm.h"
+#include "difc.h"
+
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
@@ -1681,6 +1683,37 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 }
 */
 
+// called by difc_inode_setxattr()
+static int difc_inode_setsecurity(struct inode *inode, const char *name,
+				const void *value, size_t size, int flags) {
+
+	struct inode_difc *isp = inode->i_security;
+	struct task_security_struct *tsp = current_security();
+	int rc = 0;	
+
+	if (size >= MAX_LABEL_SIZE || value ==NULL || size == 0)
+		return -EINVAL;
+
+	if (!isp) {
+		difc_lsm_debug( "SYQ: inode->i_security is null (%s)\n", __func__);
+		return rc; 
+	}
+
+	rc = security_set_labels(&isp->slabel, &isp->ilabel, tsp, value, size);
+	if (rc < 0)
+		return rc;
+
+	return 0;
+}
+
+static int difc_inode_listsecurity(struct inode *inode, char *buffer, 
+					size_t buffer_size) {
+	int len = sizeof(XATTR_NAME_DIFC);
+	if (buffer != NULL && len <= buffer_size)
+		memcpy(buffer, XATTR_NAME_DIFC, len);
+	return len;
+}
+
 static int difc_inode_getxattr(struct dentry *dentry, const char *name) {
 	return 0;
 }
@@ -1688,6 +1721,18 @@ static int difc_inode_getxattr(struct dentry *dentry, const char *name) {
 static int difc_inode_setxattr(struct dentry *dentry, const char *name,
 				const void *value, size_t size, int flags) {
 	return 0;
+}
+
+
+static void difc_inode_post_setxattr(struct dentry *dentry, const char *name,
+				const void *value, size_t size, int flags) 
+{
+	
+	struct inode *inode = dentry->d_inode;
+
+	difc_inode_setsecurity(inode, name, value, size, flags);
+	
+	return;
 }
 
 //instead of checking permissions fo each fs seperatly, we use use the inode permissions hooks
@@ -2934,6 +2979,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
+	LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),
+
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 /*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),

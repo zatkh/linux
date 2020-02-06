@@ -141,8 +141,8 @@ size_t difc_label_change(struct file *file, const char __user *buf,
 	}
 
 	
-	if (ops == SECRECY_LABEL || ops == INTEGRITY_LABEL) {
-		if (ops == SECRECY_LABEL) { 
+	if (ops == SEC_LABEL || ops == INT_LABEL) {
+		if (ops == SEC_LABEL) { 
 			result = can_label_change(&tsp->slabel, &new_label, &tsp->olabel);
 			if (result != 0) {
 				clean_label(&new_label);
