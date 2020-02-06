@@ -106,6 +106,13 @@ struct file_security_struct {
 	struct tag_list* seclabel; /* Secrecy label  */
 	struct mutex lock;
 };
+
+//extern size_t difc_label_change(struct file *file, const char __user *buf, 
+//			size_t size, loff_t *ppos, struct task_security_struct *tsp, enum label_types ops);
+
+//extern size_t difc_confine_task(struct file *file, const char __user *buf, 
+//				size_t size, loff_t *ppos, struct task_security_struct *tsp);
+
 #endif //CONFIG_EXTENDED_FLOATING_DIFC//
 
 // exposed through /proc/<pid>/attr/exec

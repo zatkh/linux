@@ -175,7 +175,7 @@ void __init seccomp_init(void)
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
 
-static struct task_security_struct *new_task_difc(gfp_t gfp) {
+static struct task_security_struct *new_task_security_struct(gfp_t gfp) {
 	struct task_security_struct *tsp;
 	tsp = kzalloc(sizeof(struct task_security_struct), gfp);
 	
@@ -219,40 +219,6 @@ out:
 	return -ENOMEM;
 }
 
-
-
-int security_to_labels(struct list_head *slabel, 
-			struct list_head *ilabel, 
-			char **labels, int *len) {
-
-	struct tag *t;
-	int llen = 0; 
-	int ret;
-
-	*labels = kzalloc(MAX_LABEL_SIZE, GFP_NOFS);
-	if (!*labels)
-		return -ENOMEM;
-
-	/*
-	* TODO: may buffer overflow here, fix it!
-	*/
-
-	list_for_each_entry_rcu(t, slabel, next) {
-		ret = sprintf(*labels + llen, "%ld;", t->content);
-		llen += ret;
-	}
-
-	(*labels)[llen++] = '|';
-
-	list_for_each_entry_rcu(t, ilabel, next) {
-		ret = sprintf(*labels + llen, "%ld;", t->content);
-		llen += ret;
-	}
-
-	*len = llen;
-
-	return 0;
-}
 
 
 //List shims
@@ -1715,6 +1681,15 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 }
 */
 
+static int difc_inode_getxattr(struct dentry *dentry, const char *name) {
+	return 0;
+}
+
+static int difc_inode_setxattr(struct dentry *dentry, const char *name,
+				const void *value, size_t size, int flags) {
+	return 0;
+}
+
 //instead of checking permissions fo each fs seperatly, we use use the inode permissions hooks
 static int difc_inode_permission (struct inode *inode, int mask)
 {
@@ -2524,7 +2499,7 @@ static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 
 	struct task_security_struct *tsec;
 	difc_lsm_debug(" difc_cred_alloc_blank\n");
-	tsec = new_task_difc(gfp);
+	tsec = new_task_security_struct(gfp);
 	if (!tsec)
 		return -ENOMEM;
 	
@@ -2603,7 +2578,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 //	    return 0;
 
 //	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-//	tsec = new_task_difc(gfp);
+//	tsec = new_task_security_struct(gfp);
 
 	if (!tsec)
 		return -ENOMEM;
@@ -2957,6 +2932,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
+	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
+	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 /*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
