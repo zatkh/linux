@@ -187,7 +187,7 @@ static struct task_security_struct *new_task_difc(gfp_t gfp) {
 	INIT_LIST_HEAD(&tsp->olabel);
 	INIT_LIST_HEAD(&tsp->capList);
 	INIT_LIST_HEAD(&tsp->suspendedCaps);
-	tsp->tcb=UNTRUSTED_TCB;
+	tsp->tcb=FLOATING_TCB;// by default is FLOATING label task
 	
 	return tsp;
 } 
@@ -219,6 +219,40 @@ out:
 	return -ENOMEM;
 }
 
+
+
+int security_to_labels(struct list_head *slabel, 
+			struct list_head *ilabel, 
+			char **labels, int *len) {
+
+	struct tag *t;
+	int llen = 0; 
+	int ret;
+
+	*labels = kzalloc(MAX_LABEL_SIZE, GFP_NOFS);
+	if (!*labels)
+		return -ENOMEM;
+
+	/*
+	* TODO: may buffer overflow here, fix it!
+	*/
+
+	list_for_each_entry_rcu(t, slabel, next) {
+		ret = sprintf(*labels + llen, "%ld;", t->content);
+		llen += ret;
+	}
+
+	(*labels)[llen++] = '|';
+
+	list_for_each_entry_rcu(t, ilabel, next) {
+		ret = sprintf(*labels + llen, "%ld;", t->content);
+		llen += ret;
+	}
+
+	*len = llen;
+
+	return 0;
+}
 
 
 //List shims
@@ -1491,11 +1525,53 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 	*/
 	return 0;//buf_to_inode_labels(value, size, &isec->label);
 }
+static struct inode_difc *new_inode_difc(void) {
+	struct inode_difc *isp;
+	struct task_security_struct *tsp;
+	int rc = -ENOMEM;
+	
+	isp = kzalloc(sizeof(struct inode_difc), GFP_NOFS);
+	
+	if(!isp)
+		return NULL;
 
-static int difc_inode_alloc_security(struct inode *inode)
-{
+	INIT_LIST_HEAD(&isp->slabel);
+	INIT_LIST_HEAD(&isp->ilabel);
 
-	struct object_security_struct *isec;
+	tsp = current_security();
+
+	/*
+	* Label of inode is the label of the task creating the inode
+	*/
+/*
+	rc = difc_copy_label(&tsp->slabel, &isp->slabel);
+	if (rc < 0)
+		goto out;
+
+	rc = difc_copy_label(&tsp->ilabel, &isp->ilabel);
+	if (rc < 0)
+		goto out;
+*/
+	return isp;
+
+//out:
+//	kfree(isp);
+//	return NULL;
+}
+
+static int difc_inode_alloc_security(struct inode *inode) {
+	struct inode_difc *isp;
+
+	isp = new_inode_difc();
+	if (!isp)
+		return -ENOMEM;
+
+	inode->i_security = isp;
+	difc_lsm_debug("successfull inode alloc init\n");
+
+
+	/*
+		struct object_security_struct *isec;
 	isec = kmem_cache_zalloc(difc_obj_kcache, GFP_KERNEL);
 	if(!isec) {
 	  difc_lsm_debug("not enough memory\n");
@@ -1504,11 +1580,70 @@ static int difc_inode_alloc_security(struct inode *inode)
 
 	init_rwsem(&isec->label_change_sem);
 	inode->i_security = isec;
-	//difc_lsm_debug("successfull inode alloc init\n");
 	return 0;
-
+	*/	
+	return 0;
 }
 
+static void difc_inode_free_security(struct inode *inode) {
+	struct inode_difc *isp = inode->i_security;
+
+	if (isp == NULL)
+		return;
+	inode->i_security = NULL;
+
+/*	difc_free_label(&isp->ilabel);
+	list_del(&isp->ilabel);
+
+	difc_free_label(&isp->slabel);
+	list_del(&isp->slabel);
+*/
+	kfree(isp);
+	
+
+	difc_lsm_debug("successful free");
+}
+
+static int difc_inode_init_security(struct inode *inode, struct inode *dir,
+				const struct qstr *qstr, const char **name,
+				void **value, size_t *len) {
+	struct inode_difc *isp = inode->i_security;
+	int rc, llen;
+	char *labels;
+	struct task_security_struct *tsp = current_security();
+
+	
+	if (!isp) {
+		difc_lsm_debug("SYQ: inode->i_security is null (%s)\n", __func__);
+		return 0;
+	}
+
+/*	// for now even xattr is not necessary
+
+	if (tsp->confined) {
+		difc_lsm_debug("SYQ: new inode is created %ld\n", inode->i_ino);
+	}
+
+	if (name)
+		*name = XATTR_DIFC_SUFFIX;
+	
+	if (value && len) {
+		rc = security_to_labels(&isp->slabel, &isp->ilabel, &labels, &llen);
+		if (rc < 0)
+			return rc;
+		*value = kstrdup(labels, GFP_NOFS);
+		kfree(labels);
+		if (!*value) {
+			difc_lsm_debug( "memory error in %s, %d\n", __func__, __LINE__);
+			return -ENOMEM;
+		}	
+		*len = llen;
+	}
+*/
+	return 0;
+}
+
+/*
 static void difc_inode_free_security(struct inode *inode)
 {
 	struct object_security_struct *tsec = inode->i_security;
@@ -1578,7 +1713,7 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 	//ZTODO: we are not supporing persistent label storage, but here is the place to initilaze it if we wanted to support it
 	return 0;
 }
-
+*/
 
 //instead of checking permissions fo each fs seperatly, we use use the inode permissions hooks
 static int difc_inode_permission (struct inode *inode, int mask)
@@ -1999,7 +2134,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 	}		
 */
 	//spin_unlock(&tsec->cap_lock);
-	tsec->tcb=UNTRUSTED_TCB;
+	tsec->tcb=TEMP_DCL_TCB;
 	cred->security = tsec;
 	commit_creds(cred);
 
@@ -2601,10 +2736,12 @@ static void azure_sphere_cred_init_security(void)
 
 
 	//spin_lock_init(&tsec->cap_lock);
-	
+
+	tsec->tcb=FLOATING_TCB;
+
+
 	INIT_LIST_HEAD(&tsec->capList);
 	INIT_LIST_HEAD(&tsec->suspendedCaps);
-	tsec->tcb=UNTRUSTED_TCB;
 
 	cap_seg = alloc_cap_segment();
 	INIT_LIST_HEAD(&cap_seg->list);
@@ -2639,40 +2776,6 @@ static void azure_sphere_cred_init_security(void)
 
 
 
-static int azure_sphere_security_setprocattr(const char *name, void *value, size_t size) 
-{
-    struct cred *cred;
-    struct task_security_struct *tsec;
-    int ret;
-
-    // Can only set in binary format
-    if (strcmp(name, "exec") != 0) {
-        return -EINVAL;
-    }
-
-    if (value == NULL ) {
-        return -EINVAL;
-    }
-
-    cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    //if no security entry then fail
-    if (!tsec) {
-        ret = -ENOENT;
-        goto error;
-    }
-
-   	return commit_creds(cred);
-	//return 0;
-
-error:
-    abort_creds(cred);
-    return ret;
-}
 
 #ifdef CONFIG_AZURE_SPHERE_MMAP_EXEC_PROTECTION
 int azure_sphere_mmap_file(struct file *file, unsigned long reqprot, unsigned long prot, unsigned long flags) {
@@ -2851,10 +2954,11 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 //	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
 //	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
 //	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
-/*	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
+	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
-	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
-	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
+	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
+//	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
+/*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_set_label,difc_inode_set_label),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
@@ -2875,7 +2979,11 @@ static int __init azure_sphere_lsm_init(void)
 		return 0;
 	}
 	*/
-    printk(KERN_INFO "Azure Sphere LSM enabled by boot time parameter");
+	tag_struct = kmem_cache_create("difc_tag",
+				  sizeof(struct tag),
+				  0, SLAB_PANIC, NULL);	
+	//KMEM_CACHE(tag, SLAB_PANIC);
+
 
 	difc_caps_kcache = 
 		kmem_cache_create("difc_cap_segment",

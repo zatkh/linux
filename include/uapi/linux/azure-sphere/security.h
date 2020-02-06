@@ -52,10 +52,10 @@ typedef capability_t* capList_t;
 //should verfy it's sandbox image before setting this, 
 //the tcb should be uniqe based on forexample hash of images signitarure
 //I'm just using random numbers here for debugging 
-#define SANDBOX_TCB  1029
+#define TEMP_DCL_TCB  1029
 #define APPMAN_TCB   4875
-#define UNTRUSTED_TCB 2938
 #define REGULAR_TCB 3847
+#define FLOATING_TCB 2938
 
 struct label_struct {
     label_t sList[LABEL_LIST_LABELS]; //secrecy label
