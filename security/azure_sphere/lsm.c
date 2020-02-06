@@ -71,6 +71,8 @@
 
 static struct kmem_cache *difc_obj_kcache;
 static struct kmem_cache *difc_caps_kcache;
+struct kmem_cache *tag_struct;
+
 
 atomic_t max_caps_num;
 typedef label_t* labelList_t;
@@ -171,6 +173,26 @@ void __init seccomp_init(void)
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
+
+
+static struct task_security_struct *new_task_difc(gfp_t gfp) {
+	struct task_security_struct *tsp;
+	tsp = kzalloc(sizeof(struct task_security_struct), gfp);
+	
+	if (!tsp)
+		return NULL;
+	tsp->confined = false;
+	INIT_LIST_HEAD(&tsp->slabel);
+	INIT_LIST_HEAD(&tsp->ilabel);
+	INIT_LIST_HEAD(&tsp->olabel);
+	INIT_LIST_HEAD(&tsp->capList);
+	INIT_LIST_HEAD(&tsp->suspendedCaps);
+	tsp->tcb=UNTRUSTED_TCB;
+	
+	return tsp;
+} 
+
+
 
 
 //List shims
@@ -2162,7 +2184,7 @@ static int difc_send_task_capabilities(pid_t pid, void __user *ucap_list, unsign
 		kfree(capList);
 		return -ENOMEM;
 	}
-	
+/*	
 	if(&tsec->cap_lock < &rsec->cap_lock){
 		//spin_lock(&tsec->cap_lock);
 		//spin_lock(&rsec->cap_lock);
@@ -2178,7 +2200,7 @@ static int difc_send_task_capabilities(pid_t pid, void __user *ucap_list, unsign
 		//spin_unlock(&tsec->cap_lock);
 		//spin_unlock(&rsec->cap_lock);
 	}
-
+*/
 
 
 	//store the reciver task cred, current task doesn't need to be saved
@@ -2332,49 +2354,18 @@ static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
     return 0;
 }
 
-static struct task_security_struct *azure_sphere_new_task(struct task_security_struct *task,
-					struct task_security_struct *forked, gfp_t gfp)
-{
-	struct task_security_struct *tsec;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
-	if (tsec == NULL)
-		return NULL;
-
-	INIT_LIST_HEAD(&tsec->capList);
-	INIT_LIST_HEAD(&tsec->suspendedCaps);
-	tsec->tcb=UNTRUSTED_TCB;
-
-	if (list_empty(&tsec->capList))
-		{
-		difc_lsm_debug(" tsec->capList empty\n");
-
-		}
-
-	return tsec;
-}
 
 
-static int azure_sphere_cred_alloc_blank(struct cred *cred, gfp_t gfp)
+
+static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
 	struct task_security_struct *tsec;
-	difc_lsm_debug(" azure_sphere_cred_alloc_blank\n");
-/*
-	tsec = kzalloc(sizeof(struct task_security_struct), gfp);
+	difc_lsm_debug(" difc_cred_alloc_blank\n");
+	tsec = new_task_difc(gfp);
 	if (!tsec)
 		return -ENOMEM;
-
-	////spin_lock_init(&tsec->cap_lock);
-	INIT_LIST_HEAD(&tsec->capList);
-	INIT_LIST_HEAD(&tsec->suspendedCaps);
-	tsec->tcb=UNTRUSTED_TCB;
 	
-*/
-	tsec = azure_sphere_new_task(NULL, NULL, gfp);
-	if (tsec == NULL)
-		return -ENOMEM;
-
 	
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 mutex_init(&tsec->lock);
@@ -2383,8 +2374,9 @@ mutex_init(&tsec->lock);
 	tsec->poscaps=NULL;
 	tsec->negcaps=NULL;
 #endif
+
 	cred->security = tsec;
-	difc_lsm_debug(" end of azure_sphere_cred_alloc_blank\n");
+	difc_lsm_debug(" end of difc_cred_alloc_blank\n");
 
 	return 0;
 
@@ -2788,7 +2780,7 @@ struct lsm_blob_sizes azs_blob_sizes __lsm_ro_after_init = {
 
 static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
-    LSM_HOOK_INIT(cred_alloc_blank, azure_sphere_cred_alloc_blank),
+    LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
 	//LSM_HOOK_INIT(cred_free, azure_sphere_cred_free),
 

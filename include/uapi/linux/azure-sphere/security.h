@@ -72,6 +72,23 @@ struct object_security_struct {
 	struct rw_semaphore label_change_sem; 
 };
 
+enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL};
+
+struct tag {
+	struct list_head next;
+	long int content;
+};
+
+
+struct inode_difc {
+	struct list_head slabel;
+	struct list_head ilabel;
+};
+
+struct socket_difc {
+	struct inode_difc *isp;
+	struct inode_difc *peer_isp;
+};
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 
@@ -99,8 +116,13 @@ struct task_security_struct {
     struct label_struct label; //each task has a secrecy or integrity label
 	struct list_head capList; // list of task's capabilities
 	struct list_head suspendedCaps;//can be used for fork/clone to temporarly drop caps
-	spinlock_t cap_lock; // lock capabilities.
+	//spinlock_t cap_lock; // lock capabilities.
 	int tcb;  //special tag: fthread=1 ethread=2 not_labeld=3
+
+	bool confined;
+	struct list_head slabel;
+	struct list_head ilabel;
+	struct list_head olabel;
 
 #endif  
 
