@@ -1683,6 +1683,30 @@ static int difc_inode_init_security (struct inode *inode, struct inode *dir,
 }
 */
 
+
+static int difc_inode_getsecurity(struct inode *inode,
+				const char *name, void **buffer,
+				bool alloc) {
+	struct inode_difc *isp = inode->i_security;
+	int len;
+	int rc = 0;
+
+	if (!isp) {
+		difc_lsm_debug( "SYQ: inode->i_security is null (%s)\n", __func__);
+		return rc; 
+	}
+
+	if (strcmp(name, XATTR_DIFC_SUFFIX) == 0) {
+		rc = security_to_labels(&isp->slabel, &isp->ilabel, (char **)buffer, &len);
+		if (rc < 0)
+			return rc;
+		else
+			return len;
+	}
+
+	return rc;
+}
+
 // called by difc_inode_setxattr()
 static int difc_inode_setsecurity(struct inode *inode, const char *name,
 				const void *value, size_t size, int flags) {
@@ -2980,6 +3004,10 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 	LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),
+	LSM_HOOK_INIT(inode_getsecurity, difc_inode_getsecurity),
+	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
+	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
+
 
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 /*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
