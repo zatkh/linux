@@ -2373,6 +2373,7 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 
 
 //btw why this is not actually setting pgid, just a dummy?
+/*
 static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
 {
     struct task_security_struct *tsec = p->cred->security;
@@ -2380,7 +2381,7 @@ static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
     return 0;
 }
 
-
+*/
 
 
 static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
@@ -2542,17 +2543,18 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 	return 0;
 }
 
-static void azure_sphere_cred_transfer(struct cred *new, const struct cred *old)
+static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
 {
-	const struct task_security_struct *old_tsec = old->security;
-	struct task_security_struct *tsec = new->security;
+	struct task_security_struct *old_tsec;
+	struct task_security_struct *tsec;
 
+	difc_lsm_debug("in transfer for pid %d\n", current->pid);
 	if(new == NULL || old == NULL)
 	    return;
+	old_tsec = azs_cred(old);
+	tsec = azs_cred(new);
 
-#ifdef CONFIG_EXTENDED_FLOATING_DIFC
-
-mutex_lock(&old_tsec->lock);
+	mutex_lock(&old_tsec->lock);
 	if(old_tsec==NULL || tsec==NULL)
 	    return;
 
@@ -2581,8 +2583,7 @@ mutex_lock(&old_tsec->lock);
 	    copy_lists(old_tsec->negcaps, tsec->negcaps);
 	}
 	mutex_unlock(&old_tsec->lock);
-#endif
-	*tsec = *old_tsec;
+	difc_lsm_debug("out transfer for pid %d\n", current->pid);
 }
 
 static void azure_sphere_cred_init_security(void)
@@ -2842,14 +2843,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
     LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_free, difc_cred_free),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
+	LSM_HOOK_INIT(cred_transfer, difc_sphere_cred_transfer),
 
-
-	/*    LSM_HOOK_INIT(task_setpgid, azure_sphere_task_setpgid),
-    LSM_HOOK_INIT(cred_prepare, azure_sphere_cred_prepare),
-    LSM_HOOK_INIT(cred_transfer, azure_sphere_cred_transfer),
-    LSM_HOOK_INIT(setprocattr, azure_sphere_security_setprocattr),
-
-*/
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
