@@ -1809,6 +1809,9 @@ union security_list_options {
 	void*  (*copy_user_label) (const char __user *label);
 	int  (*check_tasks_labels_allowed) (struct task_struct *s_tsk,struct task_struct *d_tsk);
 	int (*check_task_labeled) (struct task_struct *tsk);
+	int (*sk_alloc_security)(struct sock *sk, int family, gfp_t priority);
+	void (*sk_free_security)(struct sock *sk);
+	void (*sk_clone_security)(const struct sock *sk, struct sock *newsk);
 
 
 
@@ -2058,6 +2061,9 @@ struct security_hook_heads {
 	struct hlist_head copy_user_label;
 	struct hlist_head check_tasks_labels_allowed;
 	struct hlist_head check_task_labeled;
+	struct hlist_head sk_alloc_security;
+	struct hlist_head sk_free_security;
+	struct hlist_head sk_clone_security;
 	
 #endif
 

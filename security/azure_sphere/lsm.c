@@ -345,7 +345,7 @@ struct task_security_struct* get_task_security_from_task_struct_unlocked(struct 
     cred= __task_cred(task);
     rcu_read_unlock();
     if(cred==NULL){
-	//printk("WEIR: cred NULL\n");
+	//difc_lsm_debug(" cred NULL\n");
 	return NULL;
     }
     return cred->security;
@@ -357,7 +357,7 @@ struct task_security_struct* get_task_security_from_task_struct(struct task_stru
     cred= __task_cred(task);
     //rcu_read_unlock();
     if(cred==NULL){
-	//printk("WEIR: cred NULL\n");
+	//difc_lsm_debug(" cred NULL\n");
 	return NULL;
     }
     return cred->security;
@@ -368,7 +368,7 @@ struct task_security_struct* get_task_security_from_pid(pid_t pid){
     struct task_struct* task;
     task = pid_task(find_vpid(pid), PIDTYPE_PID);
     if(task==NULL){
-	//printk("WEIR: task NULL for pid %d\n",pid);
+	//difc_lsm_debug(" task NULL for pid %d\n",pid);
 	return NULL;
     }
     return get_task_security_from_task_struct(task);
@@ -380,7 +380,7 @@ void add_tag_to_label(pid_t pid, tag_t tag){
     //struct tag_list* seclabel;
 
     if(tsec==NULL){
-	    //printk("WEIR: tsec NULL for pid %d\n",pid);
+	    //difc_lsm_debug(" tsec NULL for pid %d\n",pid);
 	    goto out;
     }
     //LOCK on TSEC
@@ -1796,7 +1796,7 @@ static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
 
 	rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
 	if (rc < 0) {
-		printk(KERN_ALERT "SYQ: cannot delete file (%s)\n", dentry->d_name.name);
+		difc_lsm_debug( "SYQ: cannot delete file (%s)\n", dentry->d_name.name);
 		rc = -EPERM;
 		goto out;
 	}
@@ -1872,7 +1872,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&tsp->ilabel, &tsp->olabel, &isp->ilabel);
 			if (rc < 0) {
-				printk(KERN_ALERT "SYQ: integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug( "SYQ: integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1884,7 +1884,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
-				printk(KERN_ALERT "SYQ: secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("SYQ: secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1914,7 +1914,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
 			if (rc < 0) {
-				printk(KERN_ALERT "SYQ: integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("SYQ: integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1926,7 +1926,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
 			if (rc < 0) {
-				printk(KERN_ALERT "SYQ: secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("SYQ: secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1938,6 +1938,99 @@ out:
 	rc = 0;
 	return rc;
 }
+/*
+static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
+	struct inode_difc *isp;
+	struct super_block *sbp;
+	struct dentry *dp;
+	char *buffer;
+	int rc, len;
+
+	if (!inode)
+		return;
+
+	isp = inode->i_security;
+	sbp = inode->i_sb;
+
+	// root
+	if (opt_dentry->d_parent == opt_dentry)
+		return;
+
+	switch (sbp->s_magic) {
+		case PIPEFS_MAGIC:
+		case SOCKFS_MAGIC:
+		case CGROUP_SUPER_MAGIC:
+		case DEVPTS_SUPER_MAGIC:
+		case PROC_SUPER_MAGIC:
+		case TMPFS_MAGIC:
+			break;
+		default:
+			if (S_ISSOCK(inode->i_mode)) 
+				return;
+			if (inode->i_op->getxattr == NULL)
+				return;
+				
+			dp = dget(opt_dentry);
+			buffer = kzalloc(MAX_LABEL_SIZE, GFP_KERNEL);
+			if (!buffer) {
+				difc_lsm_debug("SYQ: oops@%s\n", __func__);
+				return;
+			}
+			len = inode->i_op->getxattr(dp, XATTR_NAME_DIFC, buffer, MAX_LABEL_SIZE);
+			if (len > 0) {
+				rc = security_set_labels(&isp->slabel, &isp->ilabel, NULL, buffer, len);
+				if (rc < 0) {
+					
+					difc_lsm_debug("SYQ: security_set_labels (%s) @ %s\n", buffer, __func__);
+				}
+			}
+			dput(dp);
+			kfree(buffer);
+			break;
+	}
+	return;
+}
+*/
+
+static int difc_sk_alloc_security(struct sock *sk, int family, gfp_t priority) 
+{
+	struct socket_difc *ssp;
+
+	ssp = kzalloc(sizeof(struct socket_difc), priority);
+	if (!ssp)
+		return -ENOMEM;
+
+	// Set in difc_socket_post_create()?
+	ssp->isp = NULL;
+	ssp->peer_isp = NULL;
+	sk->sk_security =  ssp;
+
+	return 0;
+}
+
+static void difc_sk_free_security(struct sock *sk) {
+	struct socket_difc *ssp = sk->sk_security;
+	sk->sk_security = NULL;
+
+	if (!ssp)
+		kfree(ssp);
+}
+
+static void difc_sk_clone_security(const struct sock *sk, struct sock *newsk) {
+	struct socket_difc *ssp = sk->sk_security;
+	struct socket_difc *newssp = newsk->sk_security;
+
+	newssp->isp = ssp->isp;
+	newssp->peer_isp = ssp->peer_isp;
+}
+
+static int difc_socket_create(int family, int type, int protocol, int kern) {
+	/*
+	* Seems like no need to set up
+	*/
+	return 0;
+}
+
 
 //instead of checking permissions fo each fs seperatly, we use use the inode permissions hooks
 /*
@@ -3146,7 +3239,7 @@ asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
     __asm__ __volatile__(
             "mrc p15, 0, %[result], c3, c0, 0\n"
             : [result] "=r" (dacr) : );
-    printk("dacr=0x%lx\n", dacr);
+    difc_lsm_debug("dacr=0x%lx\n", dacr);
 
 	return ret_val;
 	
@@ -3193,6 +3286,11 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
+	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
+	LSM_HOOK_INIT(sk_alloc_security, difc_sk_alloc_security),
+	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
+	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
+
 
 
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
