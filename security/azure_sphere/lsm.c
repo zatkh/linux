@@ -1759,7 +1759,188 @@ static void difc_inode_post_setxattr(struct dentry *dentry, const char *name,
 	return;
 }
 
+
+static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
+	int rc = 0;
+	struct task_security_struct *tsp = current_security();
+	struct super_block *sbp = dentry->d_inode->i_sb;
+	struct inode_difc *isp = dentry->d_inode->i_security;
+	struct tag *t;
+
+	if (!tsp->confined)
+		return rc;
+
+	if ((dir->i_mode & S_ISVTX) == 0)
+		return rc;
+
+	switch (sbp->s_magic) {
+		case PIPEFS_MAGIC:
+		case SOCKFS_MAGIC:
+		case CGROUP_SUPER_MAGIC:
+		case DEVPTS_SUPER_MAGIC:
+		case PROC_SUPER_MAGIC:
+		case TMPFS_MAGIC:
+		case SYSFS_MAGIC:
+		case RAMFS_MAGIC:
+		case DEBUGFS_MAGIC:
+			return rc;
+		default:
+			/* For now, only check on the rest cases */
+			break;
+	}
+
+	/* Only allow when current can integrity write the dentry inode */
+	list_for_each_entry_rcu(t, &isp->ilabel, next)
+		if (t->content == 0)
+			return rc;
+
+	rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
+	if (rc < 0) {
+		printk(KERN_ALERT "SYQ: cannot delete file (%s)\n", dentry->d_name.name);
+		rc = -EPERM;
+		goto out;
+	}
+	
+out:
+	/* For debugging, always return 0 */
+	rc = 0;
+	return rc;
+}
+
+static int difc_inode_rmdir(struct inode *dir, struct dentry *dentry) {
+	/* 
+	* Currently, we assume files under the directory would have the same label
+	* if a dir is a/b/c and labels are a(1), b(1;2), c(1;2;3)
+	* Impossible, since otherwise the file cannot be read due to parent directories have less integrity
+	*/
+	return difc_inode_unlink(dir, dentry);
+}
+
+static int difc_inode_permission(struct inode *inode, int mask) {
+	int rc = 0;
+	struct task_security_struct *tsp = current_security();
+	struct inode_difc *isp = inode->i_security;
+	struct super_block *sbp = inode->i_sb;
+	struct tag *t;
+	int top, down;
+
+	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
+
+	/* For some reason, label of / is not persistent.  Thus if /, return */
+	if (mask == 0 || !isp || inode->i_ino == 2) 
+		return rc;
+
+	if (!tsp->confined)
+		return rc;
+
+	switch (sbp->s_magic) {
+		case PIPEFS_MAGIC:
+		case SOCKFS_MAGIC:
+		case CGROUP_SUPER_MAGIC:
+		case DEVPTS_SUPER_MAGIC:
+		case PROC_SUPER_MAGIC:
+		case TMPFS_MAGIC:
+		case SYSFS_MAGIC:
+		case RAMFS_MAGIC:
+		case DEBUGFS_MAGIC:
+			return rc;
+		default:
+			/* For now, only check on the rest cases */
+			break;
+	}
+
+	if (mask & (MAY_READ | MAY_EXEC)) {
+		/*
+		* Check for special tag: 65535 and 0
+		* If integrity label contains 65535 and secrecy label contains 0, the inode is globally readable
+		*/
+		top = -1;
+		down = -1;
+		list_for_each_entry_rcu(t, &isp->ilabel, next)
+			if (t->content == 65535)
+				top = 0;
+		list_for_each_entry_rcu(t, &isp->slabel, next)
+			if (t->content == 0)
+				down = 0;
+		
+		if (top ==0 && down == 0)
+			goto out;
+
+		if (top != 0) {
+			/*
+			*  Integrity: Ip <= Iq + Op
+			*/
+			rc = is_label_subset(&tsp->ilabel, &tsp->olabel, &isp->ilabel);
+			if (rc < 0) {
+				printk(KERN_ALERT "SYQ: integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				rc = -EACCES;
+				goto out;
+			}
+		}
+	
+		if (down != 0) {
+			/*
+			*  Secrecy: Sq <= Sp + Op
+			*/
+			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
+			if (rc < 0 && down != 0) {
+				printk(KERN_ALERT "SYQ: secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				rc = -EACCES;
+				goto out;
+			}
+		}
+	} 
+	
+	if(mask & (MAY_WRITE | MAY_APPEND)) {
+		/*
+		* Check for special tag: 65535 and 0
+		* If integrity label contains 0 and secrecy label contains 65535, the inode is globally writable
+		*/
+		top = -1;
+		down = -1;
+		list_for_each_entry_rcu(t, &isp->ilabel, next)
+			if (t->content == 0)
+				top = 0;
+		list_for_each_entry_rcu(t, &isp->slabel, next)
+			if (t->content == 65535)
+				down = 0;
+		
+		if (top ==0 && down == 0)
+			goto out;
+
+		if (top != 0) {
+			/*
+			*  Integrity: Iq <= Ip + Op
+			*/
+			rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
+			if (rc < 0) {
+				printk(KERN_ALERT "SYQ: integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				rc = -EACCES;
+				goto out;
+			}
+		}
+
+		if (down != 0) {
+			/*
+			*  Secrecy: Sp <= Sq + Op
+			*/
+			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
+			if (rc < 0) {
+				printk(KERN_ALERT "SYQ: secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				rc = -EACCES;
+				goto out;
+			}
+		}
+	}
+
+out:
+	/* Always allow for debugging */
+	rc = 0;
+	return rc;
+}
+
 //instead of checking permissions fo each fs seperatly, we use use the inode permissions hooks
+/*
 static int difc_inode_permission (struct inode *inode, int mask)
 {
 
@@ -1818,6 +1999,7 @@ static int difc_inode_permission (struct inode *inode, int mask)
 	
 	return ret_val;
 }
+
 
 //this hook should be used for adding new label to already existing inodes, for initialization the inode_set_lable is ok
 static int difc_inode_set_label(struct inode *inode, void __user *new_label)
@@ -1878,6 +2060,7 @@ static int difc_inode_set_label(struct inode *inode, void __user *new_label)
 	difc_lsm_debug("setting new lable for the inode is done\n");
 	return ret_val;
 }
+*/
 
 // difc_permanent_declassify  should be used for dropping capabilities permanently. 
 // the temporarly version is used before cloning new thread instead of setting other tasks credentials that is not a good practice from securitypoint of view 
@@ -3007,13 +3190,15 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_getsecurity, difc_inode_getsecurity),
 	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
+	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
+	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
+	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
 
 
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 /*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_set_label,difc_inode_set_label),
-	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
 
 
 */
