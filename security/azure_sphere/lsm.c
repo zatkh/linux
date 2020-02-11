@@ -1938,13 +1938,14 @@ out:
 	rc = 0;
 	return rc;
 }
-/*
+
 static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 	struct inode_difc *isp;
 	struct super_block *sbp;
 	struct dentry *dp;
 	char *buffer;
-	int rc, len;
+	int rc;
+	ssize_t len;
 
 	if (!inode)
 		return;
@@ -1967,8 +1968,8 @@ static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 		default:
 			if (S_ISSOCK(inode->i_mode)) 
 				return;
-			if (inode->i_op->getxattr == NULL)
-				return;
+		//	if (inode->i_op->getxattr == NULL) //ztodo
+		//		return;
 				
 			dp = dget(opt_dentry);
 			buffer = kzalloc(MAX_LABEL_SIZE, GFP_KERNEL);
@@ -1976,7 +1977,11 @@ static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 				difc_lsm_debug("SYQ: oops@%s\n", __func__);
 				return;
 			}
-			len = inode->i_op->getxattr(dp, XATTR_NAME_DIFC, buffer, MAX_LABEL_SIZE);
+		//	len = inode->i_op->getxattr(dp, XATTR_NAME_DIFC, buffer, MAX_LABEL_SIZE);
+			
+			len=__vfs_getxattr(dp, inode,  XATTR_NAME_DIFC, buffer, MAX_LABEL_SIZE);
+
+
 			if (len > 0) {
 				rc = security_set_labels(&isp->slabel, &isp->ilabel, NULL, buffer, len);
 				if (rc < 0) {
@@ -1990,7 +1995,7 @@ static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 	}
 	return;
 }
-*/
+
 
 static int difc_sk_alloc_security(struct sock *sk, int family, gfp_t priority) 
 {
