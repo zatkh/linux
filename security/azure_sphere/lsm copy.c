@@ -91,8 +91,6 @@ unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
 
 #define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
-#define alloc_tag_struct() kmem_cache_zalloc(tag_struct, GFP_KERNEL)
-
 #define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
 
 
@@ -839,23 +837,29 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //allocate a new label and add it to the task's cap set 
-static label_t difc_alloc_label(int cap_type, int mode)
+static label_t difc_alloc_label(int cap_type, int group_mode)
 {
 
-
 	capability_t new_cap = atomic_inc_return(&max_caps_num);
-	struct task_security_struct *tsec=current_security();
+	struct cred *cred ;
+	struct task_security_struct *tsec;
 	struct cap_segment *cap_seg;
-	struct tag *new_tag;
 	int is_max=0;
 
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
+	difc_lsm_debug("after kalloc\n");
+  	cred = prepare_creds();
+    if (!cred) {
+        return -ENOMEM;
+    }
+    tsec = cred->security;
 
     if (!tsec) {
 		difc_lsm_debug("not enough memory\n");
         return -ENOENT;
     }
 
-	difc_lsm_debug("after creds check\n");
+difc_lsm_debug("after creds check\n");
 
 	//get the requested t+ or t- cpabilty
 	new_cap |= (cap_type & (PLUS_CAPABILITY| MINUS_CAPABILITY));
@@ -865,29 +869,43 @@ static label_t difc_alloc_label(int cap_type, int mode)
 
 	if((new_cap & MINUS_CAPABILITY))
 		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
-		
 
-	tsec->tcb=REGULAR_TCB;
+//difc_lsm_debug("before spinlock\n");
+	////spin_lock(&tsec->cap_lock);
 
-	if (tag_struct == NULL)
-			difc_lsm_debug( "tag_struct is NULL\n");
+//	difc_lsm_debug("after spinlock\n");
 	
-	new_tag = alloc_tag_struct();
-	if (!new_tag) {
-			return  -ENOMEM;
+	list_for_each_entry(cap_seg, &tsec->capList, list){
+		if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
+			//difc_lsm_debug("cap_seg->caps[0]%lld \n",cap_seg->caps[0]);
+			is_max = 0;
+			break;
 		}
-	new_tag->content = (new_cap & CAP_LABEL_MASK);
-	if(mode==FLOATING)
-		new_tag->floating=true;
-	else 	
-		new_tag->floating=false;
+	}
+	if(is_max){
+		cap_seg = alloc_cap_segment();
+		INIT_LIST_HEAD(&cap_seg->list);
+		list_add_tail(&cap_seg->list, &tsec->capList);
+	}
+	difc_lsm_debug("after caplist list for ech entry\n");
+		
+	cap_seg->caps[++(cap_seg->caps[0])] = new_cap;
 
-		INIT_LIST_HEAD(&new_tag->next);
+//labeling mark
+//	if(tsec->is_app_man)
+//		tsec->tcb=APPMAN_TCB;
+//	else
+		tsec->tcb=REGULAR_TCB;
+	difc_lsm_debug("tsec tcb %d \n",tsec->tcb);
 
-	
-	difc_lsm_debug("before adding to olabel\n");
+	////spin_unlock(&tsec->cap_lock);
 
-	list_add_tail(&new_tag->next, &tsec->olabel);
+	// in case we want to give appman extra capabilities to declassify or etc
+
+	//difc_lsm_debug("before commit\n");
+
+	cred->security = tsec;
+	commit_creds(cred);
 
 	return (new_cap & CAP_LABEL_MASK);
 }
@@ -2781,11 +2799,24 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 	//isb();
 	unlabeled_task = is_task_labeled(current);
 
+/* 
+		  __asm__ __volatile__(
+            "mrc p15, 0, %[result], c3, c0, 0\n"
+            : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+*/
 	if(!unlabeled_task)
 		{
 			difc_lsm_debug(" task is labedl so make its domain(%d) NoAcc\n",domain);
 			modify_domain(domain_copy,DOMAIN_NOACCESS);
 
+/* 	
+	__asm__ __volatile__(
+    "mrc p15, 0, %[result], c3, c0, 0\n"
+    : [result] "=r" (dacr) : );
+    printk("dacr=0x%lx\n", dacr);
+
+*/
 		}
 	else
 	{
@@ -2801,59 +2832,28 @@ static inline void difc_set_domain(unsigned long addr, unsigned long counts, int
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
 
+//btw why this is not actually setting pgid, just a dummy?
+/*
+static int azure_sphere_task_setpgid(struct task_struct *p, pid_t pgid)
+{
+    struct task_security_struct *tsec = p->cred->security;
+
+    return 0;
+}
+
+*/
 
 
 static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 
-	struct task_security_struct *tsec=azs_cred(cred);
-
-	struct cap_segment *cap_seg;
-	struct cap_segment *sus_seg;
-	struct tag* tag_seg;
-
+	struct task_security_struct *tsec;
 	difc_lsm_debug(" difc_cred_alloc_blank\n");
-
+	tsec = new_task_security_struct(gfp);
 	if (!tsec)
 		return -ENOMEM;
-
-
-	//spin_lock_init(&tsec->cap_lock);
-
-	tsec->tcb=FLOATING_TCB;
-	tsec->confined = false;
-
-	INIT_LIST_HEAD(&tsec->slabel);
-	INIT_LIST_HEAD(&tsec->ilabel);
-	INIT_LIST_HEAD(&tsec->olabel);
-	INIT_LIST_HEAD(&tsec->capList);
-	INIT_LIST_HEAD(&tsec->suspendedCaps);
-
-	tag_seg=alloc_tag_struct();
-	INIT_LIST_HEAD(&tag_seg->next);
-		
-
-
-
-	cap_seg = alloc_cap_segment();
-	INIT_LIST_HEAD(&cap_seg->list);
-	cap_seg->caps[0]=0;//first cell keeps the total number of caps
-	list_add_tail(&cap_seg->list, &tsec->capList);
-
-	sus_seg = alloc_cap_segment();
-	INIT_LIST_HEAD(&sus_seg->list);
-	sus_seg->caps[0]=0;
-	list_add_tail(&sus_seg->list, &tsec->suspendedCaps);
-
-
-	//spin_unlock(&tsec->cap_lock);
-
-  // cred->security = tsec;
-
-
-
-
-
+	
+	
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 mutex_init(&tsec->lock);
 	tsec->pid = current->pid;
@@ -2862,7 +2862,7 @@ mutex_init(&tsec->lock);
 	tsec->negcaps=NULL;
 #endif
 
-//	cred->security = tsec;
+	cred->security = tsec;
 	difc_lsm_debug(" end of difc_cred_alloc_blank\n");
 
 	return 0;
@@ -3048,31 +3048,52 @@ static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
 
 static void azure_sphere_cred_init_security(void)
 {
+	struct cred *cred = (struct cred *) current->real_cred;
+	struct task_security_struct *tsec;
+	struct cap_segment *cap_seg;
+	struct cap_segment *sus_seg;
 
-	tag_struct = kmem_cache_create("difc_tag",
-				  sizeof(struct tag),
-				  0, SLAB_PANIC, NULL);	
-	//KMEM_CACHE(tag, SLAB_PANIC);
 
 
-	difc_caps_kcache = 
-		kmem_cache_create("difc_cap_segment",
-				  sizeof(struct cap_segment),
-				  0, SLAB_PANIC, NULL);			  
+	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
+	if (!tsec)
+		panic("Failed to initialize initial task security object.\n");
 
-	difc_obj_kcache = 
-		kmem_cache_create("difc_object_struct",
-				  sizeof(struct object_security_struct),
-				  0, SLAB_PANIC, NULL);
 
-	atomic_set(&max_caps_num, CAPS_INIT);
-	
+	//spin_lock_init(&tsec->cap_lock);
+
+	tsec->tcb=FLOATING_TCB;
+
+
+	INIT_LIST_HEAD(&tsec->capList);
+	INIT_LIST_HEAD(&tsec->suspendedCaps);
+
+	cap_seg = alloc_cap_segment();
+	INIT_LIST_HEAD(&cap_seg->list);
+	cap_seg->caps[0]=0;//first cell keeps the total number of caps
+	list_add_tail(&cap_seg->list, &tsec->capList);
+
+	sus_seg = alloc_cap_segment();
+	INIT_LIST_HEAD(&sus_seg->list);
+	sus_seg->caps[0]=0;
+	list_add_tail(&sus_seg->list, &tsec->suspendedCaps);
+
+#ifdef CONFIG_EXTENDED_FLOATING_DIFC
+	tsec->pid = current->pid;
+#endif
+
+	//spin_unlock(&tsec->cap_lock);
+
+    cred->security = tsec;
+
+
 	alloc_hash();
     if (table == NULL) {
         panic("couldn't allocate udoms hash_table.\n");
  
     }
 
+	difc_lsm_debug("[azure_sphere_cred_init_security] initialized, tsec->tcb %d\n",tsec->tcb);
 
 
 }	
@@ -3118,6 +3139,7 @@ asmlinkage long sys_alloc_label(int type, int mode)
 	difc_lsm_debug("enter, mode: %d,%d\n",type,mode);
 
 	return difc_alloc_label(type,mode);
+	//return 0;
 	
 }
 
@@ -3292,7 +3314,29 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
 static int __init azure_sphere_lsm_init(void)
 {
+	/*
+    if (!security_module_enable("AzureSphere")) {
+        printk(KERN_INFO "Azure Sphere LSM disabled by boot time parameter");
+		return 0;
+	}
+	*/
+	tag_struct = kmem_cache_create("difc_tag",
+				  sizeof(struct tag),
+				  0, SLAB_PANIC, NULL);	
+	//KMEM_CACHE(tag, SLAB_PANIC);
 
+
+	difc_caps_kcache = 
+		kmem_cache_create("difc_cap_segment",
+				  sizeof(struct cap_segment),
+				  0, SLAB_PANIC, NULL);			  
+
+	difc_obj_kcache = 
+		kmem_cache_create("difc_object_struct",
+				  sizeof(struct object_security_struct),
+				  0, SLAB_PANIC, NULL);
+
+	atomic_set(&max_caps_num, CAPS_INIT);
 
     azure_sphere_cred_init_security();
 

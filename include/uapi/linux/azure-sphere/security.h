@@ -72,11 +72,13 @@ struct object_security_struct {
 	struct rw_semaphore label_change_sem; 
 };
 
-enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL};
+enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, FLOATING, EXPLICIT};
 
 struct tag {
 	struct list_head next;
 	long int content;
+	bool floating;
+
 };
 
 
