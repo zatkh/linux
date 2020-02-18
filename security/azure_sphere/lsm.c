@@ -840,14 +840,14 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //allocate a new label and add it to the task's cap set 
-static label_t difc_alloc_label(int cap_type, int mode)
+static label_t difc_alloc_label(int cap_type, enum label_types mode)
 {
-
-
-	capability_t new_cap = atomic_inc_return(&max_caps_num);
 	struct task_security_struct *tsec=current_security();
 	struct tag *new_tag;
+	long int tag_content;
+	struct list_head new_ilabel, new_slabel;
 	int is_max=0;
+	int ret;
 
 
     if (!tsec) {
@@ -855,40 +855,50 @@ static label_t difc_alloc_label(int cap_type, int mode)
         return -ENOENT;
     }
 
-	difc_lsm_debug("after creds check\n");
 
-	//get the requested t+ or t- cpabilty
-	new_cap |= (cap_type & (PLUS_CAPABILITY| MINUS_CAPABILITY));
+	tag_content = (long int) get_random_long() ;
 
-	if((new_cap & PLUS_CAPABILITY))
-		difc_lsm_debug("allocating cap with PLUS_CAPABILITY \n");
+	difc_lsm_debug("tag: %ld\n", tag_content);
 
-	if((new_cap & MINUS_CAPABILITY))
-		difc_lsm_debug("allocating cap with MINUS_CAPABILITY \n");
-		
+	ret = add_ownership(tsec, tag_content);
+		if (ret < 0)
+			goto out;
 
-	tsec->tcb=REGULAR_TCB;
 
-	if (tag_struct == NULL)
-			difc_lsm_debug( "tag_struct is NULL\n");
-	
-	new_tag = alloc_tag_struct();
-	if (!new_tag) {
-			return  -ENOMEM;
-		}
-	new_tag->content = (new_cap & CAP_LABEL_MASK);
-	if(mode==FLOATING)
-		new_tag->floating=true;
+
+	if(mode==SEC_LABEL)
+	{
+
+		INIT_LIST_HEAD(&new_slabel);
+	}
+	else if (mode==INT_LABEL)
+	{
+		INIT_LIST_HEAD(&new_ilabel);	
+
+	}
+
+/*
+	else if(mode==SEC_LABEL_FLOATING || mode==INT_LABEL_FLOATING)
+		{	new_tag->floating=true;}
 	else 	
-		new_tag->floating=false;
+		{	new_tag->floating=false;}
 
-	INIT_LIST_HEAD(&new_tag->next);
-	list_add_tail(&new_tag->next, &tsec->olabel);
-
+*/
 		difc_lsm_debug("after adding to olabel\n");
 
 
-	return new_tag->content;
+
+	return tag_content;
+
+out:
+	list_del(&new_slabel);
+	list_del(&new_ilabel);
+	return ret;		
+
+
+
+
+	return tag_content;
 }
 
 // get capability of a label
@@ -1197,7 +1207,7 @@ static int check_replacing_labels_allowed(struct task_struct *tsk, struct label_
 	return 0;
 }
 
-static int difc_set_task_label(struct task_struct *tsk, label_t label, enum label_types ops, int label_type, void __user *bulk_label)
+static int difc_set_task_label(struct task_struct *tsk, label_t label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
 {
 	int ret;
 	struct label_struct *user_label;
@@ -1227,21 +1237,25 @@ static int difc_set_task_label(struct task_struct *tsk, label_t label, enum labe
     }
 
 
-	tag_content = get_random_long() ;
+	tag_content = (long int) get_random_long() ;
 
-	difc_lsm_debug("tag: %d\n", tag_content);
+	difc_lsm_debug("tag: %ld\n", tag_content);
 
 	if (ops == OWNERSHIP_ADD) {
+			difc_lsm_debug("OWNERSHIP_ADD\n");
+
 			ret = add_ownership(tsec, tag_content);
 			if (ret < 0)
 				goto out;	
 		} 
-		else if (ops == OWNERSHIP_DROP) {
+	else if (ops == OWNERSHIP_DROP) {
+			difc_lsm_debug("OWNERSHIP_DROP\n");
+
 			ret = drop_ownership(tsec, tag_content);
 			if (ret < 0)
 				goto out;	
 		}
-		else {
+	else {
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
 			if (!new_tag) {
 				ret = -ENOMEM;
