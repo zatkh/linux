@@ -34,3 +34,7 @@ int security_set_labels(struct list_head *slabel,
 			struct list_head *ilabel,
 			struct task_security_struct *tsp,
 			const char *value, int size);
+
+
+extern int add_ownership(struct task_security_struct *tsp, int tag_content);
+extern int drop_ownership(struct task_security_struct *tsp, int tag_content);

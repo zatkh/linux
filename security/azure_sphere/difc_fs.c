@@ -9,7 +9,7 @@
 
 #include "difc.h"
 
-static int add_ownership(struct task_security_struct *tsp, int tag_content) {
+int add_ownership(struct task_security_struct *tsp, int tag_content) {
 	bool present = false;
 	struct tag *t, *new_tag;
 	int result = -EINVAL;
@@ -35,8 +35,8 @@ static int add_ownership(struct task_security_struct *tsp, int tag_content) {
 	}
 	return 0;
 }
-
-static int drop_ownership(struct task_security_struct *tsp, int tag_content) {
+ 
+int drop_ownership(struct task_security_struct *tsp, int tag_content) {
 	struct tag *t;
 	struct tag *next_tag;
 

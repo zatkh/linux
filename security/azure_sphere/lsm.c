@@ -35,6 +35,7 @@
 #include <linux/mman.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
+#include <linux/random.h>
 
 #include <azure-sphere/security.h>
 
@@ -845,7 +846,6 @@ static label_t difc_alloc_label(int cap_type, int mode)
 
 	capability_t new_cap = atomic_inc_return(&max_caps_num);
 	struct task_security_struct *tsec=current_security();
-	struct cap_segment *cap_seg;
 	struct tag *new_tag;
 	int is_max=0;
 
@@ -882,14 +882,13 @@ static label_t difc_alloc_label(int cap_type, int mode)
 	else 	
 		new_tag->floating=false;
 
-		INIT_LIST_HEAD(&new_tag->next);
-
-	
-	difc_lsm_debug("before adding to olabel\n");
-
+	INIT_LIST_HEAD(&new_tag->next);
 	list_add_tail(&new_tag->next, &tsec->olabel);
 
-	return (new_cap & CAP_LABEL_MASK);
+		difc_lsm_debug("after adding to olabel\n");
+
+
+	return new_tag->content;
 }
 
 // get capability of a label
@@ -1198,12 +1197,20 @@ static int check_replacing_labels_allowed(struct task_struct *tsk, struct label_
 	return 0;
 }
 
-static int difc_set_task_label(struct task_struct *tsk, label_t label, int operation_type, int label_type, void __user *bulk_label)
+static int difc_set_task_label(struct task_struct *tsk, label_t label, enum label_types ops, int label_type, void __user *bulk_label)
 {
-	int return_val;
+	int ret;
 	struct label_struct *user_label;
 	struct cred *cred ;
 	struct task_security_struct *tsec;
+	struct list_head new_ilabel, new_slabel,new_label;
+	struct tag *new_tag;
+	long int tag_content;
+
+
+	INIT_LIST_HEAD(&new_ilabel);	
+	INIT_LIST_HEAD(&new_slabel);
+	INIT_LIST_HEAD(&new_label);
 
 
 	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
@@ -1219,40 +1226,56 @@ static int difc_set_task_label(struct task_struct *tsk, label_t label, int opera
         return -ENOENT;
     }
 
-	//difc_lsm_debug( "operation_type: %d, label_type: %d\n",operation_type,label_type);
 
+	tag_content = get_random_long() ;
 
-	if(operation_type == REPLACE_LABEL)
-    {
-		user_label = difc_copy_user_label(bulk_label);
-		if(!user_label)
-        {
-		  difc_lsm_debug(" Bad user_label\n");
-		  return -ENOMEM;
-		}
-        // check if it's ok to replace
+	difc_lsm_debug("tag: %d\n", tag_content);
 
-		//difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", user_label->sList[0],user_label->sList[1]);
-		if((return_val = check_replacing_labels_allowed(tsk, &tsec->label, user_label)) == 0)
-        {
-			memcpy(&tsec->label, user_label, sizeof(struct label_struct));
-			//difc_lsm_debug(" replace: %lld, %lld\n", tsec->label.sList[0],tsec->label.sList[1]);
-
+	if (ops == OWNERSHIP_ADD) {
+			ret = add_ownership(tsec, tag_content);
+			if (ret < 0)
+				goto out;	
 		} 
-		cred->security = tsec;
-	    commit_creds(cred);
-		kfree(user_label);
-		return return_val;
-	} 
- 
-	//difc_lsm_debug("not a replace operation, so add/remove then %d\n", operation_type);
-	return_val=__difc_set_task_label(tsk, &tsec->label, label, operation_type, label_type, 0);
+		else if (ops == OWNERSHIP_DROP) {
+			ret = drop_ownership(tsec, tag_content);
+			if (ret < 0)
+				goto out;	
+		}
+		else {
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			if (!new_tag) {
+				ret = -ENOMEM;
+				goto out;
+			}
+			new_tag->content = tag_content;
+			list_add_tail_rcu(&new_tag->next, &new_label);
+		}
+
+
+	/*
+	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+	if (!new_tag)
+	{
+		ret = -ENOMEM;
+	}
+	new_tag->content = label;
+	list_add_tail_rcu(&new_tag->next, &new_slabel);
+
+	ret = can_label_change(&tsec->slabel, &new_slabel, &tsec->olabel);
+
+
+*/
+
 
 	cred->security = tsec;
 	commit_creds(cred);
 
-	return return_val;
-		
+	return ret;
+
+out:
+	list_del(&new_label);
+	kfree(user_label);
+	return ret;		
 
 }
 
@@ -3128,7 +3151,6 @@ int azure_sphere_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot
 asmlinkage long sys_alloc_label(int type, int mode)
 {
 
-	difc_lsm_debug("enter, mode: %d,%d\n",type,mode);
 
 	return difc_alloc_label(type,mode);
 	
@@ -3160,10 +3182,10 @@ return 0;
 
 
 //set current task labels
-asmlinkage long sys_set_task_label(unsigned long label, int operation_type, int label_type, void *bulk_label)
+asmlinkage long sys_set_task_label(unsigned long label, enum label_types ops, int label_type, void *bulk_label)
 {
 
-	return difc_set_task_label(current,  label,  operation_type,  label_type, bulk_label);
+	return difc_set_task_label(current,  label,  ops,  label_type, bulk_label);
 
 }
 
