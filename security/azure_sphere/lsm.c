@@ -2863,7 +2863,6 @@ mutex_init(&tsec->lock);
 #endif
 
 //	cred->security = tsec;
-	difc_lsm_debug(" end of difc_cred_alloc_blank\n");
 
 	return 0;
 
@@ -2921,6 +2920,8 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 {
 	const struct task_security_struct *old_tsec=azs_cred(old);
 	struct task_security_struct *tsec=azs_cred(new);
+		struct tag* tag_seg;
+
 	int rc=0;
 
 
@@ -2934,7 +2935,19 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 		return -ENOMEM;
 
 
-	tsec->confined = old_tsec->confined;	
+
+	
+	tsec->tcb=FLOATING_TCB;
+	tsec->confined = old_tsec->confined;
+
+	INIT_LIST_HEAD(&tsec->slabel);
+	INIT_LIST_HEAD(&tsec->ilabel);
+	INIT_LIST_HEAD(&tsec->olabel);
+	INIT_LIST_HEAD(&tsec->capList);
+	INIT_LIST_HEAD(&tsec->suspendedCaps);
+
+	tag_seg=alloc_tag_struct();
+	INIT_LIST_HEAD(&tag_seg->next);	
 /*	rc = difc_copy_label(&old_tsec->slabel, &tsec->slabel);
 	if (rc != 0)
 		return rc;
@@ -2997,7 +3010,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 #endif
 
 //	*tsec = *old_tsec;
-		//new->security = tsec;
+		new->security = tsec;
 
 
 	return 0;
@@ -3066,7 +3079,7 @@ static void azure_sphere_cred_init_security(void)
 				  0, SLAB_PANIC, NULL);
 
 	atomic_set(&max_caps_num, CAPS_INIT);
-	
+
 	alloc_hash();
     if (table == NULL) {
         panic("couldn't allocate udoms hash_table.\n");
