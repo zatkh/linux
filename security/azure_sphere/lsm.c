@@ -378,7 +378,8 @@ struct task_security_struct* get_task_security_from_pid(pid_t pid){
 }
 
 //Add tag to the process's seclabel
-void add_tag_to_label(pid_t pid, tag_t tag){
+void add_tag_to_label(pid_t pid, tag_t tag)
+{
     struct task_security_struct* tsec = get_task_security_from_pid(pid);
     //struct tag* seclabel;
 
@@ -883,16 +884,56 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		new_tag->content = tag_content;
 
 
+		if((cap_type & PLUS_CAPABILITY)){
+			if(tsec->poscaps==NULL){
+			    init_list(&tsec->poscaps);
+			}
+				add_list(tsec->poscaps, tag_content);
+				difc_lsm_debug("plus cap\n");
+			}
 
-		if(mode==SEC_LABEL_FLOATING || mode==INT_LABEL_FLOATING)
+		if((cap_type & MINUS_CAPABILITY)){
+
+			if(tsec->negcaps==NULL){
+			init_list(&tsec->negcaps);
+			}
+			add_list(tsec->negcaps, tag_content);			
+			difc_lsm_debug("minus cap\n");
+				
+		}
+
+
+
+
+		if(mode==SEC_LABEL_FLOATING )
 		{	
 			// merge floating initializations here
+			pid_t tid=task_pid_vnr(current);
 			new_tag->floating=true;
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
+
+
+  		  //LOCK on TSEC
+   			mutex_lock(&tsec->lock);
+    		tsec->pid = tid;
+   			if(tsec->seclabel==NULL)
+			   {
+				difc_lsm_debug("Allocating tsec->seclabel for tid %d\n",tid);
+				tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
+				init_list2(tsec->seclabel);
+ 			   }
+    		add_list(tsec->seclabel, tag_content);
+
+		
+   			//Release LOCK on TSEC
+  			mutex_unlock(&tsec->lock);
+
 			return tag_content;
 		
 		
-		}else if (mode == SEC_LABEL || mode == INT_LABEL) 
+		}
+		
+		else if (mode == SEC_LABEL || mode == INT_LABEL) 
 		{
 			label_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
 			if (!label_tag) {
@@ -953,6 +994,8 @@ return tag_content;
 
 out:
 	list_del(&new_label);
+	if(mode==SEC_LABEL_FLOATING )
+  	  rcu_read_unlock();
 	return ret;		
 }
 
@@ -2820,9 +2863,7 @@ static void difc_cred_free(struct cred *cred) {
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
 	    mutex_lock(&tsp->lock);
-	    if(tsp->seclabel!=NULL){	 kfree(tsp->seclabel);
-		//printk("Freeing seclabel for pid current = %d\n", current->pid);
-	    }
+	    if(tsp->seclabel!=NULL)  kfree(tsp->seclabel);
 	    if(tsp->poscaps!=NULL)	 kfree(tsp->poscaps);
 	    if(tsp->negcaps!=NULL)	 kfree(tsp->negcaps);
 	    //UNLOCK TSEC (free mutex after this, before freeing tsec?)
