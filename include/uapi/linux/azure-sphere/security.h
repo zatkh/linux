@@ -76,7 +76,7 @@ enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_L
 
 struct tag {
 	struct list_head next;
-	long int content;
+	unsigned long content;
 	bool floating;
 
 };

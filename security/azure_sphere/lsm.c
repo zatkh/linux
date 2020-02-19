@@ -840,14 +840,16 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //allocate a new label and add it to the task's cap set 
-static label_t difc_alloc_label(int cap_type, enum label_types mode)
+static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 {
 	struct task_security_struct *tsec=current_security();
-	struct tag *new_tag;
-	long int tag_content;
-	struct list_head new_ilabel, new_slabel;
+	struct tag *new_tag,*label_tag, *t;
+	unsigned long tag_content;
+	struct list_head new_label;
 	int is_max=0;
-	int ret;
+	int ret=-EINVAL;
+	bool present = false;
+
 
 
     if (!tsec) {
@@ -856,49 +858,102 @@ static label_t difc_alloc_label(int cap_type, enum label_types mode)
     }
 
 
-	tag_content = (long int) get_random_long() ;
-
-	difc_lsm_debug("tag: %ld\n", tag_content);
-
-	ret = add_ownership(tsec, tag_content);
-		if (ret < 0)
-			goto out;
+	tag_content =get_random_long() ;
 
 
-
-	if(mode==SEC_LABEL)
-	{
-
-		INIT_LIST_HEAD(&new_slabel);
+	list_for_each_entry_rcu(t, &tsec->olabel, next){
+		difc_lsm_debug("t->content: %lu\n", t->content);
+		if (t->content == tag_content) {
+			present = true;
+			break;
+		}
 	}
-	else if (mode==INT_LABEL)
-	{
-		INIT_LIST_HEAD(&new_ilabel);	
+	if (!present) {
 
+		// TODO: check authenticity of ownership before adding it
+
+		if (tag_struct == NULL)
+			difc_lsm_debug(" tag_struct is NULL\n");
+		new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+		if (!new_tag) {
+			ret = -ENOMEM;
+			return ret;
+		}
+
+		new_tag->content = tag_content;
+
+
+
+		if(mode==SEC_LABEL_FLOATING || mode==INT_LABEL_FLOATING)
+		{	
+			// merge floating initializations here
+			new_tag->floating=true;
+			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
+			return tag_content;
+		
+		
+		}else if (mode == SEC_LABEL || mode == INT_LABEL) 
+		{
+			label_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			if (!label_tag) {
+				ret = -ENOMEM;
+				return ret;
+			}
+			label_tag->content = tag_content;
+
+			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
+			difc_lsm_debug("after adding to olabel\n");
+
+			INIT_LIST_HEAD(&new_label);
+			list_add_tail_rcu(&label_tag->next, &new_label);
+
+			if (mode == SEC_LABEL) { 
+
+			ret = can_label_change(&tsec->slabel, &new_label, &tsec->olabel);
+			if (ret != 0) {
+				clean_label(&new_label);
+				difc_lsm_debug("secrecy label denied\n");
+				goto out;
+			} else {
+				change_label(&tsec->slabel, &new_label);
+			}
+		} else {
+			ret = can_label_change(&tsec->ilabel, &new_label, &tsec->olabel);
+			if (ret != 0) {
+				clean_label(&new_label);
+				difc_lsm_debug( "integrity label denied\n");
+				goto out;
+			} else {
+				change_label(&tsec->ilabel, &new_label);
+			}
+		}
+	
+		return tag_content;
+	}else{
+
+				difc_lsm_debug( "no specific label mode;just owning a tag\n");
+
+		return -1;
 	}
 
-/*
-	else if(mode==SEC_LABEL_FLOATING || mode==INT_LABEL_FLOATING)
-		{	new_tag->floating=true;}
-	else 	
-		{	new_tag->floating=false;}
 
-*/
-		difc_lsm_debug("after adding to olabel\n");
+}
 
 
 
-	return tag_content;
+
+
+
+//kfree(new_tag);
+//list_del(&new_label);
+return tag_content;
+
+
+	
 
 out:
-	list_del(&new_slabel);
-	list_del(&new_ilabel);
+	list_del(&new_label);
 	return ret;		
-
-
-
-
-	return tag_content;
 }
 
 // get capability of a label
@@ -2910,29 +2965,26 @@ mutex_init(&tsec->lock);
 static void difc_cred_free(struct cred *cred) {
 
 	struct task_security_struct *tsp=azs_cred(cred);
+//struct task_security_struct *tsp=current_security();
+//struct task_difc *tsp = cred->security;
+
+
 
 	if (tsp == NULL)
 		return;
 	cred->security = NULL;
-/*	
- 	if(!list_empty(&tsp->ilabel))
-	{	
+
+	
 		difc_free_label(&tsp->ilabel);
 		list_del(&tsp->ilabel);
-	}
 
-	if(!list_empty(&tsp->slabel))
-	{
 		difc_free_label(&tsp->slabel);
 		list_del(&tsp->slabel);
-	}
 
-	if(!list_empty(&tsp->olabel))
-	{
 		difc_free_label(&tsp->olabel);
 		list_del(&tsp->olabel);
-	}
-*/	
+
+	
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
 	    mutex_lock(&tsp->lock);
@@ -3162,7 +3214,7 @@ int azure_sphere_file_mprotect(struct vm_area_struct *vma, unsigned long reqprot
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 // allocate a new label (explict or floating))
-asmlinkage long sys_alloc_label(int type, int mode)
+asmlinkage long sys_alloc_label(int type, enum label_types mode)
 {
 
 
