@@ -7,25 +7,25 @@
 #include "weir_lsm.h"
 #include "weir_objsec.h"
 #include "weir_netlink.h"
-struct tag_list* globalpos;
-struct tag_list* globalneg;
+struct tag* globalpos;
+struct tag* globalneg;
 
 unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
 //List shims
-int add_tag(struct tag_list* orig_list, tag_t value){
+int add_tag(struct tag* orig_list, tag_t value){
 	int ret = add_list(orig_list, value);
 	return ret;
 }
-bool exists_tag(struct tag_list* orig_list, tag_t value){
+bool exists_tag(struct tag* orig_list, tag_t value){
 	bool ret = exists_list(orig_list, value);
 	return ret;
 }
-int remove_tag(struct tag_list* orig_list, tag_t value){
+int remove_tag(struct tag* orig_list, tag_t value){
 	int ret = remove_list(orig_list, value);
 	return ret;
 }
-int copy_lists(struct tag_list* orig_list, struct tag_list* new_list){
+int copy_lists(struct tag* orig_list, struct tag* new_list){
 	int ret=0;
 	if(orig_list==NULL){
 	    ret=-1;
@@ -42,7 +42,7 @@ int copy_lists(struct tag_list* orig_list, struct tag_list* new_list){
 
 //Helpers
 //tag array->taglist
-void get_list_from_array(tag_t *array, struct tag_list **listaddr,int size){
+void get_list_from_array(tag_t *array, struct tag **listaddr,int size){
 	int i;
 	if(size<=0 || array == NULL)
 	    return;
@@ -54,7 +54,7 @@ void get_list_from_array(tag_t *array, struct tag_list **listaddr,int size){
 	    add_list(*listaddr, array[i]);
 	}
 }
-void get_list_from_array2(tag_t *array, struct tag_list *listaddr,int size){
+void get_list_from_array2(tag_t *array, struct tag *listaddr,int size){
 	int i;
 	if(size<=0 || array == NULL)
 	    return;
@@ -64,9 +64,9 @@ void get_list_from_array2(tag_t *array, struct tag_list *listaddr,int size){
 	}
 }
 //taglist->tag array
-tag_t* get_array_from_list(struct tag_list* taglist){
+tag_t* get_array_from_list(struct tag* taglist){
 	struct list_head* pos;
-	struct tag_list* tmp;
+	struct tag* tmp;
 	int i=0;
 	tag_t* retarray = NULL;
 	int size = list_size(taglist);
@@ -77,9 +77,9 @@ tag_t* get_array_from_list(struct tag_list* taglist){
 	
 	retarray = (tag_t*)kzalloc(sizeof(tag_t) * size, GFP_KERNEL);
 	//Iterate to check if "value" exists in the list
-	list_for_each(pos, &(taglist->list)){
-		tmp=list_entry(pos, struct tag_list, list);
-		retarray[i] = tmp->t;
+	list_for_each(pos, &(taglist->next)){
+		tmp=list_entry(pos, struct tag, next);
+		retarray[i] = tmp->content;
 		i++;
 	}
 
@@ -88,7 +88,7 @@ tag_t* get_array_from_list(struct tag_list* taglist){
 
 //Uses the given negcaps, globalneg and given tag, and returns true 
 //if the tag is present in either
-bool can_declassify(tag_t tag, struct tag_list *negcaps){
+bool can_declassify(tag_t tag, struct tag *negcaps){
     //TODO: Lock on globalneg
     if(exists_list(negcaps, tag) || exists_list(globalneg, tag)){
 	return true;
@@ -98,18 +98,18 @@ bool can_declassify(tag_t tag, struct tag_list *negcaps){
 
 //Populates the queryLabel with seclabel tags are not present in negcaps and
 //globalneg. Returns the number of such tags, i.e., queryLabelCount.
-int get_declassify_tag_list(char *queryLabel, struct tag_list *seclabel, struct
-		tag_list *negcaps, int queryLabelSize)
+int get_declassify_tag(char *queryLabel, struct tag *seclabel, struct
+		tag *negcaps, int queryLabelSize)
 {
     int queryLabelCount=0;	
     struct list_head* pos;
-    struct tag_list* tmp;
+    struct tag* tmp;
     tag_t tag;
 	
     char *cur = queryLabel, *const end = queryLabel+queryLabelSize; 
-    list_for_each(pos, &(seclabel->list)){
-	tmp=list_entry(pos, struct tag_list, list);
-	tag = tmp->t;
+    list_for_each(pos, &(seclabel->next)){
+	tmp=list_entry(pos, struct tag, next);
+	tag = tmp->content;
 
 	if(!can_declassify(tag, negcaps)){
 	    //FIXME: Why is there a '-' after the tag? Is this for separating tags?
@@ -166,7 +166,7 @@ struct task_security_struct* get_task_security_from_pid(pid_t pid){
 //Add tag to the process's seclabel
 void add_tag_to_label(pid_t pid, tag_t tag){
     struct task_security_struct* tsec = get_task_security_from_pid(pid);
-    //struct tag_list* seclabel;
+    //struct tag* seclabel;
 
     if(tsec==NULL){
 	    //printk("WEIR: tsec NULL for pid %d\n",pid);
@@ -177,7 +177,7 @@ void add_tag_to_label(pid_t pid, tag_t tag){
     tsec->pid = pid;
     if(tsec->seclabel==NULL){
 	//printk("WEIR: Allocating tsec->seclabel for pid %d\n",pid);
-	tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+	tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	init_list2(tsec->seclabel);
     }
     add_list(tsec->seclabel, tag);
@@ -209,7 +209,7 @@ int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, 
 	    //printk("WEIR_DEBUG: No sec suplied for %d, secsize=%d!\n", pid, secsize);
 	} else {
 	    //printk("WEIR_DEBUG: init_proc_security first element of sec = %lld\n", sec[0]);
-	    //tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+	    //tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	    //init_list2(tsec->seclabel);
 	    //tsec->seclabel = get_list_from_array2(sec, tsec->seclabel, secsize);
 	    get_list_from_array(sec, &(tsec->seclabel), secsize);
@@ -431,7 +431,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
     int pid = current->pid;
     char buffer[MAX_DATA_BUFFER];
     struct task_security_struct* tsec;
-    struct tag_list *seclabel, *negcaps;
+    struct tag *seclabel, *negcaps;
     int queryLabelSize = MAX_DATA_BUFFER/2;
     char queryLabel[queryLabelSize];
     int queryLabelCount = 0;
@@ -459,7 +459,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
 
     //Check if the tags in seclabel are included in globalneg or negcaps
     //If not included, add them to querylabel, separated by '-'
-    queryLabelCount = get_declassify_tag_list(queryLabel, seclabel, negcaps, queryLabelSize);
+    queryLabelCount = get_declassify_tag(queryLabel, seclabel, negcaps, queryLabelSize);
 
     if(queryLabelCount==0){
 	//declassification capability owned for all tags, allow
@@ -512,7 +512,7 @@ static int binder_check(struct task_struct *to, struct task_struct *from){
     //int to_pid = to->pid;
     //int from_pid = from->pid;
     struct task_security_struct *to_tsec, *from_tsec;
-    struct tag_list *to_seclabel, *from_seclabel;
+    struct tag *to_seclabel, *from_seclabel;
     //Exempt calls to and from root and system, as we handle their internal
     //state in the framework. This is to prevent system services from
     //accumulating taint.
@@ -585,7 +585,7 @@ static int weir_file_permission(struct file *file, int mask)
 	int xattr_res = 0;
 	tag_t xattr_label_size = 0;
 	tag_t *label_array = NULL;
-	struct tag_list *fseclabel = NULL;
+	struct tag *fseclabel = NULL;
 	char *path=NULL;
 	int XATTR_SIZE = MAX_LABEL_SIZE+1;
 	tag_t xattr_buffer[XATTR_SIZE];//everything initialized to 0

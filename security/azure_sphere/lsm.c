@@ -83,8 +83,8 @@ static int debug = 1;
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
-struct tag_list* globalpos;
-struct tag_list* globalneg;
+struct tag* globalpos;
+struct tag* globalneg;
 
 unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
@@ -227,19 +227,19 @@ out:
 
 
 //List shims
-int add_tag(struct tag_list* orig_list, tag_t value){
+int add_tag(struct tag* orig_list, tag_t value){
 	int ret = add_list(orig_list, value);
 	return ret;
 }
-bool exists_tag(struct tag_list* orig_list, tag_t value){
+bool exists_tag(struct tag* orig_list, tag_t value){
 	bool ret = exists_list(orig_list, value);
 	return ret;
 }
-int remove_tag(struct tag_list* orig_list, tag_t value){
+int remove_tag(struct tag* orig_list, tag_t value){
 	int ret = remove_list(orig_list, value);
 	return ret;
 }
-int copy_lists(struct tag_list* orig_list, struct tag_list* new_list){
+int copy_lists(struct tag* orig_list, struct tag* new_list){
 	int ret=0;
 	if(orig_list==NULL){
 	    ret=-1;
@@ -256,7 +256,7 @@ int copy_lists(struct tag_list* orig_list, struct tag_list* new_list){
 
 //Helpers
 //tag array->taglist
-void get_list_from_array(tag_t *array, struct tag_list **listaddr,int size){
+void get_list_from_array(tag_t *array, struct tag **listaddr,int size){
 	int i;
 	if(size<=0 || array == NULL)
 	    return;
@@ -268,7 +268,7 @@ void get_list_from_array(tag_t *array, struct tag_list **listaddr,int size){
 	    add_list(*listaddr, array[i]);
 	}
 }
-void get_list_from_array2(tag_t *array, struct tag_list *listaddr,int size){
+void get_list_from_array2(tag_t *array, struct tag *listaddr,int size){
 	int i;
 	if(size<=0 || array == NULL)
 	    return;
@@ -278,9 +278,9 @@ void get_list_from_array2(tag_t *array, struct tag_list *listaddr,int size){
 	}
 }
 //taglist->tag array
-tag_t* get_array_from_list(struct tag_list* taglist){
+tag_t* get_array_from_list(struct tag* taglist){
 	struct list_head* pos;
-	struct tag_list* tmp;
+	struct tag* tmp;
 	int i=0;
 	tag_t* retarray = NULL;
 	int size = list_size(taglist);
@@ -291,9 +291,9 @@ tag_t* get_array_from_list(struct tag_list* taglist){
 	
 	retarray = (tag_t*)kzalloc(sizeof(tag_t) * size, GFP_KERNEL);
 	//Iterate to check if "value" exists in the list
-	list_for_each(pos, &(taglist->list)){
-		tmp=list_entry(pos, struct tag_list, list);
-		retarray[i] = tmp->t;
+	list_for_each(pos, &(taglist->next)){
+		tmp=list_entry(pos, struct tag, next);
+		retarray[i] = tmp->content;
 		i++;
 	}
 
@@ -302,7 +302,7 @@ tag_t* get_array_from_list(struct tag_list* taglist){
 
 //Uses the given negcaps, globalneg and given tag, and returns true 
 //if the tag is present in either
-bool can_declassify(tag_t tag, struct tag_list *negcaps){
+bool can_declassify(tag_t tag, struct tag *negcaps){
     //TODO: Lock on globalneg
     if(exists_list(negcaps, tag) || exists_list(globalneg, tag)){
 	return true;
@@ -312,18 +312,18 @@ bool can_declassify(tag_t tag, struct tag_list *negcaps){
 
 //Populates the queryLabel with seclabel tags are not present in negcaps and
 //globalneg. Returns the number of such tags, i.e., queryLabelCount.
-int get_declassify_tag_list(char *queryLabel, struct tag_list *seclabel, struct
-		tag_list *negcaps, int queryLabelSize)
+int get_declassify_tag(char *queryLabel, struct tag *seclabel, struct
+		tag *negcaps, int queryLabelSize)
 {
     int queryLabelCount=0;	
     struct list_head* pos;
-    struct tag_list* tmp;
+    struct tag* tmp;
     tag_t tag;
 	
     char *cur = queryLabel, *const end = queryLabel+queryLabelSize; 
-    list_for_each(pos, &(seclabel->list)){
-	tmp=list_entry(pos, struct tag_list, list);
-	tag = tmp->t;
+    list_for_each(pos, &(seclabel->next)){
+	tmp=list_entry(pos, struct tag, next);
+	tag = tmp->content;
 
 	if(!can_declassify(tag, negcaps)){
 	    //FIXME: Why is there a '-' after the tag? Is this for separating tags?
@@ -380,7 +380,7 @@ struct task_security_struct* get_task_security_from_pid(pid_t pid){
 //Add tag to the process's seclabel
 void add_tag_to_label(pid_t pid, tag_t tag){
     struct task_security_struct* tsec = get_task_security_from_pid(pid);
-    //struct tag_list* seclabel;
+    //struct tag* seclabel;
 
     if(tsec==NULL){
 	    //difc_lsm_debug(" tsec NULL for pid %d\n",pid);
@@ -391,7 +391,7 @@ void add_tag_to_label(pid_t pid, tag_t tag){
     tsec->pid = pid;
     if(tsec->seclabel==NULL){
 	//printk("WEIR: Allocating tsec->seclabel for pid %d\n",pid);
-	tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+	tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	init_list2(tsec->seclabel);
     }
     add_list(tsec->seclabel, tag);
@@ -423,7 +423,7 @@ int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, 
 	    //printk("WEIR_DEBUG: No sec suplied for %d, secsize=%d!\n", pid, secsize);
 	} else {
 	    //printk("WEIR_DEBUG: init_proc_security first element of sec = %lld\n", sec[0]);
-	    //tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+	    //tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	    //init_list2(tsec->seclabel);
 	    //tsec->seclabel = get_list_from_array2(sec, tsec->seclabel, secsize);
 	    get_list_from_array(sec, &(tsec->seclabel), secsize);
@@ -645,7 +645,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
     int pid = current->pid;
     char buffer[MAX_DATA_BUFFER];
     struct task_security_struct* tsec;
-    struct tag_list *seclabel, *negcaps;
+    struct tag *seclabel, *negcaps;
     int queryLabelSize = MAX_DATA_BUFFER/2;
     char queryLabel[queryLabelSize];
     int queryLabelCount = 0;
@@ -673,7 +673,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
 
     //Check if the tags in seclabel are included in globalneg or negcaps
     //If not included, add them to querylabel, separated by '-'
-    queryLabelCount = get_declassify_tag_list(queryLabel, seclabel, negcaps, queryLabelSize);
+    queryLabelCount = get_declassify_tag(queryLabel, seclabel, negcaps, queryLabelSize);
 
     if(queryLabelCount==0){
 	//declassification capability owned for all tags, allow
@@ -726,7 +726,7 @@ static int binder_check(struct task_struct *to, struct task_struct *from){
     //int to_pid = to->pid;
     //int from_pid = from->pid;
     struct task_security_struct *to_tsec, *from_tsec;
-    struct tag_list *to_seclabel, *from_seclabel;
+    struct tag *to_seclabel, *from_seclabel;
     //Exempt calls to and from root and system, as we handle their internal
     //state in the framework. This is to prevent system services from
     //accumulating taint.
@@ -1093,174 +1093,6 @@ static inline int remove_label(struct label_struct *lables_list, label_t label, 
     return 0;
 }
 
-static int __difc_set_task_label(struct task_struct *tsk, struct label_struct *lables_list, label_t label, int operation_type, int label_type, int check_only)
-{
-
-	struct cred *cred ;
-	struct task_security_struct *tsec;
-	capability_t cap;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-	if(tsk != current)
-	{
-		difc_lsm_debug("can only set labels in current task credential\n");
-		return -EPERM;
-	}
-
-  	cred = prepare_creds();
-
-    if (!cred) {
-		difc_lsm_debug("no cred!\n");
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug("not enough memory\n");
-        return -ENOENT;
-    }
-
-	//spin_lock(&tsec->cap_lock);
-	cap = cred_get_capability(tsec, label); 
-	//spin_unlock(&tsec->cap_lock);
-
-	if(!cap){
-		difc_lsm_debug(" Failed to find capability for %llu\n", label);
-		return -EPERM;
-	}
-
-	//difc_lsm_debug("Found the capability \n");
-
-	if(operation_type == ADD_LABEL){
-		if((cap & PLUS_CAPABILITY)){
-			return check_only ? 0 :  add_label(lables_list, label, label_type);
-		} else  {
-			difc_lsm_debug(" no PLUS_CAPABILITY for label %llu, cap %llu\n", label, cap);
-			return -EPERM;
-		}
-
-	} else if(operation_type == REMOVE_LABEL)
-	{
-		if((cap & MINUS_CAPABILITY)){
-			return check_only ? 0 : remove_label(lables_list, label, label_type);
-		} else {
-			difc_lsm_debug(" no MINUS_CAPABILITY for label %llu, cap %llu\n", label, cap);
-			return -EPERM;
-		}
-
-	} else {
-	        difc_lsm_debug(" Invalid label operation\n");
-		return -EINVAL;
-	}
-
-
-	cred->security = tsec;
-	commit_creds(cred);
-
-}
-
-
-// this checks if a label replacement is allowed 
-//ZTODO: if we are gonna give appman extra declassification power, it should be checked here,for now we don't
-
-static int check_replacing_labels_allowed(struct task_struct *tsk, struct label_struct *old_label, struct label_struct *new_label)
-{
-
-	int ret_val;
-	label_t src_index, src_label, dest_index, dest_label;
-
- 	//difc_lsm_debug("enter\n");
- 	//difc_lsm_debug("new_label->sList[0]=%lld, new_label->sList[1]=%lld\n", new_label->sList[0],new_label->sList[1]);
-	
-	// check secrecy constraints based on the operation
-	list_for_each_label(src_index, src_label, new_label->sList)
-    {
-		int ok = 0;
-			
-		list_for_each_label(dest_index, dest_label, old_label->sList)
-        {
-			if(src_label == dest_label)
-            {
-				ok = 1;
-				break;
-			}
-		}
-		if(!ok){
-			if((ret_val = __difc_set_task_label(tsk, old_label, src_label, ADD_LABEL, SECRECY_LABEL, 1)) < 0)
-            {
-				difc_lsm_debug("Failed to add secrecy label %llu\n", src_label);
-				return ret_val;
-			}
-		}
-	}
-
-	
-	list_for_each_label(src_index, src_label, old_label->sList){
-
-		int ok = 0;
-
-		list_for_each_label(dest_index, dest_label, new_label->sList){
-			if(src_label == dest_label)
-            {
-				ok = 1;
-				break;
-			}
-		}
-		if(!ok){
-			if((ret_val = __difc_set_task_label(tsk, old_label, src_label, REMOVE_LABEL, SECRECY_LABEL, 1)) < 0){
-				difc_lsm_debug("Failed to drop secrecy label %llu\n", src_label);
-				return ret_val;
-			}
-		}
-	}
-
-
-	// the same for integrity constraint 
-	list_for_each_label(src_index, src_label, new_label->iList)
-    {
-		int ok = 0;
-
-		list_for_each_label(dest_index, dest_label, old_label->iList)
-        {
-			if(src_label == dest_label)
-            {
-				ok = 1;
-				break;
-			}
-		}
-		if(!ok){
-			if((ret_val = __difc_set_task_label(tsk, old_label, src_label, ADD_LABEL, INTEGRITY_LABEL, 1)) < 0)
-            {
-				difc_lsm_debug("Failed to add integrity label %llu\n", src_label);
-				return ret_val;
-			}
-		}
-	}
-
-
-	list_for_each_label(src_index, src_label, old_label->iList)
-    {
-		int ok = 0;
-		list_for_each_label(dest_index, dest_label, new_label->iList)
-        {
-			if(src_label == dest_label)
-            {
-				ok = 1;
-				break;
-			}
-		}
-		if(!ok){
-			if((ret_val = __difc_set_task_label(tsk, old_label, src_label, REMOVE_LABEL, INTEGRITY_LABEL, 1)) < 0)
-            {
-				difc_lsm_debug("Failed to drop integrity label %llu\n", src_label);
-				return ret_val;
-			}
-		}
-	}
-
-	return 0;
-}
 
 static int difc_set_task_label(struct task_struct *tsk, label_t label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
 {
@@ -3009,7 +2841,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 {
 	const struct task_security_struct *old_tsec=azs_cred(old);
 	struct task_security_struct *tsec=azs_cred(new);
-		struct tag* tag_seg;
+	struct tag* tag_seg;
 
 	int rc=0;
 
@@ -3079,17 +2911,17 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 
 	    if(old_tsec->seclabel!=NULL){
 		//printk("Copying seclabel for pid current = %d old_tsec = %d\n", current->pid, old_tsec->pid);
-		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->seclabel);
 		copy_lists(old_tsec->seclabel, tsec->seclabel);
 	    }
 	    if(old_tsec->poscaps!=NULL){
-		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->poscaps = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->poscaps);
 		copy_lists(old_tsec->poscaps, tsec->poscaps);
 	    }
 	    if(old_tsec->negcaps!=NULL){
-		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->negcaps = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->negcaps);
 		copy_lists(old_tsec->negcaps, tsec->negcaps);
 	    }
@@ -3125,21 +2957,21 @@ static void difc_sphere_cred_transfer(struct cred *new, const struct cred *old)
 	
 	if(old_tsec->seclabel!=NULL){
 	    if(tsec->seclabel == NULL){
-		tsec->seclabel = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->seclabel);
 	    }
 	    copy_lists(old_tsec->seclabel, tsec->seclabel);
 	}
 	if(old_tsec->poscaps!=NULL){
 	    if(tsec->poscaps == NULL){
-		tsec->poscaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->poscaps = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->poscaps);
 	    }
 	    copy_lists(old_tsec->poscaps, tsec->poscaps);
 	}
 	if(old_tsec->negcaps!=NULL){
 	    if(tsec->negcaps == NULL){
-		tsec->negcaps = (struct tag_list*)kzalloc(sizeof(struct tag_list), GFP_KERNEL);
+		tsec->negcaps = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->negcaps);
 	    }
 	    copy_lists(old_tsec->negcaps, tsec->negcaps);

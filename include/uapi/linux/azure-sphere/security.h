@@ -97,15 +97,8 @@ struct socket_difc {
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 typedef s64 tag_t;
 
-//Tag list for the seclabel, poscaps, negcaps
-struct tag_list{
-	tag_t t;
-	struct list_head list;
-};
-
-
 struct file_security_struct {
-	struct tag_list* seclabel; /* Secrecy label  */
+	struct tag* seclabel; /* Secrecy label  */
 	struct mutex lock;
 };
 
@@ -138,9 +131,9 @@ struct task_security_struct {
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
     pid_t pid;         
     uid_t uid;
-	struct tag_list* seclabel; /* Secrecy label  */
-	struct tag_list* poscaps; /* + capabilities */
-	struct tag_list* negcaps; /* - capabilities */
+	struct tag* seclabel; /* Secrecy label  */
+	struct tag* poscaps; /* + capabilities */
+	struct tag* negcaps; /* - capabilities */
 	struct mutex lock;
 #endif //CONFIG_EXTENDED_FLOATING_DIFC//
 
