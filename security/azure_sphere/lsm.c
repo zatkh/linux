@@ -972,31 +972,133 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		return tag_content;
 	}else{
 
-				difc_lsm_debug( "no specific label mode;just owning a tag\n");
+		list_add_tail_rcu(&new_tag->next, &tsec->olabel);
+		difc_lsm_debug( "no specific label mode;just owning a tag\n");
 
-		return -1;
 	}
 
 
 }
 
 
-
-
-
-
 //kfree(new_tag);
 //list_del(&new_label);
 return tag_content;
-
-
-	
 
 out:
 	list_del(&new_label);
 	if(mode==SEC_LABEL_FLOATING )
   	  rcu_read_unlock();
 	return ret;		
+}
+
+
+static int difc_set_task_label(struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
+{
+
+	struct task_security_struct *tsec=current_security();
+	struct tag *new_tag;
+	unsigned long tag_content;
+	struct list_head new_label;
+	//int is_max=0; ztodo:check later
+	int result;
+
+// for now removed the group tag (label) support, just one by one tag operations
+
+
+    if (!tsec) {
+		difc_lsm_debug("not enough memory\n");
+        return -ENOENT;
+    }
+
+
+	tag_content =label;
+	if (ops == OWNERSHIP_ADD) {
+			result = add_ownership(tsec, tag_content);
+			if (result < 0)
+				goto out;	
+		} 
+	else if (ops == OWNERSHIP_DROP) {
+			result = drop_ownership(tsec, tag_content);
+			if (result < 0)
+				goto out;	
+		}
+	else {
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			if (!new_tag) {
+				result = -ENOMEM;
+				goto out;
+			}
+			new_tag->content = tag_content;
+			INIT_LIST_HEAD(&new_label);
+			list_add_tail_rcu(&new_tag->next, &new_label);
+
+
+		}
+
+
+	if (ops == SEC_LABEL || ops == INT_LABEL) {
+		if (ops == SEC_LABEL) { 
+			result = can_label_change(&tsec->slabel, &new_label, &tsec->olabel);
+			if (result != 0) {
+				clean_label(&new_label);
+				difc_lsm_debug("secrecy label denied\n");
+				goto out;
+			} else {
+				change_label(&tsec->slabel, &new_label);
+			}
+		} else {
+			result = can_label_change(&tsec->ilabel, &new_label, &tsec->olabel);
+			if (result != 0) {
+				clean_label(&new_label);
+				difc_lsm_debug(" integrity label denied\n");
+				goto out;
+			} else {
+				change_label(&tsec->ilabel, &new_label);
+			}
+		}
+	}
+
+
+
+	else if(ops==SEC_LABEL_FLOATING )
+		{	
+			// merge floating initializations here
+			pid_t tid=task_pid_vnr(current);
+			//new_tag->floating=true;
+
+  		  //LOCK on TSEC
+   			mutex_lock(&tsec->lock);
+    		tsec->pid = tid;
+   			if(tsec->seclabel==NULL)
+			   {
+				difc_lsm_debug("Allocating tsec->seclabel for tid %d\n",tid);
+				tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
+				init_list2(tsec->seclabel);
+ 			   }
+    		add_list(tsec->seclabel, tag_content);
+
+		
+   			//Release LOCK on TSEC
+  			mutex_unlock(&tsec->lock);
+		
+		}
+
+		else{
+			difc_lsm_debug("not supported operation\n");
+			return -EINVAL;
+		}
+		
+
+	result = 0;
+	return result;
+out:
+	list_del(&new_label);
+	if(ops==SEC_LABEL_FLOATING )
+  	  rcu_read_unlock();
+//	kfree(data);
+	return result;	
+
 }
 
 // get capability of a label
@@ -1137,91 +1239,6 @@ static inline int remove_label(struct label_struct *lables_list, label_t label, 
 }
 
 
-static int difc_set_task_label(struct task_struct *tsk, label_t label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
-{
-	int ret;
-	struct label_struct *user_label;
-	struct cred *cred ;
-	struct task_security_struct *tsec;
-	struct list_head new_ilabel, new_slabel,new_label;
-	struct tag *new_tag;
-	long int tag_content;
-
-
-	INIT_LIST_HEAD(&new_ilabel);	
-	INIT_LIST_HEAD(&new_slabel);
-	INIT_LIST_HEAD(&new_label);
-
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-  	cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug("not enough memory\n");
-        return -ENOENT;
-    }
-
-
-	tag_content = (long int) get_random_long() ;
-
-	difc_lsm_debug("tag: %ld\n", tag_content);
-
-	if (ops == OWNERSHIP_ADD) {
-			difc_lsm_debug("OWNERSHIP_ADD\n");
-
-			ret = add_ownership(tsec, tag_content);
-			if (ret < 0)
-				goto out;	
-		} 
-	else if (ops == OWNERSHIP_DROP) {
-			difc_lsm_debug("OWNERSHIP_DROP\n");
-
-			ret = drop_ownership(tsec, tag_content);
-			if (ret < 0)
-				goto out;	
-		}
-	else {
-			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			if (!new_tag) {
-				ret = -ENOMEM;
-				goto out;
-			}
-			new_tag->content = tag_content;
-			list_add_tail_rcu(&new_tag->next, &new_label);
-		}
-
-
-	/*
-	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-	if (!new_tag)
-	{
-		ret = -ENOMEM;
-	}
-	new_tag->content = label;
-	list_add_tail_rcu(&new_tag->next, &new_slabel);
-
-	ret = can_label_change(&tsec->slabel, &new_slabel, &tsec->olabel);
-
-
-*/
-
-
-	cred->security = tsec;
-	commit_creds(cred);
-
-	return ret;
-
-out:
-	list_del(&new_label);
-	kfree(user_label);
-	return ret;		
-
-}
 
 // this checks if difc constraints are ok for two labels
 static int check_labaling_allowed(struct label_struct *src, struct label_struct *dest)
