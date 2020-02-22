@@ -741,9 +741,18 @@ error:
  *
  */
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int
 v9fs_vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool excl)
+#else
+
+static int
+v9fs_vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		bool excl, void* label)
+#endif
+
 {
 	struct v9fs_session_info *v9ses = v9fs_inode2v9ses(dir);
 	u32 perm = unixmode2p9mode(v9ses, mode);
@@ -767,8 +776,12 @@ v9fs_vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
  * @mode: mode for new directory
  *
  */
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int v9fs_vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int v9fs_vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, void* label)
+#endif
 {
 	int err;
 	u32 perm;
@@ -1388,8 +1401,16 @@ v9fs_vfs_link(struct dentry *old_dentry, struct inode *dir,
  *
  */
 
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 v9fs_vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+#else
+static int
+v9fs_vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev, void* label)
+#endif
+
 {
 	struct v9fs_session_info *v9ses = v9fs_inode2v9ses(dir);
 	int retval;

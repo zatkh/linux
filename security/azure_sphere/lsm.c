@@ -391,7 +391,7 @@ void add_tag_to_label(pid_t pid, tag_t tag)
     mutex_lock(&tsec->lock);
     tsec->pid = pid;
     if(tsec->seclabel==NULL){
-	//printk("WEIR: Allocating tsec->seclabel for pid %d\n",pid);
+	//difc_lsm_debug("Allocating tsec->seclabel for pid %d\n",pid);
 	tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	init_list2(tsec->seclabel);
     }
@@ -408,7 +408,7 @@ int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, 
 	int ret=0;
 	struct task_security_struct* tsec = get_task_security_from_pid(pid);
 	if(tsec==NULL){
-	    //printk("WEIR: tsec is null for pid %d\n",pid);
+	    //difc_lsm_debug("tsec is null for pid %d\n",pid);
 	    ret = -1;
 	    goto out;
 	}
@@ -421,9 +421,9 @@ int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, 
 
 	//For tsec->seclabel
 	if(sec==NULL || secsize <=0){
-	    //printk("WEIR_DEBUG: No sec suplied for %d, secsize=%d!\n", pid, secsize);
+	    //difc_lsm_debug("WEIR_DEBUG: No sec suplied for %d, secsize=%d!\n", pid, secsize);
 	} else {
-	    //printk("WEIR_DEBUG: init_proc_security first element of sec = %lld\n", sec[0]);
+	    //difc_lsm_debug("WEIR_DEBUG: init_proc_security first element of sec = %lld\n", sec[0]);
 	    //tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 	    //init_list2(tsec->seclabel);
 	    //tsec->seclabel = get_list_from_array2(sec, tsec->seclabel, secsize);
@@ -432,22 +432,22 @@ int init_process_security_context(pid_t pid, uid_t uid, tag_t* sec, tag_t* pos, 
 	}
 	//For tsec->poscaps
 	if(pos==NULL || possize <=0){
-	    //printk("WEIR_DEBUG: No pos suplied for %d, possize=%d!\n", pid, possize);
+	    //difc_lsm_debug("WEIR_DEBUG: No pos suplied for %d, possize=%d!\n", pid, possize);
 	} else {
-	    //printk("WEIR_DEBUG: init_proc_security first element of pos = %lld\n", pos[0]);
+	    //difc_lsm_debug("WEIR_DEBUG: init_proc_security first element of pos = %lld\n", pos[0]);
 	    get_list_from_array(pos, &(tsec->poscaps), possize);
 	}
 	//For tsec->negcaps
 	if(neg==NULL || negsize <=0){
-	    //printk("WEIR_DEBUG: No neg suplied for %d, negsize=%d!\n", pid, negsize);
+	    //difc_lsm_debug("WEIR_DEBUG: No neg suplied for %d, negsize=%d!\n", pid, negsize);
 	} else {
-	    //printk("WEIR_DEBUG: init_proc_security first element of neg = %lld\n", neg[0]);
+	    //difc_lsm_debug("WEIR_DEBUG: init_proc_security first element of neg = %lld\n", neg[0]);
 	    get_list_from_array(neg, &(tsec->negcaps), negsize);
 	}
 
 	//Resease LOCK on TSEC
 	mutex_unlock(&tsec->lock);
-	//printk("WEIR: INITIALIZED SECURITY CONTEXT for pid %d, secsize %d\n",pid, secsize);
+	//difc_lsm_debug("INITIALIZED SECURITY CONTEXT for pid %d, secsize %d\n",pid, secsize);
 out:
 	rcu_read_unlock();
 	return ret;
@@ -458,20 +458,20 @@ int get_label_size(pid_t pid){
 	int ret=0;
 	struct task_security_struct* tsec = get_task_security_from_pid(pid);
 	if(tsec==NULL){
-	    //printk("WEIR: tsec is null for pid %d\n", pid);
+	    //difc_lsm_debug("tsec is null for pid %d\n", pid);
 	    ret = -1;
 	    goto out;
 	}
 	// TODO: LOCK on TSEC; figure out why this crashes
 	//mutex_lock(&tsec->lock);
 	if(tsec->seclabel==NULL){
-	    //printk("WEIR: tsec->seclabel is null for pid %d\n", pid);
+	    //difc_lsm_debug("tsec->seclabel is null for pid %d\n", pid);
 	    ret = -1;
 		//TODO: Release LOCK on TSEC
 		//mutex_unlock(&tsec->lock);
 	    goto out;
 	}
-	//printk("WEIR: tsec->seclabel is not null for pid %d\n", pid);
+	//difc_lsm_debug("tsec->seclabel is not null for pid %d\n", pid);
 	ret = list_size(tsec->seclabel);
 	//TODO: Release LOCK on TSEC
 	//mutex_unlock(&tsec->lock);
@@ -496,7 +496,7 @@ tag_t* get_label(pid_t pid){
 		//mutex_unlock(&tsec->lock);
 	    goto out;
 	}
-	//printk("WEIR: tsec->seclabel is not null for pid %d\n", pid);
+	//difc_lsm_debug("tsec->seclabel is not null for pid %d\n", pid);
 	ret = get_array_from_list(tsec->seclabel);
 	//TODO: Release LOCK on TSEC
 	//mutex_unlock(&tsec->lock);
@@ -659,7 +659,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
     
     tsec = get_task_security_from_pid(pid);
     if(!tsec){
-	//printk("WEIR_DEBUG: declassification_check. tsec NULL for pid %d\n",pid);
+	//difc_lsm_debug("WEIR_DEBUG: declassification_check. tsec NULL for pid %d\n",pid);
 	goto out;
     }
     
@@ -668,7 +668,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
 
     //If label == empty, allow;
     if(!seclabel || list_size(seclabel)<=0){
-	//printk("WEIR_DEBUG: declassification_check. seclabel NULL or empty for pid %d\n",pid);
+	//difc_lsm_debug("WEIR_DEBUG: declassification_check. seclabel NULL or empty for pid %d\n",pid);
 	goto out;
     }
 
@@ -688,7 +688,7 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
 	if(temp_sockaddr->sin_addr.s_addr==0){
 	    goto out;
 	}
-	//printk("Weir: socket_connectv4:%pI4;%d;%u;%d\n", &(temp_sockaddr->sin_addr), euid, pid, addrlen);
+	//difc_lsm_debug("Weir: socket_connectv4:%pI4;%d;%u;%d\n", &(temp_sockaddr->sin_addr), euid, pid, addrlen);
 	snprintf(buffer, MAX_DATA_BUFFER, "socket%sv4;%pI4;%d;%u;%s", hook, &(temp_sockaddr->sin_addr), euid, pid, queryLabel);
 	ret = send_to_uspace_pid(buffer);
     }
@@ -702,10 +702,10 @@ static int declassification_check(const char *hook, struct socket *sock, struct 
 	unsigned char temp[71];
 	snprintf(temp, 71, "%pI6", &(temp_sockaddr->sin6_addr));
 	if(strcmp(temp, empty_address)==0){
-	    //printk("Weir: EMPTY socket_v6:%pI6;%d;\n", &(temp_sockaddr->sin6_addr), euid);
+	    //difc_lsm_debug("Weir: EMPTY socket_v6:%pI6;%d;\n", &(temp_sockaddr->sin6_addr), euid);
 	    goto out;
 	}*/
-	//printk("Weir: socket_connectv6:%pI6;%d;%u;%d\n", &(temp_sockaddr->sin6_addr), euid, pid, addrlen);
+	//difc_lsm_debug("Weir: socket_connectv6:%pI6;%d;%u;%d\n", &(temp_sockaddr->sin6_addr), euid, pid, addrlen);
 	snprintf(buffer, MAX_DATA_BUFFER, "socket%sv6;%pI6;%d;%u;%s", hook, &(temp_sockaddr->sin6_addr), euid, pid, queryLabel);
 	ret = send_to_uspace_pid(buffer);
     }
@@ -731,7 +731,7 @@ static int binder_check(struct task_struct *to, struct task_struct *from){
     //Exempt calls to and from root and system, as we handle their internal
     //state in the framework. This is to prevent system services from
     //accumulating taint.
-    //printk("WEIR_DEBUG: binder_check. for (pid,uid) to:(%d,%d), from:(%d,%d).\n",to_pid, to_euid, from_pid, from_euid);
+    //difc_lsm_debug("WEIR_DEBUG: binder_check. for (pid,uid) to:(%d,%d), from:(%d,%d).\n",to_pid, to_euid, from_pid, from_euid);
 
     to_tsec = get_task_security_from_task_struct_unlocked(to);
     from_tsec = get_task_security_from_task_struct_unlocked(from);
@@ -742,7 +742,7 @@ static int binder_check(struct task_struct *to, struct task_struct *from){
     //TODO: Return -1. Apart from root which has already been exempted,
     //everyone else must have a tsec.
     if(!to_tsec || !from_tsec){
-	//printk("WEIR_DEBUG: binder_check. tsec NULL for to:%d or from:%d.\n",to_pid, from_pid);
+	//difc_lsm_debug("WEIR_DEBUG: binder_check. tsec NULL for to:%d or from:%d.\n",to_pid, from_pid);
 	goto out;
     }
     
@@ -755,7 +755,7 @@ static int binder_check(struct task_struct *to, struct task_struct *from){
     //Since we need to assume synchronous communication, we check if both
     //labels dominate each other, i.e., are equal.
     if(!equals(to_seclabel, from_seclabel)){
-	//printk("WEIR_DEBUG: binder_check. denial for (pid,uid) to:(%d,%d), from:(%d,%d).\n",to_pid, to_euid, from_pid, from_euid);
+	//difc_lsm_debug("WEIR_DEBUG: binder_check. denial for (pid,uid) to:(%d,%d), from:(%d,%d).\n",to_pid, to_euid, from_pid, from_euid);
 	ret = -1;
     }
 out:
@@ -1411,7 +1411,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 				  const char __user *value, size_t size, int flags)
 {
 
-	struct object_security_struct *isec;
+/*	struct object_security_struct *isec;
 	struct label_struct *user_label;
 
 	isec = inode->i_security;
@@ -1548,14 +1548,14 @@ static int difc_inode_init_security(struct inode *inode, struct inode *dir,
 
 	
 	if (!isp) {
-		difc_lsm_debug("SYQ: inode->i_security is null (%s)\n", __func__);
+		difc_lsm_debug("inode->i_security is null (%s)\n", __func__);
 		return 0;
 	}
 
 /*	// for now even xattr is not necessary
 
 	if (tsp->confined) {
-		difc_lsm_debug("SYQ: new inode is created %ld\n", inode->i_ino);
+		difc_lsm_debug("new inode is created %ld\n", inode->i_ino);
 	}
 
 	if (name)
@@ -1658,7 +1658,7 @@ static int difc_inode_getsecurity(struct inode *inode,
 	int rc = 0;
 
 	if (!isp) {
-		difc_lsm_debug( "SYQ: inode->i_security is null (%s)\n", __func__);
+		difc_lsm_debug( "inode->i_security is null (%s)\n", __func__);
 		return rc; 
 	}
 
@@ -1685,7 +1685,7 @@ static int difc_inode_setsecurity(struct inode *inode, const char *name,
 		return -EINVAL;
 
 	if (!isp) {
-		difc_lsm_debug( "SYQ: inode->i_security is null (%s)\n", __func__);
+		difc_lsm_debug( "inode->i_security is null (%s)\n", __func__);
 		return rc; 
 	}
 
@@ -1762,7 +1762,7 @@ static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
 
 	rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
 	if (rc < 0) {
-		difc_lsm_debug( "SYQ: cannot delete file (%s)\n", dentry->d_name.name);
+		difc_lsm_debug( "cannot delete file (%s)\n", dentry->d_name.name);
 		rc = -EPERM;
 		goto out;
 	}
@@ -1838,7 +1838,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&tsp->ilabel, &tsp->olabel, &isp->ilabel);
 			if (rc < 0) {
-				difc_lsm_debug( "SYQ: integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug( "integrity cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1850,7 +1850,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
-				difc_lsm_debug("SYQ: secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1880,7 +1880,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&isp->ilabel, &tsp->olabel, &tsp->ilabel);
 			if (rc < 0) {
-				difc_lsm_debug("SYQ: integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("integrity cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1892,7 +1892,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			*/
 			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
 			if (rc < 0) {
-				difc_lsm_debug("SYQ: secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+				difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
 				rc = -EACCES;
 				goto out;
 			}
@@ -1940,7 +1940,7 @@ static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 			dp = dget(opt_dentry);
 			buffer = kzalloc(MAX_LABEL_SIZE, GFP_KERNEL);
 			if (!buffer) {
-				difc_lsm_debug("SYQ: oops@%s\n", __func__);
+				difc_lsm_debug("oops@%s\n", __func__);
 				return;
 			}
 		//	len = inode->i_op->getxattr(dp, XATTR_NAME_DIFC, buffer, MAX_LABEL_SIZE);
@@ -1952,7 +1952,7 @@ static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 				rc = security_set_labels(&isp->slabel, &isp->ilabel, NULL, buffer, len);
 				if (rc < 0) {
 					
-					difc_lsm_debug("SYQ: security_set_labels (%s) @ %s\n", buffer, __func__);
+					difc_lsm_debug("security_set_labels (%s) @ %s\n", buffer, __func__);
 				}
 			}
 			dput(dp);
@@ -2939,7 +2939,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 // for floating threads we need a deep copy but for explicit one no inheritance
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
-	//printk("WEIR: in prepare for pid %d\n", current->pid);
+	//difc_lsm_debug("in prepare for pid %d\n", current->pid);
 
 
 	if(old_tsec==NULL){
@@ -2968,7 +2968,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 	    tsec->uid = old_tsec->uid;
 
 	    if(old_tsec->seclabel!=NULL){
-		//printk("Copying seclabel for pid current = %d old_tsec = %d\n", current->pid, old_tsec->pid);
+		//difc_lsm_debug("Copying seclabel for pid current = %d old_tsec = %d\n", current->pid, old_tsec->pid);
 		tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
 		init_list2(tsec->seclabel);
 		copy_lists(old_tsec->seclabel, tsec->seclabel);
@@ -3246,7 +3246,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
-//	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
+	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
 //	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
 //	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
@@ -3265,12 +3265,13 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(sk_alloc_security, difc_sk_alloc_security),
 	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
 	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
+	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
+
 
 
 
 //	LSM_HOOK_INIT(inode_label_init_security,difc_inode_init_security),
 /*	LSM_HOOK_INIT(inode_get_security,difc_inode_get_security),
-	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 	LSM_HOOK_INIT(inode_set_label,difc_inode_set_label),
 
 

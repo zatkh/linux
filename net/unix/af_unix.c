@@ -956,7 +956,14 @@ fail:
 	return NULL;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int unix_mknod(const char *sun_path, umode_t mode, struct path *res)
+
+#else
+static int unix_mknod(const char *sun_path, umode_t mode, struct path *res, void* label)
+#endif
+
 {
 	struct dentry *dentry;
 	struct path path;
@@ -975,7 +982,7 @@ static int unix_mknod(const char *sun_path, umode_t mode, struct path *res)
 	 */
 	err = security_path_mknod(&path, dentry, mode, 0);
 	if (!err) {
-		err = vfs_mknod(d_inode(path.dentry), dentry, mode, 0);
+		err = vfs_mknod(d_inode(path.dentry), dentry, mode, 0,NULL);
 		if (!err) {
 			res->mnt = mntget(path.mnt);
 			res->dentry = dget(dentry);
@@ -1016,7 +1023,7 @@ static int unix_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	if (sun_path[0]) {
 		umode_t mode = S_IFSOCK |
 		       (SOCK_INODE(sock)->i_mode & ~current_umask());
-		err = unix_mknod(sun_path, mode, &path);
+		err = unix_mknod(sun_path, mode, &path,NULL);
 		if (err) {
 			if (err == -EEXIST)
 				err = -EADDRINUSE;

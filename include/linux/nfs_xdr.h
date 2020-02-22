@@ -1653,8 +1653,7 @@ struct nfs_rpc_ops {
 	int	(*access)  (struct inode *, struct nfs_access_entry *);
 	int	(*readlink)(struct inode *, struct page *, unsigned int,
 			    unsigned int);
-	int	(*create)  (struct inode *, struct dentry *,
-			    struct iattr *, int);
+
 	int	(*remove)  (struct inode *, struct dentry *);
 	void	(*unlink_setup)  (struct rpc_message *, struct dentry *, struct inode *);
 	void	(*unlink_rpc_prepare) (struct rpc_task *, struct nfs_unlinkdata *);
@@ -1667,12 +1666,27 @@ struct nfs_rpc_ops {
 	int	(*link)    (struct inode *, struct inode *, const struct qstr *);
 	int	(*symlink) (struct inode *, struct dentry *, struct page *,
 			    unsigned int, struct iattr *);
-	int	(*mkdir)   (struct inode *, struct dentry *, struct iattr *);
 	int	(*rmdir)   (struct inode *, const struct qstr *);
 	int	(*readdir) (struct dentry *, const struct cred *,
 			    u64, struct page **, unsigned int, bool);
+
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+	int	(*create)  (struct inode *, struct dentry *,
+			    struct iattr *, int);
+	int	(*mkdir)   (struct inode *, struct dentry *, struct iattr *);
 	int	(*mknod)   (struct inode *, struct dentry *, struct iattr *,
 			    dev_t);
+#else
+
+	int	(*create)  (struct inode *, struct dentry *,
+			    struct iattr *, int, void*);
+	int	(*mkdir)   (struct inode *, struct dentry *, struct iattr *, void*);
+	int	(*mknod)   (struct inode *, struct dentry *, struct iattr *,
+			    dev_t,void*);
+
+#endif
+
 	int	(*statfs)  (struct nfs_server *, struct nfs_fh *,
 			    struct nfs_fsstat *);
 	int	(*fsinfo)  (struct nfs_server *, struct nfs_fh *,

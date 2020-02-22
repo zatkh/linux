@@ -457,6 +457,10 @@
 444 common alloc_label sys_alloc_label
 445 common set_task_label sys_set_task_label
 446 common udom_clone sys_udom_clone
+447 common mkdir_labeled sys_mkdir_labeled
+448 common create_labeled sys_create_labeled
+449 common set_labeled_file sys_set_labeled_file
+
 
 
 

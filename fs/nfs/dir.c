@@ -1795,8 +1795,15 @@ EXPORT_SYMBOL_GPL(nfs_instantiate);
  * that the operation succeeded on the server, but an error in the
  * reply path made it appear to have failed.
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int nfs_create(struct inode *dir, struct dentry *dentry,
 		umode_t mode, bool excl)
+#else
+
+int nfs_create(struct inode *dir, struct dentry *dentry,
+		umode_t mode, bool excl, void* label)
+#endif
+
 {
 	struct iattr attr;
 	int open_flags = excl ? O_CREAT | O_EXCL : O_CREAT;
@@ -1809,7 +1816,7 @@ int nfs_create(struct inode *dir, struct dentry *dentry,
 	attr.ia_valid = ATTR_MODE;
 
 	trace_nfs_create_enter(dir, dentry, open_flags);
-	error = NFS_PROTO(dir)->create(dir, dentry, &attr, open_flags);
+	error = NFS_PROTO(dir)->create(dir, dentry, &attr, open_flags,NULL);
 	trace_nfs_create_exit(dir, dentry, open_flags, error);
 	if (error != 0)
 		goto out_err;
@@ -1823,8 +1830,15 @@ EXPORT_SYMBOL_GPL(nfs_create);
 /*
  * See comments for nfs_proc_create regarding failed operations.
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int
 nfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+#else
+int
+nfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev, void* label)
+#endif
+
+
 {
 	struct iattr attr;
 	int status;
@@ -1836,7 +1850,7 @@ nfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
 	attr.ia_valid = ATTR_MODE;
 
 	trace_nfs_mknod_enter(dir, dentry);
-	status = NFS_PROTO(dir)->mknod(dir, dentry, &attr, rdev);
+	status = NFS_PROTO(dir)->mknod(dir, dentry, &attr, rdev,NULL);
 	trace_nfs_mknod_exit(dir, dentry, status);
 	if (status != 0)
 		goto out_err;
@@ -1850,7 +1864,14 @@ EXPORT_SYMBOL_GPL(nfs_mknod);
 /*
  * See comments for nfs_proc_create regarding failed operations.
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int nfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+int nfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, void* label)
+#endif
+
 {
 	struct iattr attr;
 	int error;
@@ -1862,7 +1883,7 @@ int nfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	attr.ia_mode = mode | S_IFDIR;
 
 	trace_nfs_mkdir_enter(dir, dentry);
-	error = NFS_PROTO(dir)->mkdir(dir, dentry, &attr);
+	error = NFS_PROTO(dir)->mkdir(dir, dentry, &attr, NULL);
 	trace_nfs_mkdir_exit(dir, dentry, error);
 	if (error != 0)
 		goto out_err;

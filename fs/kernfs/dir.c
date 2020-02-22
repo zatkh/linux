@@ -1106,8 +1106,15 @@ static struct dentry *kernfs_iop_lookup(struct inode *dir,
 	return ret;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int kernfs_iop_mkdir(struct inode *dir, struct dentry *dentry,
 			    umode_t mode)
+#else
+static int kernfs_iop_mkdir(struct inode *dir, struct dentry *dentry,
+			    umode_t mode, void* label)
+#endif
+
+
 {
 	struct kernfs_node *parent = dir->i_private;
 	struct kernfs_syscall_ops *scops = kernfs_root(parent)->syscall_ops;

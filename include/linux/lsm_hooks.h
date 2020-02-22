@@ -1812,6 +1812,8 @@ union security_list_options {
 	int (*sk_alloc_security)(struct sock *sk, int family, gfp_t priority);
 	void (*sk_free_security)(struct sock *sk);
 	void (*sk_clone_security)(const struct sock *sk, struct sock *newsk);
+	int (*inode_set_security)(struct inode *inode, const char *name, const char __user *value, size_t size, int flags);
+
 
 
 
@@ -2064,6 +2066,10 @@ struct security_hook_heads {
 	struct hlist_head sk_alloc_security;
 	struct hlist_head sk_free_security;
 	struct hlist_head sk_clone_security;
+	struct hlist_head inode_set_security;
+
+
+
 	
 #endif
 

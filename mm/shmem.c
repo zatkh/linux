@@ -2853,8 +2853,15 @@ static int shmem_statfs(struct dentry *dentry, struct kstatfs *buf)
 /*
  * File creation. Allocate an inode, and we're done..
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 shmem_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+#else
+static int
+shmem_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev, void* label)
+#endif
+
 {
 	struct inode *inode;
 	int error = -ENOSPC;
@@ -2906,20 +2913,31 @@ out_iput:
 	return error;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int shmem_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, void* label)
+#endif
 {
 	int error;
-
-	if ((error = shmem_mknod(dir, dentry, mode | S_IFDIR, 0)))
+	if ((error = shmem_mknod(dir, dentry, mode | S_IFDIR, 0,NULL)))
 		return error;
+		
 	inc_nlink(dir);
 	return 0;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool excl)
+#else
+static int shmem_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		bool excl, void* label)		
+#endif
 {
-	return shmem_mknod(dir, dentry, mode | S_IFREG, 0);
+	return shmem_mknod(dir, dentry, mode | S_IFREG, 0,NULL);
 }
 
 /*
@@ -3009,7 +3027,7 @@ static int shmem_whiteout(struct inode *old_dir, struct dentry *old_dentry)
 		return -ENOMEM;
 
 	error = shmem_mknod(old_dir, whiteout,
-			    S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV);
+			    S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV,NULL);
 	dput(whiteout);
 	if (error)
 		return error;

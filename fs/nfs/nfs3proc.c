@@ -298,9 +298,19 @@ static void nfs3_free_createdata(struct nfs3_createdata *data)
 /*
  * Create a regular file.
  */
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs3_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		 int flags)
+#else
+static int
+nfs3_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+		 int flags, void* label)
+#endif
+
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;
@@ -530,8 +540,16 @@ out:
 	return status;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int
 nfs3_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr)
+#else
+
+static int
+nfs3_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr, void* label)
+#endif
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;
@@ -654,9 +672,20 @@ out:
 	return status;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int
 nfs3_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		dev_t rdev)
+#else
+
+static int
+nfs3_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+		dev_t rdev, void* label)
+#endif
+
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;

@@ -2893,8 +2893,13 @@ void unlock_rename(struct dentry *p1, struct dentry *p2)
 }
 EXPORT_SYMBOL(unlock_rename);
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		bool want_excl)
+#else
+int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		bool want_excl, void* label)
+#endif
 {
 	int error = may_create(dir, dentry);
 	if (error)
@@ -2907,7 +2912,13 @@ int vfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	error = security_inode_create(dir, dentry, mode);
 	if (error)
 		return error;
-	error = dir->i_op->create(dir, dentry, mode, want_excl);
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+		error = dir->i_op->create(dir, dentry, mode, want_excl);
+	#else
+		error = dir->i_op->create(dir, dentry, mode, want_excl,label);
+	#endif
+
 	if (!error)
 		fsnotify_create(dir, dentry);
 	return error;
@@ -3230,7 +3241,7 @@ no_open:
 			goto out_dput;
 		}
 		error = dir_inode->i_op->create(dir_inode, dentry, mode,
-						open_flag & O_EXCL);
+						open_flag & O_EXCL,NULL);
 		if (error)
 			goto out_dput;
 		fsnotify_create(dir_inode, dentry);
@@ -3693,7 +3704,12 @@ inline struct dentry *user_path_create(int dfd, const char __user *pathname,
 }
 EXPORT_SYMBOL(user_path_create);
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+#else
+int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev,void* label)
+#endif
 {
 	int error = may_create(dir, dentry);
 
@@ -3714,7 +3730,13 @@ int vfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 	if (error)
 		return error;
 
-	error = dir->i_op->mknod(dir, dentry, mode, dev);
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+		error = dir->i_op->mknod(dir, dentry, mode, dev);
+	#else
+		error = dir->i_op->mknod(dir, dentry, mode, dev,label);
+
+#endif
+
 	if (!error)
 		fsnotify_create(dir, dentry);
 	return error;
@@ -3761,16 +3783,21 @@ retry:
 		goto out;
 	switch (mode & S_IFMT) {
 		case 0: case S_IFREG:
+		#ifndef CONFIG_EXTENDED_LSM_DIFC
 			error = vfs_create(path.dentry->d_inode,dentry,mode,true);
+		#else
+			error = vfs_create(path.dentry->d_inode,dentry,mode,true,NULL);
+		#endif
+
 			if (!error)
 				ima_post_path_mknod(dentry);
 			break;
 		case S_IFCHR: case S_IFBLK:
 			error = vfs_mknod(path.dentry->d_inode,dentry,mode,
-					new_decode_dev(dev));
+					new_decode_dev(dev),NULL);
 			break;
 		case S_IFIFO: case S_IFSOCK:
-			error = vfs_mknod(path.dentry->d_inode,dentry,mode,0);
+			error = vfs_mknod(path.dentry->d_inode,dentry,mode,0,NULL);
 			break;
 	}
 out:
@@ -3793,7 +3820,11 @@ SYSCALL_DEFINE3(mknod, const char __user *, filename, umode_t, mode, unsigned, d
 	return do_mknodat(AT_FDCWD, filename, mode, dev);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, void* label)
+#endif
 {
 	int error = may_create(dir, dentry);
 	unsigned max_links = dir->i_sb->s_max_links;
@@ -3812,12 +3843,64 @@ int vfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (max_links && dir->i_nlink >= max_links)
 		return -EMLINK;
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 	error = dir->i_op->mkdir(dir, dentry, mode);
+#else
+	error = dir->i_op->mkdir(dir, dentry, mode,label);
+#endif /* CONFIG_EXTENDED_LSM_DIFC*/
+
 	if (!error)
 		fsnotify_mkdir(dir, dentry);
 	return error;
 }
 EXPORT_SYMBOL(vfs_mkdir);
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+static long __sys_mkdirat(int dfd, const char __user * pathname, umode_t mode, const char __user *label)
+{
+	struct dentry *dentry;
+	struct path path;
+	int error;
+	unsigned int lookup_flags = LOOKUP_DIRECTORY;
+	void *lbl = security_copy_user_label(label);
+ 
+retry:
+	dentry = user_path_create(dfd, pathname, &path, lookup_flags);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(path.dentry->d_inode))
+		mode &= ~current_umask();
+
+
+	error=security_inode_set_security(path.dentry->d_inode, pathname,label, 0, 0);
+	error = security_path_mkdir(&path, dentry, mode);
+	if (!error)
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+		error = vfs_mkdir(path.dentry->d_inode, dentry, mode);
+	#else //ZTODO replace this
+		error = vfs_mkdir(path.dentry->d_inode, dentry, mode,lbl);
+
+	#endif
+	done_path_create(&path, dentry);
+	if (retry_estale(error, lookup_flags)) {
+		lookup_flags |= LOOKUP_REVAL;
+		goto retry;
+	}
+
+
+	return error;
+
+}
+
+asmlinkage long sys_mkdir_labeled(const char __user *pathname, int mode, const char __user * label)
+{
+
+	return __sys_mkdirat(AT_FDCWD, pathname, mode, label);
+}
+
+#endif
 
 long do_mkdirat(int dfd, const char __user *pathname, umode_t mode)
 {
@@ -3835,7 +3918,7 @@ retry:
 		mode &= ~current_umask();
 	error = security_path_mkdir(&path, dentry, mode);
 	if (!error)
-		error = vfs_mkdir(path.dentry->d_inode, dentry, mode);
+		error = vfs_mkdir(path.dentry->d_inode, dentry, mode,NULL);
 	done_path_create(&path, dentry);
 	if (retry_estale(error, lookup_flags)) {
 		lookup_flags |= LOOKUP_REVAL;
@@ -3846,12 +3929,276 @@ retry:
 
 SYSCALL_DEFINE3(mkdirat, int, dfd, const char __user *, pathname, umode_t, mode)
 {
-	return do_mkdirat(dfd, pathname, mode);
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+		return __sys_mkdirat(dfd, pathname, mode, NULL);
+	#else
+		return do_mkdirat(dfd, pathname, mode);
+	#endif	
 }
 
 SYSCALL_DEFINE2(mkdir, const char __user *, pathname, umode_t, mode)
 {
 	return do_mkdirat(AT_FDCWD, pathname, mode);
+}
+
+
+asmlinkage long sys_create_labeled(const char __user *pathname, int mode, const char __user * label)
+{
+	int error = 0;
+	struct dentry *dentry;
+	struct filename* fname;
+	//struct inode *inode;
+	//struct nameidata nd;
+	struct path path;
+
+
+	void *lbl = security_copy_user_label(label);
+
+	fname = getname(pathname);
+	if (fname==NULL){
+		printk(KERN_INFO "[sys_create_labeled] Failed getname\n");
+		goto out_err;
+	}
+/*
+	error =filename_lookup(AT_FDCWD, fname,LOOKUP_PARENT, &path, NULL);
+	//error = do_path_lookup(AT_FDCWD, tmp, LOOKUP_PARENT, &nd);
+	if (error)
+		goto out;
+
+	inode = path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out;
+	}
+	dentry = path.dentry;//lookup_create(&nd, 0);
+	error = PTR_ERR(dentry);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(inode))
+		mode &= ~current->fs->umask;
+		
+
+	*/
+
+ 	dentry = user_path_create(AT_FDCWD, pathname, &path, LOOKUP_REVAL);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(path.dentry->d_inode))
+		mode &= ~current_umask();
+
+	//printk(KERN_INFO "[sys_create_labeled] before setting inode labels\n");
+
+
+
+	error=security_inode_set_security(path.dentry->d_inode, pathname,label, 0, 0);
+	//printk(KERN_INFO "[sys_create_labeled] before vfs_Create\n");
+
+	error = vfs_create(path.dentry->d_inode, dentry, mode, true, lbl);
+	
+
+	dput(dentry);
+//out_unlock:
+	//spin_unlock(&inode->i_lock);
+	//path_release(&nd);
+//out:
+//	putname(fname);
+out_err:
+	if(lbl)
+		kfree(lbl);
+ 
+	return error;
+}
+
+
+static int modify_inode_label(const struct path *path, const char* filename, void* label)
+{
+	struct inode *inode = path->dentry->d_inode;
+	struct inode *delegated_inode = NULL;
+	struct iattr newattrs;
+	umode_t mode= inode->i_mode;
+	int error;
+
+	error = mnt_want_write(path->mnt);
+	if (error)
+		return error;
+retry_deleg:
+	inode_lock(inode);
+	error=security_inode_set_security(inode, filename,label, 0, 0);
+	if (error){
+			printk(KERN_ERR "Failed set label\n");
+			}
+
+
+
+	//error =  security_inode_permission(inode, MAY_READ|MAY_EXEC);
+//security_path_chmod(path, mode);
+	if (error)
+		goto out_unlock;
+	newattrs.ia_mode = (mode & S_IALLUGO) | (inode->i_mode & ~S_IALLUGO);
+	newattrs.ia_valid = ATTR_MODE | ATTR_CTIME;
+	error = notify_change(path->dentry, &newattrs, &delegated_inode);
+out_unlock:
+	inode_unlock(inode);
+	if (delegated_inode) {
+		error = break_deleg_wait(&delegated_inode);
+		if (!error)
+			goto retry_deleg;
+	}
+	mnt_drop_write(path->mnt);
+	return error;
+}
+
+asmlinkage long sys_set_labeled_file(const char __user *pathname, void __user *label)
+{
+
+	int error = 0;
+	struct path path;
+
+	//struct dentry *dentry;
+	struct filename* fname;
+	//struct nameidata nd;
+	//struct inode* inode;
+	//struct object_security_struct *isec;
+	unsigned int lookup_flags = LOOKUP_FOLLOW;
+
+	
+
+	//void *lbl = security_copy_user_label(label);
+
+	fname = getname(pathname);
+	if (fname==NULL){
+		printk(KERN_INFO "[sys_set_labeled_file] Failed getname\n");
+		return -1;
+	}
+
+	printk(KERN_ERR "[sys_set_labeled_file] labling %s or %s\n",fname->name, pathname);
+
+retry:
+	error = user_path_at(AT_FDCWD, pathname, lookup_flags, &path);
+	if (!error) {
+
+		error = modify_inode_label(&path, pathname,label);
+		path_put(&path);
+
+		if (retry_estale(error, lookup_flags)) {
+			lookup_flags |= LOOKUP_REVAL;
+			goto retry;
+		}
+	}
+	return error;
+/* 
+
+
+	error=filename_lookup(AT_FDCWD, fname, LOOKUP_FOLLOW,&path, NULL);
+	if(error)
+	{
+		printk(KERN_INFO "[sys_set_labeled_file] filename lookup fails\n");
+		return error;
+	}
+
+	inode = path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out_err;
+	}
+	dentry = path.dentry;
+	error = PTR_ERR(dentry);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+
+
+	printk(KERN_INFO "[sys_set_labeled_file]: after path_lookupat\n");
+
+ 	error=security_inode_set_security(inode, pathname,label, 0, 0);
+
+	if (error){
+		printk(KERN_ERR "Failed set label\n");
+		goto out_err;
+	}
+
+	isec = inode->i_security;
+	printk(KERN_INFO,"[sys_set_labeled_file]slist[0]=%lld, slist[1]=%lld\n", isec->label.sList[0],isec->label.sList[1]);
+
+
+	printk(KERN_INFO "[sys_set_labeled_file] after setting inode labels\n");
+
+*/
+/* 
+	//struct nameidata nd;
+	struct filename* fname;
+	//struct dentry *dentry;
+	struct path path;
+	int error;
+
+
+	//void *lbl = security_copy_user_label(label);
+
+	//filename_create(dfd, getname(pathname), path, lookup_flags);
+
+	fname = getname(pathname);
+	if (fname==NULL){
+		printk(KERN_ERR "[sys_set_labeled_file] Failed getname\n");
+		goto out_err;
+	}
+
+	error = kern_path(pathname, LOOKUP_FOLLOW, &path);
+	if (error)
+	{	
+		printk(KERN_INFO "[sys_set_labeled_file]: faild finding path\n");
+		goto out_err;
+	}
+	dentry = filename_create(AT_FDCWD, fname, &path, LOOKUP_FOLLOW);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+ 	error=link_path_walk(fname->name, &nd); 
+	if (error){
+		printk(KERN_ERR "[sys_set_labeled_file] Failed path lookup\n");
+		goto out_err;
+	}
+
+	printk(KERN_INFO "[sys_set_labeled_file]: after filename_create\n");
+
+ 	error = security_inode_set_label(path.dentry->d_inode, label);
+	if (error){
+		printk(KERN_ERR "Failed set label\n");
+		goto out_err;
+	}
+
+	out_err:
+	return error;
+
+	
+	error =filename_lookup(AT_FDCWD, fname,LOOKUP_PARENT, &path, NULL);
+	//error = do_path_lookup(AT_FDCWD, tmp, LOOKUP_PARENT, &nd);
+	if (error)
+		goto out;
+
+	inode = path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out;
+	}
+	dentry = path.dentry;//lookup_create(&nd, 0);
+	error = PTR_ERR(dentry);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(inode))
+		mode &= ~current->fs->umask;
+		
+
+
+
+out_err:
+	return error;
+
+
+return error;*/
+
 }
 
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
@@ -4681,7 +5028,7 @@ int vfs_whiteout(struct inode *dir, struct dentry *dentry)
 		return -EPERM;
 
 	return dir->i_op->mknod(dir, dentry,
-				S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV);
+				S_IFCHR | WHITEOUT_MODE, WHITEOUT_DEV,NULL);
 }
 EXPORT_SYMBOL(vfs_whiteout);
 
