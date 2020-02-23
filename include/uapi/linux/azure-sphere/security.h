@@ -85,6 +85,8 @@ struct tag {
 struct inode_difc {
 	struct list_head slabel;
 	struct list_head ilabel;
+	bool floating;
+
 };
 
 struct socket_difc {

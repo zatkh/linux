@@ -2436,20 +2436,20 @@ int security_set_task_label (struct task_struct *tsk, label_t label, int op_type
 
 int security_inode_set_security(struct inode *inode, const char *name, const char __user *value, size_t size, int flags)
 {
-/*	struct security_hook_list *hp;
+	struct security_hook_list *hp;
 	int rc;
 
 	if (unlikely(IS_PRIVATE(inode)))
 		return -EOPNOTSUPP;
 
-	list_for_each_entry(hp, &security_hook_heads.inode_set_security, list) {
+	hlist_for_each_entry(hp, &security_hook_heads.inode_set_security, list) {
 		rc = hp->hook.inode_set_security(inode, name, value, size,
 								flags);
 		if (rc != -EOPNOTSUPP)
 			return rc;
 	}
 	return -EOPNOTSUPP;
-*/
+
 return 0;
 }
 

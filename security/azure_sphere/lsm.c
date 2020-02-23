@@ -1411,7 +1411,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 				  const char __user *value, size_t size, int flags)
 {
 
-/*	struct object_security_struct *isec;
+	struct inode_difc *isec;
 	struct label_struct *user_label;
 
 	isec = inode->i_security;
@@ -1419,6 +1419,8 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 	  difc_lsm_debug("not enough memory\n");
 		return -ENOMEM;
 	}
+
+	
 	user_label = difc_copy_user_label(value);
 	if(!user_label)
 	{
@@ -1426,16 +1428,21 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 		return -ENOMEM;
 	}
 
-	down_write(&isec->label_change_sem);
+	difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", user_label->sList[0],user_label->sList[1]);
+
+	kfree(user_label);
+
+	
 
 
+	/* 
 	memcpy(&isec->label, user_label, sizeof(struct label_struct));
 	//difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", isec->label.sList[0],isec->label.sList[1]);
 
 	up_write(&isec->label_change_sem);
 	inode->i_security = isec;
 	kfree(user_label);
-	/* 
+
 	struct object_security_struct *isec = inode->i_security;
 	struct label_struct *user_label;
 
@@ -1471,6 +1478,7 @@ static struct inode_difc *new_inode_difc(void) {
 
 	INIT_LIST_HEAD(&isp->slabel);
 	INIT_LIST_HEAD(&isp->ilabel);
+	isp->floating=false;
 
 	tsp = current_security();
 
