@@ -3874,7 +3874,7 @@ retry:
 		mode &= ~current_umask();
 
 
-	error=security_inode_set_security(path.dentry->d_inode, pathname,label, 0, 0);
+	error=security_inode_set_security(path.dentry->d_inode, pathname,lbl, 0, 0);
 	error = security_path_mkdir(&path, dentry, mode);
 	if (!error)
 	#ifndef CONFIG_EXTENDED_LSM_DIFC
@@ -3992,7 +3992,7 @@ asmlinkage long sys_create_labeled(const char __user *pathname, int mode, const 
 
 
 
-	error=security_inode_set_security(path.dentry->d_inode, pathname,label, 0, 0);
+	error=security_inode_set_security(path.dentry->d_inode, pathname,lbl, 0, 0);
 	//printk(KERN_INFO "[sys_create_labeled] before vfs_Create\n");
 
 	error = vfs_create(path.dentry->d_inode, dentry, mode, true, lbl);
@@ -4019,13 +4019,15 @@ static int modify_inode_label(const struct path *path, const char* filename, voi
 	struct iattr newattrs;
 	umode_t mode= inode->i_mode;
 	int error;
+	void *lbl = security_copy_user_label(label);
+
 
 	error = mnt_want_write(path->mnt);
 	if (error)
 		return error;
 retry_deleg:
 	inode_lock(inode);
-	error=security_inode_set_security(inode, filename,label, 0, 0);
+	error=security_inode_set_security(inode, filename,lbl, 0, 0);
 	if (error){
 			printk(KERN_ERR "Failed set label\n");
 			}

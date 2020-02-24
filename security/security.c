@@ -2434,7 +2434,7 @@ int security_set_task_label (struct task_struct *tsk, label_t label, int op_type
 }
 
 
-int security_inode_set_security(struct inode *inode, const char *name, const char __user *value, size_t size, int flags)
+int security_inode_set_security(struct inode *inode, const char *name, void *value, size_t size, int flags)
 {
 	struct security_hook_list *hp;
 	int rc;

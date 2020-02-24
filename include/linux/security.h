@@ -1832,7 +1832,7 @@ static inline void security_bpf_prog_free(struct bpf_prog_aux *aux)
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 extern void *security_copy_user_label(const char __user *label);
-extern int security_inode_set_security(struct inode *inode, const char *name, const char __user *value, size_t size, int flags);
+extern int security_inode_set_security(struct inode *inode, const char *name, void* label, size_t size, int flags);
 //extern int security_inode_set_label(struct inode *inode, void __user *label);
 extern int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk);
 extern int security_check_task_labeled(struct task_struct *tsk);

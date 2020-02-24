@@ -1407,8 +1407,7 @@ static int difc_inode_get_security(const struct inode *inode, const char *name, 
 }
 
 
-static int difc_inode_set_security(struct inode *inode, const char *name,
-				  const char __user *value, size_t size, int flags)
+static int difc_inode_set_security(struct inode *inode, const char *name,void *value, size_t size, int flags)
 {
 
 	struct inode_difc *isec;
@@ -1421,7 +1420,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,
 	}
 
 	
-	user_label = difc_copy_user_label(value);
+	user_label = value;// difc_copy_user_label(value);
 	if(!user_label)
 	{
 		difc_lsm_debug(" Bad user_label\n");

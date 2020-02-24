@@ -1812,7 +1812,7 @@ union security_list_options {
 	int (*sk_alloc_security)(struct sock *sk, int family, gfp_t priority);
 	void (*sk_free_security)(struct sock *sk);
 	void (*sk_clone_security)(const struct sock *sk, struct sock *newsk);
-	int (*inode_set_security)(struct inode *inode, const char *name, const char __user *value, size_t size, int flags);
+	int (*inode_set_security)(struct inode *inode, const char *name,  void *label, size_t size, int flags);
 
 
 
