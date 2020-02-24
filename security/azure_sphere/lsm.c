@@ -1412,6 +1412,10 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 
 	struct inode_difc *isec;
 	struct label_struct *user_label;
+	struct tag* new_tag, *t;
+	int sec_num=0;
+	int integ_num=0;
+	int i=1;
 
 	isec = inode->i_security;
 	if(!isec) {
@@ -1427,43 +1431,56 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 		return -ENOMEM;
 	}
 
-	difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", user_label->sList[0],user_label->sList[1]);
+	sec_num= (user_label->sList[0] );
+	integ_num=(user_label->iList[0]);
 
-	kfree(user_label);
+//	difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld, sec %d, integ %d\n", user_label->sList[0],user_label->sList[1],sec_num,integ_num);
+
+
+	if ( sec_num || integ_num) {
 
 	
 
+		if (sec_num) {
+ 
+			for(i; i<=sec_num; i++){
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			new_tag->floating = user_label->sList[sec_num+1];
+			new_tag->content = user_label->sList[i];
 
-	/* 
-	memcpy(&isec->label, user_label, sizeof(struct label_struct));
-	//difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", isec->label.sList[0],isec->label.sList[1]);
+			list_add_tail_rcu(&new_tag->next, &isec->slabel);
+			}
 
-	up_write(&isec->label_change_sem);
-	inode->i_security = isec;
-	kfree(user_label);
+		} 
+		else if(integ_num) 
+		{
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			new_tag->floating = user_label->iList[integ_num+1];
+ 
+			for(i; i<=integ_num; i++){
+			
+			new_tag->content = user_label->iList[i];
 
-	struct object_security_struct *isec = inode->i_security;
-	struct label_struct *user_label;
-
-	if(!isec){
-	   difc_lsm_debug("not initialzed isec\n");
-	   return -EOPNOTSUPP;
+			list_add_tail_rcu(&new_tag->next, &isec->ilabel);
+			}
+			
+		}
+		else
+			difc_lsm_debug("inode label type is not clear!\n");
+	
 	}
 
-	user_label = difc_copy_user_label(value);
-	if(!user_label)
-	{
-		difc_lsm_debug(" Bad user_label\n");
-		return -ENOMEM;
-	}
 
-	memcpy(&isec->label, user_label, sizeof(struct label_struct));
 
-	difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld\n", user_label->sList[0],user_label->sList[1]);
 
 	kfree(user_label);
-	*/
-	return 0;//buf_to_inode_labels(value, size, &isec->label);
+	return 0;
+/*
+out:
+	list_del(&new_label);
+	if(ops==SEC_LABEL_FLOATING )
+  	  rcu_read_unlock();
+*/
 }
 static struct inode_difc *new_inode_difc(void) {
 	struct inode_difc *isp;
@@ -1584,77 +1601,7 @@ static int difc_inode_init_security(struct inode *inode, struct inode *dir,
 	return 0;
 }
 
-/*
-static void difc_inode_free_security(struct inode *inode)
-{
-	struct object_security_struct *tsec = inode->i_security;
-	inode->i_security = NULL;
-	if(tsec)
-		kmem_cache_free(difc_obj_kcache, tsec);
 
-	//difc_lsm_debug("[difc_inode_free_security] successfull cleanup\n");
-	
-}
-
-
-static int difc_inode_init_security (struct inode *inode, struct inode *dir,
-				     char **name, void **value, size_t *len, 
-				     void *lables_list)
-{
-	const struct cred *cred;
-	struct object_security_struct *isec = inode->i_security;
-    struct task_security_struct *tsec;
-	struct label_struct *input_label = (struct label_struct *)lables_list;
-	int lret;
-	int rret;
-	size_t labels_len;
-
-    cred = get_task_cred(current);
-    tsec = cred->security;
-
-    if (!tsec) 
-	{
-        put_cred(cred);
-		difc_lsm_debug(" tsec not enough memory\n");
-        return -ENOMEM; // another errno later
-    }
-
-	if(!isec)
-	{
-		difc_lsm_debug(" isec not enough memory\n");
-        return -ENOMEM;
-
-	}
-
-	if(input_label)
-	{
-		difc_lsm_debug(" inode lables_list is not empty, check if labing is allowed\n");
-
-	 	lret = check_labaling_allowed(&tsec->label, input_label);
-		rret = check_replacing_labels_allowed(current, &tsec->label, input_label);
-
-		if((lret==0) && (rret == 0))
-			memcpy(&isec->label, input_label, sizeof(struct label_struct));
-		else {
-			difc_lsm_debug(" Ignoring requested label on inode %lu: %d, %d\n", inode->i_ino, lret, rret);
-			return -EPERM;
-		}
-			
-	} 
-	else 
-		memcpy(&isec->label, &tsec->label, sizeof(struct label_struct));
-
-	
-	labels_len = (*isec->label.sList) + (*isec->label.iList);
-	if(labels_len == 0)
-	{
-		return -EOPNOTSUPP;
-	}
-
-	//ZTODO: we are not supporing persistent label storage, but here is the place to initilaze it if we wanted to support it
-	return 0;
-}
-*/
 
 
 static int difc_inode_getsecurity(struct inode *inode,
