@@ -59,6 +59,7 @@ int smv_main_init(void){
 }
 EXPORT_SYMBOL(smv_main_init);
 
+
 /* Create a smv and update metadata */
 int smv_create(void){
     int smv_id = -1;
@@ -83,6 +84,9 @@ int smv_create(void){
 
     /* Create the actual smv struct */
     smv = allocate_smv();
+    if(smv==NULL)
+        printk(KERN_INFO "[%s] null alloc_pgd\n", __func__);
+
     smv->smv_id = smv_id;
     atomic_set(&smv->ntask, 0);
     bitmap_zero(smv->memdom_bitmapJoin, SMV_ARRAY_SIZE);    

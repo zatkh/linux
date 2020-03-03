@@ -57,6 +57,7 @@
 #include <asm/udom.h>
 #include "lsm.h"
 #include "difc.h"
+#include "linux/smv.h"
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
@@ -973,6 +974,15 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 			}
 		}
 	
+
+		// init udom
+
+	if (smv_main_init()!=0)
+			{difc_lsm_debug( "faild initing udom\n");}
+
+	difc_lsm_debug( "udom init ok\n");
+
+
 		return tag_content;
 	}else{
 
@@ -980,6 +990,11 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		difc_lsm_debug( "no specific label mode;just owning a tag\n");
 
 	}
+
+
+
+
+
 
 
 }
@@ -3004,7 +3019,7 @@ static void azure_sphere_cred_init_security(void)
 				  0, SLAB_PANIC, NULL);	
 	//KMEM_CACHE(tag, SLAB_PANIC);
 
-
+/*
 	difc_caps_kcache = 
 		kmem_cache_create("difc_cap_segment",
 				  sizeof(struct cap_segment),
@@ -3014,7 +3029,7 @@ static void azure_sphere_cred_init_security(void)
 		kmem_cache_create("difc_object_struct",
 				  sizeof(struct object_security_struct),
 				  0, SLAB_PANIC, NULL);
-
+*/
 	atomic_set(&max_caps_num, CAPS_INIT);
 
 	alloc_hash();
