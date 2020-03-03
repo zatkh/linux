@@ -79,6 +79,12 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv.h>
+#include <linux/memdom.h>
+#include <linux/smv_mm.h>
+#endif
+
 #include "internal.h"
 
 #if defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS) && !defined(CONFIG_COMPILE_TEST)
@@ -352,12 +358,29 @@ void free_pgd_range(struct mmu_gather *tlb,
 		end -= PMD_SIZE;
 	if (addr > end - 1)
 		return;
+
+	tlb_remove_check_page_size_change(tlb, PAGE_SIZE);
+
+	#ifdef CONFIG_SW_UDOM
+
+	if (tlb->mm->using_smv) {
+		mutex_lock(&tlb->mm->smv_metadataMutex);
+		pgd = tlb->mm->pgd_smv[tlb->smv_id] + pgd_index(addr);
+		mutex_unlock(&tlb->mm->smv_metadataMutex);
+	} else{
+		pgd = pgd_offset(tlb->mm, addr);
+	}
+
+	#else
+
 	/*
 	 * We add page table cache pages with PAGE_SIZE,
 	 * (see pte_free_tlb()), flush the tlb if we need
 	 */
-	tlb_remove_check_page_size_change(tlb, PAGE_SIZE);
 	pgd = pgd_offset(tlb->mm, addr);
+
+	#endif
+
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
@@ -1256,7 +1279,21 @@ void unmap_page_range(struct mmu_gather *tlb,
 
 	BUG_ON(addr >= end);
 	tlb_start_vma(tlb, vma);
+
+	#ifdef CONFIG_SW_UDOM
+	if ( tlb->mm->using_smv ) {		
+		mutex_lock(&tlb->mm->smv_metadataMutex);
+		pgd = tlb->mm->pgd_smv[tlb->smv_id] + pgd_index(addr);
+		mutex_unlock(&tlb->mm->smv_metadataMutex);
+	} else{
+		pgd = pgd_offset(vma->vm_mm, addr);
+	}
+	#else
+
+
 	pgd = pgd_offset(vma->vm_mm, addr);
+	#endif //CONFIG_SW_UDOM
+
 	do {
 		next = pgd_addr_end(addr, end);
 		if (pgd_none_or_clear_bad(pgd))
@@ -1348,7 +1385,31 @@ void unmap_vmas(struct mmu_gather *tlb,
  * @size: number of bytes to zap
  *
  * Caller must protect the VMA list
+ * 
+ * void zap_page_range(struct vm_area_struct *vma, unsigned long start,
+		unsigned long size, struct zap_details *details)
+{
+	struct mm_struct *mm = vma->vm_mm;
+	struct mmu_gather tlb;
+	unsigned long end = start + size;
+
+	lru_add_drain();
+	tlb_gather_mmu(&tlb, mm, start, end);
+	// Update smv_id in tlb if the caller is madvise_dontneed() 
+	if (details) {
+		tlb.smv_id = details->smv_id;
+	}
+	update_hiwater_rss(mm);
+	mmu_notifier_invalidate_range_start(mm, start, end);
+	for ( ; vma && vma->vm_start < end; vma = vma->vm_next)
+		unmap_single_vma(&tlb, vma, start, end, details);
+	mmu_notifier_invalidate_range_end(mm, start, end);
+	tlb_finish_mmu(&tlb, start, end);
+}
  */
+
+
+//ztodo
 void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 		unsigned long size)
 {

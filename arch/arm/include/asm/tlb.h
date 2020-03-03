@@ -155,6 +155,9 @@ arch_tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
 			unsigned long start, unsigned long end)
 {
 	tlb->mm = mm;
+#ifdef CONFIG_SW_UDOM
+	tlb->smv_id = current->smv_id;
+#endif
 	tlb->fullmm = !(start | (end+1));
 	tlb->start = start;
 	tlb->end = end;
