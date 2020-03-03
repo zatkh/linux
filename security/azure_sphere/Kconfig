@@ -34,6 +34,12 @@ config SECURITY_WEIR
     help
 		This adds weir-similar difc support.
 
+config SW_UDOM
+	bool "supports sw based utiles"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds support for sw-based utiles.
 
 config AZURE_SPHERE_MMAP_EXEC_PROTECTION
 	bool "Azure Sphere mmap protection"
