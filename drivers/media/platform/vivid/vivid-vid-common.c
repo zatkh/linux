@@ -169,6 +169,36 @@ struct vivid_fmt vivid_formats[] = {
 		.alpha_mask = 0x000000ff,
 	},
 	{
+		.fourcc   = V4L2_PIX_FMT_AYUV32,
+		.vdownsampling = { 1 },
+		.bit_depth = { 32 },
+		.planes   = 1,
+		.buffers = 1,
+		.alpha_mask = 0x000000ff,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_XYUV32,
+		.vdownsampling = { 1 },
+		.bit_depth = { 32 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_VUYA32,
+		.vdownsampling = { 1 },
+		.bit_depth = { 32 },
+		.planes   = 1,
+		.buffers = 1,
+		.alpha_mask = 0xff000000,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_VUYX32,
+		.vdownsampling = { 1 },
+		.bit_depth = { 32 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
 		.fourcc   = V4L2_PIX_FMT_GREY,
 		.vdownsampling = { 1 },
 		.bit_depth = { 8 },
@@ -444,6 +474,34 @@ struct vivid_fmt vivid_formats[] = {
 	},
 	{
 		.fourcc   = V4L2_PIX_FMT_SRGGB12, /* Bayer RG/GB */
+		.vdownsampling = { 1 },
+		.bit_depth = { 16 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_SBGGR16, /* Bayer BG/GR */
+		.vdownsampling = { 1 },
+		.bit_depth = { 16 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_SGBRG16, /* Bayer GB/RG */
+		.vdownsampling = { 1 },
+		.bit_depth = { 16 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_SGRBG16, /* Bayer GR/BG */
+		.vdownsampling = { 1 },
+		.bit_depth = { 16 },
+		.planes   = 1,
+		.buffers = 1,
+	},
+	{
+		.fourcc   = V4L2_PIX_FMT_SRGGB16, /* Bayer RG/GB */
 		.vdownsampling = { 1 },
 		.bit_depth = { 16 },
 		.planes   = 1,

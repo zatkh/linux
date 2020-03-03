@@ -893,11 +893,6 @@ static int sun8i_dwmac_set_syscon(struct stmmac_priv *priv)
 		 * address. No need to mask it again.
 		 */
 		reg |= 1 << H3_EPHY_ADDR_SHIFT;
-	} else {
-		/* For SoCs without internal PHY the PHY selection bit should be
-		 * set to 0 (external PHY).
-		 */
-		reg &= ~H3_EPHY_SELECT;
 	}
 
 	if (!of_property_read_u32(node, "allwinner,tx-delay-ps", &val)) {
@@ -1019,8 +1014,6 @@ static struct mac_device_info *sun8i_dwmac_setup(void *ppriv)
 	mac->pcsr = priv->ioaddr;
 	mac->mac = &sun8i_dwmac_ops;
 	mac->dma = &sun8i_dwmac_dma_ops;
-
-	priv->dev->priv_flags |= IFF_UNICAST_FLT;
 
 	/* The loopback bit seems to be re-set when link change
 	 * Simply mask it each time
@@ -1154,7 +1147,10 @@ static int sun8i_dwmac_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	plat_dat->interface = of_get_phy_mode(dev->of_node);
+	ret = of_get_phy_mode(dev->of_node);
+	if (ret < 0)
+		return -EINVAL;
+	plat_dat->interface = ret;
 
 	/* platform data specifying hardware features and callbacks.
 	 * hardware features were copied from Allwinner drivers.

@@ -26,7 +26,7 @@
 static int edac_mc_log_ue = 1;
 static int edac_mc_log_ce = 1;
 static int edac_mc_panic_on_ue;
-static unsigned int edac_mc_poll_msec = 1000;
+static int edac_mc_poll_msec = 1000;
 
 /* Getter functions for above */
 int edac_mc_get_log_ue(void)
@@ -45,30 +45,30 @@ int edac_mc_get_panic_on_ue(void)
 }
 
 /* this is temporary */
-unsigned int edac_mc_get_poll_msec(void)
+int edac_mc_get_poll_msec(void)
 {
 	return edac_mc_poll_msec;
 }
 
 static int edac_set_poll_msec(const char *val, const struct kernel_param *kp)
 {
-	unsigned int i;
+	unsigned long l;
 	int ret;
 
 	if (!val)
 		return -EINVAL;
 
-	ret = kstrtouint(val, 0, &i);
+	ret = kstrtoul(val, 0, &l);
 	if (ret)
 		return ret;
 
-	if (i < 1000)
+	if (l < 1000)
 		return -EINVAL;
 
-	*((unsigned int *)kp->arg) = i;
+	*((unsigned long *)kp->arg) = l;
 
 	/* notify edac_mc engine to reset the poll period */
-	edac_mc_reset_delay_period(i);
+	edac_mc_reset_delay_period(l);
 
 	return 0;
 }
@@ -82,7 +82,7 @@ MODULE_PARM_DESC(edac_mc_log_ue,
 module_param(edac_mc_log_ce, int, 0644);
 MODULE_PARM_DESC(edac_mc_log_ce,
 		 "Log correctable error to console: 0=off 1=on");
-module_param_call(edac_mc_poll_msec, edac_set_poll_msec, param_get_uint,
+module_param_call(edac_mc_poll_msec, edac_set_poll_msec, param_get_int,
 		  &edac_mc_poll_msec, 0644);
 MODULE_PARM_DESC(edac_mc_poll_msec, "Polling period in milliseconds");
 
@@ -404,10 +404,7 @@ static inline int nr_pages_per_csrow(struct csrow_info *csrow)
 static int edac_create_csrow_object(struct mem_ctl_info *mci,
 				    struct csrow_info *csrow, int index)
 {
-	int err;
-
 	csrow->dev.type = &csrow_attr_type;
-	csrow->dev.bus = mci->bus;
 	csrow->dev.groups = csrow_dev_groups;
 	device_initialize(&csrow->dev);
 	csrow->dev.parent = &mci->dev;
@@ -418,11 +415,7 @@ static int edac_create_csrow_object(struct mem_ctl_info *mci,
 	edac_dbg(0, "creating (virtual) csrow node %s\n",
 		 dev_name(&csrow->dev));
 
-	err = device_add(&csrow->dev);
-	if (err)
-		put_device(&csrow->dev);
-
-	return err;
+	return device_add(&csrow->dev);
 }
 
 /* Create a CSROW object under specifed edac_mc_device */
@@ -642,7 +635,6 @@ static int edac_create_dimm_object(struct mem_ctl_info *mci,
 	dimm->mci = mci;
 
 	dimm->dev.type = &dimm_attr_type;
-	dimm->dev.bus = mci->bus;
 	device_initialize(&dimm->dev);
 
 	dimm->dev.parent = &mci->dev;
@@ -920,33 +912,13 @@ static const struct device_type mci_attr_type = {
 int edac_create_sysfs_mci_device(struct mem_ctl_info *mci,
 				 const struct attribute_group **groups)
 {
-	char *name;
 	int i, err;
-
-	/*
-	 * The memory controller needs its own bus, in order to avoid
-	 * namespace conflicts at /sys/bus/edac.
-	 */
-	name = kasprintf(GFP_KERNEL, "mc%d", mci->mc_idx);
-	if (!name)
-		return -ENOMEM;
-
-	mci->bus->name = name;
-
-	edac_dbg(0, "creating bus %s\n", mci->bus->name);
-
-	err = bus_register(mci->bus);
-	if (err < 0) {
-		kfree(name);
-		return err;
-	}
 
 	/* get the /sys/devices/system/edac subsys reference */
 	mci->dev.type = &mci_attr_type;
 	device_initialize(&mci->dev);
 
 	mci->dev.parent = mci_pdev;
-	mci->dev.bus = mci->bus;
 	mci->dev.groups = groups;
 	dev_set_name(&mci->dev, "mc%d", mci->mc_idx);
 	dev_set_drvdata(&mci->dev, mci);
@@ -956,7 +928,7 @@ int edac_create_sysfs_mci_device(struct mem_ctl_info *mci,
 	err = device_add(&mci->dev);
 	if (err < 0) {
 		edac_dbg(1, "failure: create device %s\n", dev_name(&mci->dev));
-		goto fail_unregister_bus;
+		goto out;
 	}
 
 	/*
@@ -1004,10 +976,8 @@ fail_unregister_dimm:
 		device_unregister(&dimm->dev);
 	}
 	device_unregister(&mci->dev);
-fail_unregister_bus:
-	bus_unregister(mci->bus);
-	kfree(name);
 
+out:
 	return err;
 }
 
@@ -1038,13 +1008,8 @@ void edac_remove_sysfs_mci_device(struct mem_ctl_info *mci)
 
 void edac_unregister_sysfs(struct mem_ctl_info *mci)
 {
-	struct bus_type *bus = mci->bus;
-	const char *name = mci->bus->name;
-
 	edac_dbg(1, "Unregistering device %s\n", dev_name(&mci->dev));
 	device_unregister(&mci->dev);
-	bus_unregister(bus);
-	kfree(name);
 }
 
 static void mc_attr_release(struct device *dev)

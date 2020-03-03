@@ -1,0 +1,54 @@
+config SECURITY_AZURE_SPHERE
+	bool "Azure Sphere LSM support"
+	depends on SECURITY
+	default n
+	help
+	  This enables the Azure Sphere LSM.
+
+config EXTENDED_LSM
+	bool "extended LSM support"
+	depends on SECCOMP
+	depends on SECURITY
+	default y
+	help
+		This selects an extension to Azure Sphere LSM for seccomp-based sandboxing.
+
+config EXTENDED_LSM_DIFC
+	bool "supports difc model based LSM"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds difc support to the extended Azure Sphere LSM.
+
+config EXTENDED_FLOATING_DIFC
+	bool "supports difc with floating labels LSM"
+	depends on EXTENDED_LSM_DIFC
+	default y
+	help
+		This adds floating difc support.
+
+config SECURITY_WEIR
+    bool "WEIR DIFC System"
+    depends on EXTENDED_LSM_DIFC
+    default y
+    help
+		This adds weir-similar difc support.
+
+config SW_UDOM
+	bool "supports sw based utiles"
+	depends on EXTENDED_LSM
+	default y
+	help
+		This adds support for sw-based utiles.
+
+config AZURE_SPHERE_MMAP_EXEC_PROTECTION
+	bool "Azure Sphere mmap protection"
+	depends on SECURITY_AZURE_SPHERE
+	default y
+	help
+		This enables memory protections to protect writable pages from being made executable
+
+
+
+
+		

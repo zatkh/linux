@@ -977,8 +977,6 @@ static int acpi_s2idle_prepare(void)
 	if (acpi_sci_irq_valid())
 		enable_irq_wake(acpi_sci_irq);
 
-	acpi_enable_wakeup_devices(ACPI_STATE_S0);
-
 	/* Change the configuration of GPEs to avoid spurious wakeup. */
 	acpi_enable_all_wakeup_gpes();
 	acpi_os_wait_events_complete();
@@ -987,6 +985,8 @@ static int acpi_s2idle_prepare(void)
 
 static void acpi_s2idle_wake(void)
 {
+	if (!lps0_device_handle)
+		return;
 
 	if (pm_debug_messages_on)
 		lpi_check_constraints();
@@ -1005,8 +1005,7 @@ static void acpi_s2idle_wake(void)
 		 * takes too much time for EC wakeup events to survive, so look
 		 * for them now.
 		 */
-		if (lps0_device_handle)
-			acpi_ec_dispatch_gpe();
+		acpi_ec_dispatch_gpe();
 	}
 }
 
@@ -1027,8 +1026,6 @@ static void acpi_s2idle_sync(void)
 static void acpi_s2idle_restore(void)
 {
 	acpi_enable_all_runtime_gpes();
-
-	acpi_disable_wakeup_devices(ACPI_STATE_S0);
 
 	if (acpi_sci_irq_valid())
 		disable_irq_wake(acpi_sci_irq);

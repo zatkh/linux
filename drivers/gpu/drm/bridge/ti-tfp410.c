@@ -20,7 +20,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 
 #define HOTPLUG_DEBOUNCE_MS		1100
 
@@ -64,12 +64,7 @@ static int tfp410_get_modes(struct drm_connector *connector)
 
 	drm_connector_update_edid_property(connector, edid);
 
-	ret = drm_add_edid_modes(connector, edid);
-
-	kfree(edid);
-
-	return ret;
-
+	return drm_add_edid_modes(connector, edid);
 fallback:
 	/* No EDID, fallback on the XGA standard modes */
 	ret = drm_add_modes_noedid(connector, 1920, 1200);

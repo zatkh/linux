@@ -9,6 +9,7 @@
 #include <linux/mm_types.h>
 #include <linux/reservation.h>
 #include <drm/drmP.h>
+#include <drm/drm_util.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_atomic.h>
@@ -67,9 +68,6 @@ struct vc4_perfmon {
 struct vc4_dev {
 	struct drm_device *dev;
 
-	bool firmware_kms;
-	struct rpi_firmware *firmware;
-
 	struct vc4_hdmi *hdmi;
 	struct vc4_hvs *hvs;
 	struct vc4_v3d *v3d;
@@ -77,7 +75,6 @@ struct vc4_dev {
 	struct vc4_dsi *dsi1;
 	struct vc4_vec *vec;
 	struct vc4_txp *txp;
-	struct vc4_fkms *fkms;
 
 	struct vc4_hang_state *hang_state;
 
@@ -342,6 +339,7 @@ struct vc4_plane_state {
 	u32 pos0_offset;
 	u32 pos2_offset;
 	u32 ptr0_offset;
+	u32 lbm_offset;
 
 	/* Offset where the plane's dlist was last stored in the
 	 * hardware at vc4_crtc_atomic_flush() time.
@@ -373,6 +371,11 @@ struct vc4_plane_state {
 	 * to enable background color fill.
 	 */
 	bool needs_bg_fill;
+
+	/* Mark the dlist as initialized. Useful to avoid initializing it twice
+	 * when async update is not possible.
+	 */
+	bool dlist_initialized;
 };
 
 static inline struct vc4_plane_state *
@@ -725,9 +728,6 @@ int vc4_dsi_debugfs_regs(struct seq_file *m, void *unused);
 
 /* vc4_fence.c */
 extern const struct dma_fence_ops vc4_fence_ops;
-
-/* vc4_firmware_kms.c */
-extern struct platform_driver vc4_firmware_kms_driver;
 
 /* vc4_gem.c */
 void vc4_gem_init(struct drm_device *dev);

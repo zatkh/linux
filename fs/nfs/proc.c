@@ -227,9 +227,17 @@ static void nfs_free_createdata(const struct nfs_createdata *data)
 	kfree(data);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		int flags)
+#else
+static int
+nfs_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+		int flags, void* label)
+#endif
+
+
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -256,9 +264,18 @@ out:
 /*
  * In NFSv2, mknod is grafted onto the create call.
  */
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 	       dev_t rdev)
+#else
+static int
+nfs_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+	       dev_t rdev, void* label)
+#endif
+
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -435,8 +452,15 @@ out:
 	return status;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr)
+#else
+static int
+nfs_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr, void* label)
+#endif
+
+
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -490,7 +514,7 @@ nfs_proc_rmdir(struct inode *dir, const struct qstr *name)
  * from nfs_readdir by calling the decode_entry function directly.
  */
 static int
-nfs_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
+nfs_proc_readdir(struct dentry *dentry, const struct cred *cred,
 		 u64 cookie, struct page **pages, unsigned int count, bool plus)
 {
 	struct inode		*dir = d_inode(dentry);

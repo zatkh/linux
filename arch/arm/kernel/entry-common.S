@@ -296,16 +296,15 @@ __sys_trace:
 	cmp	scno, #-1			@ skip the syscall?
 	bne	2b
 	add	sp, sp, #S_OFF			@ restore stack
-	b	ret_slow_syscall
 
-__sys_trace_return:
-	str	r0, [sp, #S_R0 + S_OFF]!	@ save returned r0
+__sys_trace_return_nosave:
+	enable_irq_notrace
 	mov	r0, sp
 	bl	syscall_trace_exit
 	b	ret_slow_syscall
 
-__sys_trace_return_nosave:
-	enable_irq_notrace
+__sys_trace_return:
+	str	r0, [sp, #S_R0 + S_OFF]!	@ save returned r0
 	mov	r0, sp
 	bl	syscall_trace_exit
 	b	ret_slow_syscall
@@ -374,7 +373,7 @@ sys_syscall:
 		movhs	scno, #0
 		csdb
 #endif
-		stmloia	sp, {r5, r6}		@ shuffle args
+		stmialo	sp, {r5, r6}		@ shuffle args
 		movlo	r0, r1
 		movlo	r1, r2
 		movlo	r2, r3
@@ -407,6 +406,16 @@ sys_fstatfs64_wrapper:
 		b	sys_fstatfs64
 ENDPROC(sys_fstatfs64_wrapper)
 
+sys_difc_enter_domain_wrapper:
+        add	r2, sp, #S_OFF
+		b	sys_difc_enter_domain
+ENDPROC(sys_difc_enter_domain_wrapper)
+
+sys_difc_exit_domain_wrapper:
+        add	r0, sp, #S_OFF
+		b	sys_difc_exit_domain
+ENDPROC(sys_difc_exit_domain_wrapper)
+
 /*
  * Note: off_4k (r5) is always units of 4K.  If we can't do the requested
  * offset, we return EINVAL.
@@ -415,6 +424,11 @@ sys_mmap2:
 		str	r5, [sp, #4]
 		b	sys_mmap_pgoff
 ENDPROC(sys_mmap2)
+
+sys_udom_mmap:
+		str	r5, [sp, #4]
+		b	sys_udom_mmap_pgoff
+ENDPROC(sys_udom_mmap)
 
 #ifdef CONFIG_OABI_COMPAT
 

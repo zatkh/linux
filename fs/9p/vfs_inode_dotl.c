@@ -47,9 +47,16 @@
 #include "xattr.h"
 #include "acl.h"
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 v9fs_vfs_mknod_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
-		    dev_t rdev);
+		dev_t rdev);
+#else
+static int
+v9fs_vfs_mknod_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
+		dev_t rdev, void* label);
+#endif
+
 
 /**
  * v9fs_get_fsgid_for_create - Helper function to get the gid for creating a
@@ -232,11 +239,20 @@ int v9fs_open_to_dotl_flags(int flags)
  *
  */
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 v9fs_vfs_create_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
 		bool excl)
+#else
+static int
+v9fs_vfs_create_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
+		bool excl, void* label)
+#endif
+
+
 {
-	return v9fs_vfs_mknod_dotl(dir, dentry, omode, 0);
+	return v9fs_vfs_mknod_dotl(dir, dentry, omode, 0,NULL);
 }
 
 static int
@@ -380,8 +396,14 @@ err_clunk_old_fid:
  *
  */
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int v9fs_vfs_mkdir_dotl(struct inode *dir,
 			       struct dentry *dentry, umode_t omode)
+#else
+static int v9fs_vfs_mkdir_dotl(struct inode *dir,
+			       struct dentry *dentry, umode_t omode, void* label)
+#endif
+
 {
 	int err;
 	struct v9fs_session_info *v9ses;
@@ -813,9 +835,16 @@ v9fs_vfs_link_dotl(struct dentry *old_dentry, struct inode *dir,
  * @rdev: device associated with special file
  *
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 v9fs_vfs_mknod_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
 		dev_t rdev)
+#else
+static int
+v9fs_vfs_mknod_dotl(struct inode *dir, struct dentry *dentry, umode_t omode,
+		dev_t rdev, void* label)
+#endif
+
 {
 	int err;
 	kgid_t gid;

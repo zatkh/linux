@@ -431,20 +431,8 @@ void *alloc_insn_page(void)
 	void *page;
 
 	page = module_alloc(PAGE_SIZE);
-	if (!page)
-		return NULL;
-
-	/*
-	 * First make the page read-only, and only then make it executable to
-	 * prevent it from being W+X in between.
-	 */
-	set_memory_ro((unsigned long)page, 1);
-
-	/*
-	 * TODO: Once additional kernel code protection mechanisms are set, ensure
-	 * that the page was not maliciously altered and it is still zeroed.
-	 */
-	set_memory_x((unsigned long)page, 1);
+	if (page)
+		set_memory_ro((unsigned long)page & PAGE_MASK, 1);
 
 	return page;
 }
@@ -452,12 +440,8 @@ void *alloc_insn_page(void)
 /* Recover page to RW mode before releasing it */
 void free_insn_page(void *page)
 {
-	/*
-	 * First make the page non-executable, and only then make it writable to
-	 * prevent it from being W+X in between.
-	 */
-	set_memory_nx((unsigned long)page, 1);
-	set_memory_rw((unsigned long)page, 1);
+	set_memory_nx((unsigned long)page & PAGE_MASK, 1);
+	set_memory_rw((unsigned long)page & PAGE_MASK, 1);
 	module_memfree(page);
 }
 
@@ -772,7 +756,7 @@ static struct kprobe kretprobe_kprobe = {
 /*
  * Called from kretprobe_trampoline
  */
-__visible __used void *trampoline_handler(struct pt_regs *regs)
+static __used void *trampoline_handler(struct pt_regs *regs)
 {
 	struct kprobe_ctlblk *kcb;
 	struct kretprobe_instance *ri = NULL;
@@ -1080,64 +1064,23 @@ int kprobe_fault_handler(struct pt_regs *regs, int trapnr)
 		 */
 		if (cur->fault_handler && cur->fault_handler(cur, regs, trapnr))
 			return 1;
-
-		/*
-		 * In case the user-specified fault handler returned
-		 * zero, try to fix up.
-		 */
-		if (fixup_exception(regs, trapnr))
-			return 1;
-
-		/*
-		 * fixup routine could not handle it,
-		 * Let do_page_fault() fix it.
-		 */
 	}
 
 	return 0;
 }
 NOKPROBE_SYMBOL(kprobe_fault_handler);
 
-/*
- * Wrapper routine for handling exceptions.
- */
-int kprobe_exceptions_notify(struct notifier_block *self, unsigned long val,
-			     void *data)
+int __init arch_populate_kprobe_blacklist(void)
 {
-	struct die_args *args = data;
-	int ret = NOTIFY_DONE;
+	int ret;
 
-	if (args->regs && user_mode(args->regs))
+	ret = kprobe_add_area_blacklist((unsigned long)__irqentry_text_start,
+					 (unsigned long)__irqentry_text_end);
+	if (ret)
 		return ret;
 
-	if (val == DIE_GPF) {
-		/*
-		 * To be potentially processing a kprobe fault and to
-		 * trust the result from kprobe_running(), we have
-		 * be non-preemptible.
-		 */
-		if (!preemptible() && kprobe_running() &&
-		    kprobe_fault_handler(args->regs, args->trapnr))
-			ret = NOTIFY_STOP;
-	}
-	return ret;
-}
-NOKPROBE_SYMBOL(kprobe_exceptions_notify);
-
-bool arch_within_kprobe_blacklist(unsigned long addr)
-{
-	bool is_in_entry_trampoline_section = false;
-
-#ifdef CONFIG_X86_64
-	is_in_entry_trampoline_section =
-		(addr >= (unsigned long)__entry_trampoline_start &&
-		 addr < (unsigned long)__entry_trampoline_end);
-#endif
-	return  (addr >= (unsigned long)__kprobes_text_start &&
-		 addr < (unsigned long)__kprobes_text_end) ||
-		(addr >= (unsigned long)__entry_text_start &&
-		 addr < (unsigned long)__entry_text_end) ||
-		is_in_entry_trampoline_section;
+	return kprobe_add_area_blacklist((unsigned long)__entry_text_start,
+					 (unsigned long)__entry_text_end);
 }
 
 int __init arch_init_kprobes(void)

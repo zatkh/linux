@@ -179,11 +179,8 @@ static int vfp_notifier(struct notifier_block *self, unsigned long cmd, void *v)
 		 * case the thread migrates to a different CPU. The
 		 * restoring is done lazily.
 		 */
-		if ((fpexc & FPEXC_EN) && vfp_current_hw_state[cpu]) {
-			/* vfp_save_state oopses on VFP11 if EX bit set */
-			fmxr(FPEXC, fpexc & ~FPEXC_EX);
+		if ((fpexc & FPEXC_EN) && vfp_current_hw_state[cpu])
 			vfp_save_state(vfp_current_hw_state[cpu], fpexc);
-		}
 #endif
 
 		/*
@@ -219,13 +216,6 @@ static struct notifier_block vfp_notifier_block = {
  */
 static void vfp_raise_sigfpe(unsigned int sicode, struct pt_regs *regs)
 {
-	siginfo_t info;
-
-	clear_siginfo(&info);
-	info.si_signo = SIGFPE;
-	info.si_code = sicode;
-	info.si_addr = (void __user *)(instruction_pointer(regs) - 4);
-
 	/*
 	 * This is the same as NWFPE, because it's not clear what
 	 * this is used for
@@ -233,7 +223,9 @@ static void vfp_raise_sigfpe(unsigned int sicode, struct pt_regs *regs)
 	current->thread.error_code = 0;
 	current->thread.trap_no = 6;
 
-	send_sig_info(SIGFPE, &info, current);
+	send_sig_fault(SIGFPE, sicode,
+		       (void __user *)(instruction_pointer(regs) - 4),
+		       current);
 }
 
 static void vfp_panic(char *reason, u32 inst)
@@ -465,16 +457,13 @@ static int vfp_pm_suspend(void)
 	/* if vfp is on, then save state for resumption */
 	if (fpexc & FPEXC_EN) {
 		pr_debug("%s: saving vfp state\n", __func__);
-		/* vfp_save_state oopses on VFP11 if EX bit set */
-		fmxr(FPEXC, fpexc & ~FPEXC_EX);
 		vfp_save_state(&ti->vfpstate, fpexc);
 
 		/* disable, just in case */
 		fmxr(FPEXC, fmrx(FPEXC) & ~FPEXC_EN);
 	} else if (vfp_current_hw_state[ti->cpu]) {
 #ifndef CONFIG_SMP
-		/* vfp_save_state oopses on VFP11 if EX bit set */
-		fmxr(FPEXC, (fpexc & ~FPEXC_EX) | FPEXC_EN);
+		fmxr(FPEXC, fpexc | FPEXC_EN);
 		vfp_save_state(vfp_current_hw_state[ti->cpu], fpexc);
 		fmxr(FPEXC, fpexc);
 #endif
@@ -537,8 +526,7 @@ void vfp_sync_hwstate(struct thread_info *thread)
 		/*
 		 * Save the last VFP state on this CPU.
 		 */
-		/* vfp_save_state oopses on VFP11 if EX bit set */
-		fmxr(FPEXC, (fpexc & ~FPEXC_EX) | FPEXC_EN);
+		fmxr(FPEXC, fpexc | FPEXC_EN);
 		vfp_save_state(&thread->vfpstate, fpexc | FPEXC_EN);
 		fmxr(FPEXC, fpexc);
 	}
@@ -604,7 +592,6 @@ int vfp_restore_user_hwstate(struct user_vfp *ufp, struct user_vfp_exc *ufp_exc)
 	struct thread_info *thread = current_thread_info();
 	struct vfp_hard_struct *hwstate = &thread->vfpstate.hard;
 	unsigned long fpexc;
-	u32 fpsid = fmrx(FPSID);
 
 	/* Disable VFP to avoid corrupting the new thread state. */
 	vfp_flush_hwstate(thread);
@@ -627,12 +614,8 @@ int vfp_restore_user_hwstate(struct user_vfp *ufp, struct user_vfp_exc *ufp_exc)
 	/* Ensure the VFP is enabled. */
 	fpexc |= FPEXC_EN;
 
-	/* Mask FPXEC_EX and FPEXC_FP2V if not required by VFP arch */
-	if ((fpsid & FPSID_ARCH_MASK) != (1 << FPSID_ARCH_BIT)) {
-		/* Ensure FPINST2 is invalid and the exception flag is cleared. */
-		fpexc &= ~(FPEXC_EX | FPEXC_FP2V);
-	}
-
+	/* Ensure FPINST2 is invalid and the exception flag is cleared. */
+	fpexc &= ~(FPEXC_EX | FPEXC_FP2V);
 	hwstate->fpexc = fpexc;
 
 	hwstate->fpinst = ufp_exc->fpinst;
@@ -702,8 +685,7 @@ void kernel_neon_begin(void)
 	cpu = get_cpu();
 
 	fpexc = fmrx(FPEXC) | FPEXC_EN;
-	/* vfp_save_state oopses on VFP11 if EX bit set */
-	fmxr(FPEXC, fpexc & ~FPEXC_EX);
+	fmxr(FPEXC, fpexc);
 
 	/*
 	 * Save the userland NEON/VFP state. Under UP,

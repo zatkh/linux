@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/ctype.h>
 #include <linux/delay.h>
 #include <linux/gpio/consumer.h>
@@ -185,11 +186,10 @@ struct sfp {
 	struct gpio_desc *gpio[GPIO_MAX];
 
 	bool attached;
-	struct mutex st_mutex;			/* Protects state */
 	unsigned int state;
 	struct delayed_work poll;
 	struct delayed_work timeout;
-	struct mutex sm_mutex;			/* Protects state machine */
+	struct mutex sm_mutex;
 	unsigned char sm_mod_state;
 	unsigned char sm_dev_state;
 	unsigned short sm_state;
@@ -281,7 +281,6 @@ static int sfp_i2c_read(struct sfp *sfp, bool a2, u8 dev_addr, void *buf,
 {
 	struct i2c_msg msgs[2];
 	u8 bus_addr = a2 ? 0x51 : 0x50;
-	size_t this_len;
 	int ret;
 
 	msgs[0].addr = bus_addr;
@@ -293,26 +292,11 @@ static int sfp_i2c_read(struct sfp *sfp, bool a2, u8 dev_addr, void *buf,
 	msgs[1].len = len;
 	msgs[1].buf = buf;
 
-	while (len) {
-		this_len = len;
-		if (this_len > 16)
-			this_len = 16;
+	ret = i2c_transfer(sfp->i2c, msgs, ARRAY_SIZE(msgs));
+	if (ret < 0)
+		return ret;
 
-		msgs[1].len = this_len;
-
-		ret = i2c_transfer(sfp->i2c, msgs, ARRAY_SIZE(msgs));
-		if (ret < 0)
-			return ret;
-
-		if (ret != ARRAY_SIZE(msgs))
-			break;
-
-		msgs[1].buf += this_len;
-		dev_addr += this_len;
-		len -= this_len;
-	}
-
-	return msgs[1].buf - (u8 *)buf;
+	return ret == ARRAY_SIZE(msgs) ? len : 0;
 }
 
 static int sfp_i2c_write(struct sfp *sfp, bool a2, u8 dev_addr, void *buf,
@@ -514,7 +498,7 @@ static int sfp_hwmon_read_sensor(struct sfp *sfp, int reg, long *value)
 
 static void sfp_hwmon_to_rx_power(long *value)
 {
-	*value = DIV_ROUND_CLOSEST(*value, 10);
+	*value = DIV_ROUND_CLOSEST(*value, 100);
 }
 
 static void sfp_hwmon_calibrate(struct sfp *sfp, unsigned int slope, int offset,
@@ -1719,7 +1703,6 @@ static void sfp_check_state(struct sfp *sfp)
 {
 	unsigned int state, i, changed;
 
-	mutex_lock(&sfp->st_mutex);
 	state = sfp_get_state(sfp);
 	changed = state ^ sfp->state;
 	changed &= SFP_F_PRESENT | SFP_F_LOS | SFP_F_TX_FAULT;
@@ -1745,7 +1728,6 @@ static void sfp_check_state(struct sfp *sfp)
 		sfp_sm_event(sfp, state & SFP_F_LOS ?
 				SFP_E_LOS_HIGH : SFP_E_LOS_LOW);
 	rtnl_unlock();
-	mutex_unlock(&sfp->st_mutex);
 }
 
 static irqreturn_t sfp_irq(int irq, void *data)
@@ -1776,7 +1758,6 @@ static struct sfp *sfp_alloc(struct device *dev)
 	sfp->dev = dev;
 
 	mutex_init(&sfp->sm_mutex);
-	mutex_init(&sfp->st_mutex);
 	INIT_DELAYED_WORK(&sfp->poll, sfp_poll);
 	INIT_DELAYED_WORK(&sfp->timeout, sfp_timeout);
 

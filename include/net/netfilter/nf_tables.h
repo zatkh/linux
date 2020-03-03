@@ -418,7 +418,8 @@ struct nft_set {
 	unsigned char			*udata;
 	/* runtime data below here */
 	const struct nft_set_ops	*ops ____cacheline_aligned;
-	u16				flags:14,
+	u16				flags:13,
+					bound:1,
 					genmask:2;
 	u8				klen;
 	u8				dlen;
@@ -1027,21 +1028,32 @@ int nft_verdict_dump(struct sk_buff *skb, int type,
 		     const struct nft_verdict *v);
 
 /**
+ *	struct nft_object_hash_key - key to lookup nft_object
+ *
+ *	@name: name of the stateful object to look up
+ *	@table: table the object belongs to
+ */
+struct nft_object_hash_key {
+	const char                      *name;
+	const struct nft_table          *table;
+};
+
+/**
  *	struct nft_object - nf_tables stateful object
  *
  *	@list: table stateful object list node
- *	@table: table this object belongs to
- *	@name: name of this stateful object
+ *	@key:  keys that identify this object
+ *	@rhlhead: nft_objname_ht node
  *	@genmask: generation mask
  *	@use: number of references to this stateful object
  *	@handle: unique object handle
  *	@ops: object operations
- * 	@data: object data, layout depends on type
+ *	@data: object data, layout depends on type
  */
 struct nft_object {
 	struct list_head		list;
-	char				*name;
-	struct nft_table		*table;
+	struct rhlist_head		rhlhead;
+	struct nft_object_hash_key	key;
 	u32				genmask:2,
 					use:30;
 	u64				handle;
@@ -1058,11 +1070,12 @@ static inline void *nft_obj_data(const struct nft_object *obj)
 
 #define nft_expr_obj(expr)	*((struct nft_object **)nft_expr_priv(expr))
 
-struct nft_object *nft_obj_lookup(const struct nft_table *table,
+struct nft_object *nft_obj_lookup(const struct net *net,
+				  const struct nft_table *table,
 				  const struct nlattr *nla, u32 objtype,
 				  u8 genmask);
 
-void nft_obj_notify(struct net *net, struct nft_table *table,
+void nft_obj_notify(struct net *net, const struct nft_table *table,
 		    struct nft_object *obj, u32 portid, u32 seq,
 		    int event, int family, int report, gfp_t gfp);
 
@@ -1313,12 +1326,14 @@ static inline void nft_set_elem_clear_busy(struct nft_set_ext *ext)
  *
  *	@list: used internally
  *	@msg_type: message type
+ *	@put_net: ctx->net needs to be put
  *	@ctx: transaction context
  *	@data: internal information related to the transaction
  */
 struct nft_trans {
 	struct list_head		list;
 	int				msg_type;
+	bool				put_net;
 	struct nft_ctx			ctx;
 	char				data[0];
 };
@@ -1336,15 +1351,12 @@ struct nft_trans_rule {
 struct nft_trans_set {
 	struct nft_set			*set;
 	u32				set_id;
-	bool				bound;
 };
 
 #define nft_trans_set(trans)	\
 	(((struct nft_trans_set *)trans->data)->set)
 #define nft_trans_set_id(trans)	\
 	(((struct nft_trans_set *)trans->data)->set_id)
-#define nft_trans_set_bound(trans)	\
-	(((struct nft_trans_set *)trans->data)->bound)
 
 struct nft_trans_chain {
 	bool				update;
@@ -1375,15 +1387,12 @@ struct nft_trans_table {
 struct nft_trans_elem {
 	struct nft_set			*set;
 	struct nft_set_elem		elem;
-	bool				bound;
 };
 
 #define nft_trans_elem_set(trans)	\
 	(((struct nft_trans_elem *)trans->data)->set)
 #define nft_trans_elem(trans)	\
 	(((struct nft_trans_elem *)trans->data)->elem)
-#define nft_trans_elem_set_bound(trans)	\
-	(((struct nft_trans_elem *)trans->data)->bound)
 
 struct nft_trans_obj {
 	struct nft_object		*obj;

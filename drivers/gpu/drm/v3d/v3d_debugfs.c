@@ -4,6 +4,7 @@
 #include <linux/circ_buf.h>
 #include <linux/ctype.h>
 #include <linux/debugfs.h>
+#include <linux/pm_runtime.h>
 #include <linux/seq_file.h>
 #include <drm/drmP.h>
 
@@ -57,17 +58,6 @@ static const struct v3d_reg_def v3d_core_reg_defs[] = {
 	REGDEF(V3D_GMP_VIO_ADDR),
 };
 
-static const struct v3d_reg_def v3d_csd_reg_defs[] = {
-	REGDEF(V3D_CSD_STATUS),
-	REGDEF(V3D_CSD_CURRENT_CFG0),
-	REGDEF(V3D_CSD_CURRENT_CFG1),
-	REGDEF(V3D_CSD_CURRENT_CFG2),
-	REGDEF(V3D_CSD_CURRENT_CFG3),
-	REGDEF(V3D_CSD_CURRENT_CFG4),
-	REGDEF(V3D_CSD_CURRENT_CFG5),
-	REGDEF(V3D_CSD_CURRENT_CFG6),
-};
-
 static int v3d_v3d_debugfs_regs(struct seq_file *m, void *unused)
 {
 	struct drm_info_node *node = (struct drm_info_node *)m->private;
@@ -99,17 +89,6 @@ static int v3d_v3d_debugfs_regs(struct seq_file *m, void *unused)
 				   V3D_CORE_READ(core,
 						 v3d_core_reg_defs[i].reg));
 		}
-
-		if (v3d_has_csd(v3d)) {
-			for (i = 0; i < ARRAY_SIZE(v3d_csd_reg_defs); i++) {
-				seq_printf(m, "core %d %s (0x%04x): 0x%08x\n",
-					   core,
-					   v3d_csd_reg_defs[i].name,
-					   v3d_csd_reg_defs[i].reg,
-					   V3D_CORE_READ(core,
-							 v3d_csd_reg_defs[i].reg));
-			}
-		}
 	}
 
 	return 0;
@@ -121,8 +100,11 @@ static int v3d_v3d_debugfs_ident(struct seq_file *m, void *unused)
 	struct drm_device *dev = node->minor->dev;
 	struct v3d_dev *v3d = to_v3d_dev(dev);
 	u32 ident0, ident1, ident2, ident3, cores;
-	int core;
+	int ret, core;
 
+	ret = pm_runtime_get_sync(v3d->dev);
+	if (ret < 0)
+		return ret;
 
 	ident0 = V3D_READ(V3D_HUB_IDENT0);
 	ident1 = V3D_READ(V3D_HUB_IDENT1);
@@ -175,6 +157,9 @@ static int v3d_v3d_debugfs_ident(struct seq_file *m, void *unused)
 			   (misccfg & V3D_MISCCFG_OVRTMUOUT) != 0);
 	}
 
+	pm_runtime_mark_last_busy(v3d->dev);
+	pm_runtime_put_autosuspend(v3d->dev);
+
 	return 0;
 }
 
@@ -224,7 +209,6 @@ static int v3d_measure_clock(struct seq_file *m, void *unused)
 		   cycles,
 		   cycles / (measure_ms * 1000),
 		   (cycles / (measure_ms * 100)) % 10);
-
 
 	return 0;
 }

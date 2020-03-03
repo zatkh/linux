@@ -720,15 +720,6 @@ static int line6_init_cap_control(struct usb_line6 *line6)
 	return 0;
 }
 
-static void line6_startup_work(struct work_struct *work)
-{
-	struct usb_line6 *line6 =
-		container_of(work, struct usb_line6, startup_work.work);
-
-	if (line6->startup)
-		line6->startup(line6);
-}
-
 /*
 	Probe USB device.
 */
@@ -764,7 +755,6 @@ int line6_probe(struct usb_interface *interface,
 	line6->properties = properties;
 	line6->usbdev = usbdev;
 	line6->ifcdev = &interface->dev;
-	INIT_DELAYED_WORK(&line6->startup_work, line6_startup_work);
 
 	strcpy(card->id, properties->id);
 	strcpy(card->driver, driver_name);
@@ -835,8 +825,6 @@ void line6_disconnect(struct usb_interface *interface)
 	if (WARN_ON(usbdev != line6->usbdev))
 		return;
 
-	cancel_delayed_work(&line6->startup_work);
-
 	if (line6->urb_listen != NULL)
 		line6_stop_listen(line6);
 
@@ -871,10 +859,8 @@ int line6_suspend(struct usb_interface *interface, pm_message_t message)
 	if (line6->properties->capabilities & LINE6_CAP_CONTROL)
 		line6_stop_listen(line6);
 
-	if (line6pcm != NULL) {
-		snd_pcm_suspend_all(line6pcm->pcm);
+	if (line6pcm != NULL)
 		line6pcm->flags = 0;
-	}
 
 	return 0;
 }

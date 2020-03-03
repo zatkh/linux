@@ -33,7 +33,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
@@ -3270,7 +3269,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (!adapter->regs) {
 		dev_err(&pdev->dev, "cannot map device registers\n");
 		err = -ENOMEM;
-		goto out_free_adapter_nofail;
+		goto out_free_adapter;
 	}
 
 	adapter->pdev = pdev;
@@ -3398,9 +3397,6 @@ out_free_dev:
 		if (adapter->port[i])
 			free_netdev(adapter->port[i]);
 
-out_free_adapter_nofail:
-	kfree_skb(adapter->nofail_skb);
-
 out_free_adapter:
 	kfree(adapter);
 
@@ -3443,8 +3439,7 @@ static void remove_one(struct pci_dev *pdev)
 				free_netdev(adapter->port[i]);
 
 		iounmap(adapter->regs);
-		if (adapter->nofail_skb)
-			kfree_skb(adapter->nofail_skb);
+		kfree_skb(adapter->nofail_skb);
 		kfree(adapter);
 		pci_release_regions(pdev);
 		pci_disable_device(pdev);

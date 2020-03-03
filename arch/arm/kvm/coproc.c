@@ -293,15 +293,16 @@ static bool access_cntp_tval(struct kvm_vcpu *vcpu,
 			     const struct coproc_params *p,
 			     const struct coproc_reg *r)
 {
-	u64 now = kvm_phys_timer_read();
-	u64 val;
+	u32 val;
 
 	if (p->is_write) {
 		val = *vcpu_reg(vcpu, p->Rt1);
-		kvm_arm_timer_set_reg(vcpu, KVM_REG_ARM_PTIMER_CVAL, val + now);
+		kvm_arm_timer_write_sysreg(vcpu,
+					   TIMER_PTIMER, TIMER_REG_TVAL, val);
 	} else {
-		val = kvm_arm_timer_get_reg(vcpu, KVM_REG_ARM_PTIMER_CVAL);
-		*vcpu_reg(vcpu, p->Rt1) = val - now;
+		val = kvm_arm_timer_read_sysreg(vcpu,
+						TIMER_PTIMER, TIMER_REG_TVAL);
+		*vcpu_reg(vcpu, p->Rt1) = val;
 	}
 
 	return true;
@@ -315,9 +316,11 @@ static bool access_cntp_ctl(struct kvm_vcpu *vcpu,
 
 	if (p->is_write) {
 		val = *vcpu_reg(vcpu, p->Rt1);
-		kvm_arm_timer_set_reg(vcpu, KVM_REG_ARM_PTIMER_CTL, val);
+		kvm_arm_timer_write_sysreg(vcpu,
+					   TIMER_PTIMER, TIMER_REG_CTL, val);
 	} else {
-		val = kvm_arm_timer_get_reg(vcpu, KVM_REG_ARM_PTIMER_CTL);
+		val = kvm_arm_timer_read_sysreg(vcpu,
+						TIMER_PTIMER, TIMER_REG_CTL);
 		*vcpu_reg(vcpu, p->Rt1) = val;
 	}
 
@@ -333,9 +336,11 @@ static bool access_cntp_cval(struct kvm_vcpu *vcpu,
 	if (p->is_write) {
 		val = (u64)*vcpu_reg(vcpu, p->Rt2) << 32;
 		val |= *vcpu_reg(vcpu, p->Rt1);
-		kvm_arm_timer_set_reg(vcpu, KVM_REG_ARM_PTIMER_CVAL, val);
+		kvm_arm_timer_write_sysreg(vcpu,
+					   TIMER_PTIMER, TIMER_REG_CVAL, val);
 	} else {
-		val = kvm_arm_timer_get_reg(vcpu, KVM_REG_ARM_PTIMER_CVAL);
+		val = kvm_arm_timer_read_sysreg(vcpu,
+						TIMER_PTIMER, TIMER_REG_CVAL);
 		*vcpu_reg(vcpu, p->Rt1) = val;
 		*vcpu_reg(vcpu, p->Rt2) = val >> 32;
 	}
@@ -602,8 +607,8 @@ static int emulate_cp15(struct kvm_vcpu *vcpu,
 		}
 	} else {
 		/* If access function fails, it should complain. */
-		kvm_err("Unsupported guest CP15 access at: %08lx\n",
-			*vcpu_pc(vcpu));
+		kvm_err("Unsupported guest CP15 access at: %08lx [%08lx]\n",
+			*vcpu_pc(vcpu), *vcpu_cpsr(vcpu));
 		print_cp_instr(params);
 		kvm_inject_undefined(vcpu);
 	}
@@ -658,22 +663,13 @@ int kvm_handle_cp14_64(struct kvm_vcpu *vcpu, struct kvm_run *run)
 }
 
 static void reset_coproc_regs(struct kvm_vcpu *vcpu,
-			      const struct coproc_reg *table, size_t num,
-			      unsigned long *bmap)
+			      const struct coproc_reg *table, size_t num)
 {
 	unsigned long i;
 
 	for (i = 0; i < num; i++)
-		if (table[i].reset) {
-			int reg = table[i].reg;
-
+		if (table[i].reset)
 			table[i].reset(vcpu, &table[i]);
-			if (reg > 0 && reg < NR_CP15_REGS) {
-				set_bit(reg, bmap);
-				if (table[i].is_64bit)
-					set_bit(reg + 1, bmap);
-			}
-		}
 }
 
 static struct coproc_params decode_32bit_hsr(struct kvm_vcpu *vcpu)
@@ -1448,15 +1444,17 @@ void kvm_reset_coprocs(struct kvm_vcpu *vcpu)
 {
 	size_t num;
 	const struct coproc_reg *table;
-	DECLARE_BITMAP(bmap, NR_CP15_REGS) = { 0, };
+
+	/* Catch someone adding a register without putting in reset entry. */
+	memset(vcpu->arch.ctxt.cp15, 0x42, sizeof(vcpu->arch.ctxt.cp15));
 
 	/* Generic chip reset first (so target could override). */
-	reset_coproc_regs(vcpu, cp15_regs, ARRAY_SIZE(cp15_regs), bmap);
+	reset_coproc_regs(vcpu, cp15_regs, ARRAY_SIZE(cp15_regs));
 
 	table = get_target_table(vcpu->arch.target, &num);
-	reset_coproc_regs(vcpu, table, num, bmap);
+	reset_coproc_regs(vcpu, table, num);
 
 	for (num = 1; num < NR_CP15_REGS; num++)
-		WARN(!test_bit(num, bmap),
+		WARN(vcpu_cp15(vcpu, num) == 0x42424242,
 		     "Didn't reset vcpu_cp15(vcpu, %zi)", num);
 }

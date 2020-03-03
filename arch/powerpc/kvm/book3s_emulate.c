@@ -36,7 +36,6 @@
 #define OP_31_XOP_MTSR		210
 #define OP_31_XOP_MTSRIN	242
 #define OP_31_XOP_TLBIEL	274
-#define OP_31_XOP_TLBIE		306
 /* Opcode is officially reserved, reuse it as sc 1 when sc 1 doesn't trap */
 #define OP_31_XOP_FAKE_SC1	308
 #define OP_31_XOP_SLBMTE	402
@@ -48,6 +47,7 @@
 #define OP_31_XOP_SLBMFEV	851
 #define OP_31_XOP_EIOIO		854
 #define OP_31_XOP_SLBMFEE	915
+#define OP_31_XOP_SLBFEE	979
 
 #define OP_31_XOP_TBEGIN	654
 #define OP_31_XOP_TABORT	910
@@ -416,6 +416,23 @@ int kvmppc_core_emulate_op_pr(struct kvm_run *run, struct kvm_vcpu *vcpu,
 				return EMULATE_FAIL;
 
 			vcpu->arch.mmu.slbia(vcpu);
+			break;
+		case OP_31_XOP_SLBFEE:
+			if (!(inst & 1) || !vcpu->arch.mmu.slbfee) {
+				return EMULATE_FAIL;
+			} else {
+				ulong b, t;
+				ulong cr = kvmppc_get_cr(vcpu) & ~CR0_MASK;
+
+				b = kvmppc_get_gpr(vcpu, rb);
+				if (!vcpu->arch.mmu.slbfee(vcpu, b, &t))
+					cr |= 2 << CR0_SHIFT;
+				kvmppc_set_gpr(vcpu, rt, t);
+				/* copy XER[SO] bit to CR0[SO] */
+				cr |= (vcpu->arch.regs.xer & 0x80000000) >>
+					(31 - CR0_SHIFT);
+				kvmppc_set_cr(vcpu, cr);
+			}
 			break;
 		case OP_31_XOP_SLBMFEE:
 			if (!vcpu->arch.mmu.slbmfee) {

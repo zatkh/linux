@@ -329,7 +329,7 @@ static int p9_get_mapped_pages(struct virtio_chan *chan,
 	if (!iov_iter_count(data))
 		return 0;
 
-	if (!(data->type & ITER_KVEC)) {
+	if (!iov_iter_is_kvec(data)) {
 		int n;
 		/*
 		 * We allow only p9_max_pages pinned. We wait for the
@@ -782,16 +782,10 @@ static struct p9_trans_module p9_virtio_trans = {
 /* The standard init function */
 static int __init p9_virtio_init(void)
 {
-	int rc;
-
 	INIT_LIST_HEAD(&virtio_chan_list);
 
 	v9fs_register_trans(&p9_virtio_trans);
-	rc = register_virtio_driver(&p9_virtio_drv);
-	if (rc)
-		v9fs_unregister_trans(&p9_virtio_trans);
-
-	return rc;
+	return register_virtio_driver(&p9_virtio_drv);
 }
 
 static void __exit p9_virtio_cleanup(void)

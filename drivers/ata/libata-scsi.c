@@ -639,8 +639,8 @@ int ata_cmd_ioctl(struct scsi_device *scsidev, void __user *arg)
 	if (args[0] == ATA_CMD_SMART) { /* hack -- ide driver does this too */
 		scsi_cmd[6]  = args[3];
 		scsi_cmd[8]  = args[1];
-		scsi_cmd[10] = 0x4f;
-		scsi_cmd[12] = 0xc2;
+		scsi_cmd[10] = ATA_SMART_LBAM_PASS;
+		scsi_cmd[12] = ATA_SMART_LBAH_PASS;
 	} else {
 		scsi_cmd[6]  = args[1];
 	}
@@ -778,7 +778,7 @@ static int ata_ioc32(struct ata_port *ap)
 }
 
 int ata_sas_scsi_ioctl(struct ata_port *ap, struct scsi_device *scsidev,
-		     int cmd, void __user *arg)
+		     unsigned int cmd, void __user *arg)
 {
 	unsigned long val;
 	int rc = -EINVAL;
@@ -829,7 +829,8 @@ int ata_sas_scsi_ioctl(struct ata_port *ap, struct scsi_device *scsidev,
 }
 EXPORT_SYMBOL_GPL(ata_sas_scsi_ioctl);
 
-int ata_scsi_ioctl(struct scsi_device *scsidev, int cmd, void __user *arg)
+int ata_scsi_ioctl(struct scsi_device *scsidev, unsigned int cmd,
+		   void __user *arg)
 {
 	return ata_sas_scsi_ioctl(ata_shost_to_port(scsidev->host),
 				scsidev, cmd, arg);
@@ -1318,8 +1319,6 @@ static int ata_scsi_dev_config(struct scsi_device *sdev,
 		scsi_change_queue_depth(sdev, depth);
 	}
 
-	blk_queue_flush_queueable(q, false);
-
 	if (dev->flags & ATA_DFLAG_TRUSTED)
 		sdev->security_supported = 1;
 
@@ -1803,21 +1802,6 @@ nothing_to_do:
 	return 1;
 }
 
-static bool ata_check_nblocks(struct scsi_cmnd *scmd, u32 n_blocks)
-{
-	struct request *rq = scmd->request;
-	u32 req_blocks;
-
-	if (!blk_rq_is_passthrough(rq))
-		return true;
-
-	req_blocks = blk_rq_bytes(rq) / scmd->device->sector_size;
-	if (n_blocks > req_blocks)
-		return false;
-
-	return true;
-}
-
 /**
  *	ata_scsi_rw_xlat - Translate SCSI r/w command into an ATA one
  *	@qc: Storage for translated ATA taskfile
@@ -1862,8 +1846,6 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		scsi_10_lba_len(cdb, &block, &n_block);
 		if (cdb[1] & (1 << 3))
 			tf_flags |= ATA_TFLAG_FUA;
-		if (!ata_check_nblocks(scmd, n_block))
-			goto invalid_fld;
 		break;
 	case READ_6:
 	case WRITE_6:
@@ -1878,8 +1860,6 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		 */
 		if (!n_block)
 			n_block = 256;
-		if (!ata_check_nblocks(scmd, n_block))
-			goto invalid_fld;
 		break;
 	case READ_16:
 	case WRITE_16:
@@ -1890,8 +1870,6 @@ static unsigned int ata_scsi_rw_xlat(struct ata_queued_cmd *qc)
 		scsi_16_lba_len(cdb, &block, &n_block);
 		if (cdb[1] & (1 << 3))
 			tf_flags |= ATA_TFLAG_FUA;
-		if (!ata_check_nblocks(scmd, n_block))
-			goto invalid_fld;
 		break;
 	default:
 		DPRINTK("no-byte command\n");
@@ -3011,7 +2989,7 @@ static unsigned int atapi_xlat(struct ata_queued_cmd *qc)
 	 * This inconsistency confuses several controllers which
 	 * perform PIO using DMA such as Intel AHCIs and sil3124/32.
 	 * These controllers use actual number of transferred bytes to
-	 * update DMA poitner and transfer of 4n+2 bytes make those
+	 * update DMA pointer and transfer of 4n+2 bytes make those
 	 * controller push DMA pointer by 4n+4 bytes because SATA data
 	 * FISes are aligned to 4 bytes.  This causes data corruption
 	 * and buffer overrun.

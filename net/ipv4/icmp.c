@@ -587,13 +587,7 @@ void __icmp_send(struct sk_buff *skb_in, int type, int code, __be32 info,
 
 	if (!rt)
 		goto out;
-
-	if (rt->dst.dev)
-		net = dev_net(rt->dst.dev);
-	else if (skb_in->dev)
-		net = dev_net(skb_in->dev);
-	else
-		goto out;
+	net = dev_net(rt->dst.dev);
 
 	/*
 	 *	Find the original header. It is expected to be valid, of course.
@@ -1086,7 +1080,7 @@ error:
 	goto drop;
 }
 
-void icmp_err(struct sk_buff *skb, u32 info)
+int icmp_err(struct sk_buff *skb, u32 info)
 {
 	struct iphdr *iph = (struct iphdr *)skb->data;
 	int offset = iph->ihl<<2;
@@ -1101,13 +1095,15 @@ void icmp_err(struct sk_buff *skb, u32 info)
 	 */
 	if (icmph->type != ICMP_ECHOREPLY) {
 		ping_err(skb, offset, info);
-		return;
+		return 0;
 	}
 
 	if (type == ICMP_DEST_UNREACH && code == ICMP_FRAG_NEEDED)
-		ipv4_update_pmtu(skb, net, info, 0, 0, IPPROTO_ICMP, 0);
+		ipv4_update_pmtu(skb, net, info, 0, IPPROTO_ICMP);
 	else if (type == ICMP_REDIRECT)
-		ipv4_redirect(skb, net, 0, 0, IPPROTO_ICMP, 0);
+		ipv4_redirect(skb, net, 0, IPPROTO_ICMP);
+
+	return 0;
 }
 
 /*
@@ -1250,9 +1246,7 @@ static int __net_init icmp_sk_init(struct net *net)
 	return 0;
 
 fail:
-	for_each_possible_cpu(i)
-		inet_ctl_sock_destroy(*per_cpu_ptr(net->ipv4.icmp_sk, i));
-	free_percpu(net->ipv4.icmp_sk);
+	icmp_sk_exit(net);
 	return err;
 }
 

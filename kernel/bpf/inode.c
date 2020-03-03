@@ -132,7 +132,12 @@ static void bpf_dentry_finalize(struct dentry *dentry, struct inode *inode,
 	dir->i_ctime = dir->i_mtime;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bpf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else 
+static int bpf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct inode *inode;
 
@@ -305,6 +310,8 @@ static int bpffs_obj_open(struct inode *inode, struct file *file)
 static const struct file_operations bpffs_obj_fops = {
 	.open		= bpffs_obj_open,
 };
+
+
 
 static int bpf_mkobj_ops(struct dentry *dentry, umode_t mode, void *raw,
 			 const struct inode_operations *iops,
@@ -518,7 +525,7 @@ out:
 static struct bpf_prog *__get_prog_inode(struct inode *inode, enum bpf_prog_type type)
 {
 	struct bpf_prog *prog;
-	int ret = inode_permission(inode, MAY_READ);
+	int ret = inode_permission(inode, MAY_READ | MAY_WRITE);
 	if (ret)
 		return ERR_PTR(ret);
 

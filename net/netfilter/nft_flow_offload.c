@@ -12,6 +12,7 @@
 #include <net/netfilter/nf_conntrack_core.h>
 #include <linux/netfilter/nf_conntrack_common.h>
 #include <net/netfilter/nf_flow_table.h>
+#include <net/netfilter/nf_conntrack_helper.h>
 
 struct nft_flow_offload {
 	struct nft_flowtable	*flowtable;
@@ -48,19 +49,14 @@ static int nft_flow_route(const struct nft_pktinfo *pkt,
 	return 0;
 }
 
-static bool nft_flow_offload_skip(struct sk_buff *skb, int family)
+static bool nft_flow_offload_skip(struct sk_buff *skb)
 {
+	struct ip_options *opt  = &(IPCB(skb)->opt);
+
+	if (unlikely(opt->optlen))
+		return true;
 	if (skb_sec_path(skb))
 		return true;
-
-	if (family == NFPROTO_IPV4) {
-		const struct ip_options *opt;
-
-		opt = &(IPCB(skb)->opt);
-
-		if (unlikely(opt->optlen))
-			return true;
-	}
 
 	return false;
 }
@@ -71,7 +67,7 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
 {
 	struct nft_flow_offload *priv = nft_expr_priv(expr);
 	struct nf_flowtable *flowtable = &priv->flowtable->data;
-	struct tcphdr _tcph, *tcph = NULL;
+	const struct nf_conn_help *help;
 	enum ip_conntrack_info ctinfo;
 	struct nf_flow_route route;
 	struct flow_offload *flow;
@@ -79,7 +75,7 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
 	struct nf_conn *ct;
 	int ret;
 
-	if (nft_flow_offload_skip(pkt->skb, nft_pf(pkt)))
+	if (nft_flow_offload_skip(pkt->skb))
 		goto out;
 
 	ct = nf_ct_get(pkt->skb, &ctinfo);
@@ -88,19 +84,14 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
 
 	switch (ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.dst.protonum) {
 	case IPPROTO_TCP:
-		tcph = skb_header_pointer(pkt->skb, pkt->xt.thoff,
-					  sizeof(_tcph), &_tcph);
-		if (unlikely(!tcph || tcph->fin || tcph->rst))
-			goto out;
-		break;
 	case IPPROTO_UDP:
 		break;
 	default:
 		goto out;
 	}
 
-	if (nf_ct_ext_exist(ct, NF_CT_EXT_HELPER) ||
-	    ct->status & IPS_SEQ_ADJUST)
+	help = nfct_help(ct);
+	if (help)
 		goto out;
 
 	if (ctinfo == IP_CT_NEW ||
@@ -118,16 +109,10 @@ static void nft_flow_offload_eval(const struct nft_expr *expr,
 	if (!flow)
 		goto err_flow_alloc;
 
-	if (tcph) {
-		ct->proto.tcp.seen[0].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
-		ct->proto.tcp.seen[1].flags |= IP_CT_TCP_FLAG_BE_LIBERAL;
-	}
-
 	ret = flow_offload_add(flowtable, flow);
 	if (ret < 0)
 		goto err_flow_add;
 
-	dst_release(route.tuple[!dir].dst);
 	return;
 
 err_flow_add:
@@ -219,7 +204,7 @@ static int flow_offload_netdev_event(struct notifier_block *this,
 	if (event != NETDEV_DOWN)
 		return NOTIFY_DONE;
 
-	nf_flow_table_cleanup(dev_net(dev), dev);
+	nf_flow_table_cleanup(dev);
 
 	return NOTIFY_DONE;
 }

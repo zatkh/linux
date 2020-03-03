@@ -427,7 +427,7 @@ predicate_parse(const char *str, int nr_parens, int nr_preds,
 	op_stack = kmalloc_array(nr_parens, sizeof(*op_stack), GFP_KERNEL);
 	if (!op_stack)
 		return ERR_PTR(-ENOMEM);
-	prog_stack = kcalloc(nr_preds, sizeof(*prog_stack), GFP_KERNEL);
+	prog_stack = kmalloc_array(nr_preds, sizeof(*prog_stack), GFP_KERNEL);
 	if (!prog_stack) {
 		parse_error(pe, -ENOMEM, 0);
 		goto out_free;
@@ -491,10 +491,12 @@ predicate_parse(const char *str, int nr_parens, int nr_preds,
 				break;
 			case '&':
 			case '|':
+				/* accepting only "&&" or "||" */
 				if (next[1] == next[0]) {
 					ptr++;
 					break;
 				}
+				/* fall through */
 			default:
 				parse_error(pe, FILT_ERR_TOO_MANY_PREDS,
 					    next - str);
@@ -576,11 +578,7 @@ predicate_parse(const char *str, int nr_parens, int nr_preds,
 out_free:
 	kfree(op_stack);
 	kfree(inverts);
-	if (prog_stack) {
-		for (i = 0; prog_stack[i].pred; i++)
-			kfree(prog_stack[i].pred);
-		kfree(prog_stack);
-	}
+	kfree(prog_stack);
 	return ERR_PTR(ret);
 }
 
@@ -827,6 +825,9 @@ enum regex_type filter_parse_regex(char *buff, int len, char **search, int *not)
 
 	*search = buff;
 
+	if (isdigit(buff[0]))
+		return MATCH_INDEX;
+
 	for (i = 0; i < len; i++) {
 		if (buff[i] == '*') {
 			if (!i) {
@@ -864,6 +865,8 @@ static void filter_build_regex(struct filter_pred *pred)
 	}
 
 	switch (type) {
+	/* MATCH_INDEX should not happen, but if it does, match full */
+	case MATCH_INDEX:
 	case MATCH_FULL:
 		r->match = regex_match_full;
 		break;
@@ -1623,7 +1626,7 @@ static int process_system_preds(struct trace_subsystem_dir *dir,
 
 	/*
 	 * The calls can still be using the old filters.
-	 * Do a synchronize_sched() and to ensure all calls are
+	 * Do a synchronize_rcu() and to ensure all calls are
 	 * done with them before we free them.
 	 */
 	tracepoint_synchronize_unregister();
@@ -1855,7 +1858,7 @@ int apply_subsystem_event_filter(struct trace_subsystem_dir *dir,
 	if (filter) {
 		/*
 		 * No event actually uses the system filter
-		 * we can free it without synchronize_sched().
+		 * we can free it without synchronize_rcu().
 		 */
 		__free_filter(system->filter);
 		system->filter = filter;

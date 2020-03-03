@@ -199,15 +199,15 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	lp->rx_bd_ci = 0;
 
 	/* Allocate the Tx and Rx buffer descriptors. */
-	lp->tx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*lp->tx_bd_v) * TX_BD_NUM,
-					  &lp->tx_bd_p, GFP_KERNEL);
+	lp->tx_bd_v = dma_alloc_coherent(ndev->dev.parent,
+					 sizeof(*lp->tx_bd_v) * TX_BD_NUM,
+					 &lp->tx_bd_p, GFP_KERNEL);
 	if (!lp->tx_bd_v)
 		goto out;
 
-	lp->rx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*lp->rx_bd_v) * RX_BD_NUM,
-					  &lp->rx_bd_p, GFP_KERNEL);
+	lp->rx_bd_v = dma_alloc_coherent(ndev->dev.parent,
+					 sizeof(*lp->rx_bd_v) * RX_BD_NUM,
+					 &lp->rx_bd_p, GFP_KERNEL);
 	if (!lp->rx_bd_v)
 		goto out;
 
@@ -595,7 +595,7 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 				(cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
 				DMA_TO_DEVICE);
 		if (cur_p->app4)
-			dev_kfree_skb_irq((struct sk_buff *)cur_p->app4);
+			dev_consume_skb_irq((struct sk_buff *)cur_p->app4);
 		/*cur_p->phys = 0;*/
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
@@ -614,10 +614,6 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 
 	ndev->stats.tx_packets += packets;
 	ndev->stats.tx_bytes += size;
-
-	/* Matches barrier in axienet_start_xmit */
-	smp_mb();
-
 	netif_wake_queue(ndev);
 }
 
@@ -657,7 +653,8 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
  * start the transmission. Additionally if checksum offloading is supported,
  * it populates AXI Stream Control fields with appropriate values.
  */
-static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+static netdev_tx_t
+axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	u32 ii;
 	u32 num_frag;
@@ -672,19 +669,9 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 
 	if (axienet_check_tx_bd_space(lp, num_frag)) {
-		if (netif_queue_stopped(ndev))
-			return NETDEV_TX_BUSY;
-
-		netif_stop_queue(ndev);
-
-		/* Matches barrier in axienet_start_xmit_done */
-		smp_mb();
-
-		/* Space might have just been freed - check again */
-		if (axienet_check_tx_bd_space(lp, num_frag))
-			return NETDEV_TX_BUSY;
-
-		netif_wake_queue(ndev);
+		if (!netif_queue_stopped(ndev))
+			netif_stop_queue(ndev);
+		return NETDEV_TX_BUSY;
 	}
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {

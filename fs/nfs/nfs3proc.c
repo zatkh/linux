@@ -298,9 +298,19 @@ static void nfs3_free_createdata(struct nfs3_createdata *data)
 /*
  * Create a regular file.
  */
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs3_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		 int flags)
+#else
+static int
+nfs3_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+		 int flags, void* label)
+#endif
+
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;
@@ -530,8 +540,16 @@ out:
 	return status;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int
 nfs3_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr)
+#else
+
+static int
+nfs3_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr, void* label)
+#endif
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;
@@ -607,7 +625,7 @@ out:
  * readdirplus.
  */
 static int
-nfs3_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
+nfs3_proc_readdir(struct dentry *dentry, const struct cred *cred,
 		  u64 cookie, struct page **pages, unsigned int count, bool plus)
 {
 	struct inode		*dir = d_inode(dentry);
@@ -628,7 +646,7 @@ nfs3_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
 		.rpc_proc	= &nfs3_procedures[NFS3PROC_READDIR],
 		.rpc_argp	= &arg,
 		.rpc_resp	= &res,
-		.rpc_cred	= cred
+		.rpc_cred	= cred,
 	};
 	int status = -ENOMEM;
 
@@ -654,9 +672,20 @@ out:
 	return status;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int
 nfs3_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		dev_t rdev)
+#else
+
+static int
+nfs3_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
+		dev_t rdev, void* label)
+#endif
+
+
 {
 	struct posix_acl *default_acl, *acl;
 	struct nfs3_createdata *data;
@@ -786,12 +815,16 @@ nfs3_proc_pathconf(struct nfs_server *server, struct nfs_fh *fhandle,
 static int nfs3_read_done(struct rpc_task *task, struct nfs_pgio_header *hdr)
 {
 	struct inode *inode = hdr->inode;
+	struct nfs_server *server = NFS_SERVER(inode);
 
 	if (hdr->pgio_done_cb != NULL)
 		return hdr->pgio_done_cb(task, hdr);
 
 	if (nfs3_async_handle_jukebox(task, inode))
 		return -EAGAIN;
+
+	if (task->tk_status >= 0 && !server->read_hdrsize)
+		cmpxchg(&server->read_hdrsize, 0, hdr->res.replen);
 
 	nfs_invalidate_atime(inode);
 	nfs_refresh_inode(inode, &hdr->fattr);
@@ -802,6 +835,7 @@ static void nfs3_proc_read_setup(struct nfs_pgio_header *hdr,
 				 struct rpc_message *msg)
 {
 	msg->rpc_proc = &nfs3_procedures[NFS3PROC_READ];
+	hdr->args.replen = NFS_SERVER(hdr->inode)->read_hdrsize;
 }
 
 static int nfs3_proc_pgio_rpc_prepare(struct rpc_task *task,

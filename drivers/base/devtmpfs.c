@@ -25,6 +25,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/kthread.h>
+#include <uapi/linux/mount.h>
 #include "base.h"
 
 static struct task_struct *thread;
@@ -147,8 +148,12 @@ int devtmpfs_delete_node(struct device *dev)
 	kfree(tmp);
 	return req.err;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dev_mkdir(const char *name, umode_t mode)
+#else
+static int dev_mkdir(const char *name, umode_t mode,void* label)
+#endif
+
 {
 	struct dentry *dentry;
 	struct path path;
@@ -158,7 +163,12 @@ static int dev_mkdir(const char *name, umode_t mode)
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	err = vfs_mkdir(d_inode(path.dentry), dentry, mode);
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+		err = vfs_mkdir(d_inode(path.dentry), dentry, mode);
+	#else
+		err = vfs_mkdir(d_inode(path.dentry), dentry, mode,label);
+	#endif /*CONFIG_EXTENDED_LSM_DIFC */
+
 	if (!err)
 		/* mark as kernel-created inode */
 		d_inode(dentry)->i_private = &thread;
@@ -183,7 +193,7 @@ static int create_path(const char *nodepath)
 		if (!s)
 			break;
 		s[0] = '\0';
-		err = dev_mkdir(path, 0755);
+		err = dev_mkdir(path, 0755,NULL);
 		if (err && err != -EEXIST)
 			break;
 		s[0] = '/';
@@ -192,9 +202,13 @@ static int create_path(const char *nodepath)
 	kfree(path);
 	return err;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
 			 kgid_t gid, struct device *dev)
+#else
+static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
+			 kgid_t gid, struct device *dev,void*label)
+#endif			 
 {
 	struct dentry *dentry;
 	struct path path;
@@ -208,7 +222,7 @@ static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
-	err = vfs_mknod(d_inode(path.dentry), dentry, mode, dev->devt);
+	err = vfs_mknod(d_inode(path.dentry), dentry, mode, dev->devt,label);
 	if (!err) {
 		struct iattr newattrs;
 
@@ -252,7 +266,7 @@ static int dev_rmdir(const char *name)
 
 static int delete_path(const char *nodepath)
 {
-	const char *path;
+	char *path;
 	int err = 0;
 
 	path = kstrdup(nodepath, GFP_KERNEL);
@@ -371,7 +385,7 @@ static int handle(const char *name, umode_t mode, kuid_t uid, kgid_t gid,
 		  struct device *dev)
 {
 	if (mode)
-		return handle_create(name, mode, uid, gid, dev);
+		return handle_create(name, mode, uid, gid, dev,NULL);
 	else
 		return handle_remove(name, dev);
 }

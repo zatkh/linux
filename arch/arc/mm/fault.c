@@ -66,7 +66,7 @@ void do_page_fault(unsigned long address, struct pt_regs *regs)
 	struct vm_area_struct *vma = NULL;
 	struct task_struct *tsk = current;
 	struct mm_struct *mm = tsk->mm;
-	int si_code = SEGV_MAPERR;
+	int si_code = 0;
 	int ret;
 	vm_fault_t fault;
 	int write = regs->ecr_cause & ECR_C_PROTV_STORE;  /* ST/EX */
@@ -81,13 +81,15 @@ void do_page_fault(unsigned long address, struct pt_regs *regs)
 	 * only copy the information from the master page table,
 	 * nothing more.
 	 */
-	if (address >= VMALLOC_START && !user_mode(regs)) {
+	if (address >= VMALLOC_START) {
 		ret = handle_kernel_vaddr_fault(address);
 		if (unlikely(ret))
-			goto no_context;
+			goto bad_area_nosemaphore;
 		else
 			return;
 	}
+
+	si_code = SEGV_MAPERR;
 
 	/*
 	 * If we're in an interrupt or have no user
@@ -139,7 +141,7 @@ good_area:
 	 */
 	fault = handle_mm_fault(vma, address, flags);
 
-	if (unlikely(fatal_signal_pending(current))) {
+	if (fatal_signal_pending(current)) {
 
 		/*
 		 * if fault retry, mmap_sem already relinquished by core mm
@@ -196,6 +198,7 @@ good_area:
 bad_area:
 	up_read(&mm->mmap_sem);
 
+bad_area_nosemaphore:
 	/* User mode accesses just cause a SIGSEGV */
 	if (user_mode(regs)) {
 		tsk->thread.fault_address = address;

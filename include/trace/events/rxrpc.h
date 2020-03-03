@@ -182,6 +182,7 @@ enum rxrpc_timer_trace {
 enum rxrpc_propose_ack_trace {
 	rxrpc_propose_ack_client_tx_end,
 	rxrpc_propose_ack_input_data,
+	rxrpc_propose_ack_ping_for_check_life,
 	rxrpc_propose_ack_ping_for_keepalive,
 	rxrpc_propose_ack_ping_for_lost_ack,
 	rxrpc_propose_ack_ping_for_lost_reply,
@@ -382,6 +383,7 @@ enum rxrpc_tx_point {
 #define rxrpc_propose_ack_traces \
 	EM(rxrpc_propose_ack_client_tx_end,	"ClTxEnd") \
 	EM(rxrpc_propose_ack_input_data,	"DataIn ") \
+	EM(rxrpc_propose_ack_ping_for_check_life, "ChkLife") \
 	EM(rxrpc_propose_ack_ping_for_keepalive, "KeepAlv") \
 	EM(rxrpc_propose_ack_ping_for_lost_ack,	"LostAck") \
 	EM(rxrpc_propose_ack_ping_for_lost_reply, "LostRpl") \
@@ -500,10 +502,10 @@ rxrpc_tx_points;
 #define E_(a, b)	{ a, b }
 
 TRACE_EVENT(rxrpc_local,
-	    TP_PROTO(unsigned int local_debug_id, enum rxrpc_local_trace op,
+	    TP_PROTO(struct rxrpc_local *local, enum rxrpc_local_trace op,
 		     int usage, const void *where),
 
-	    TP_ARGS(local_debug_id, op, usage, where),
+	    TP_ARGS(local, op, usage, where),
 
 	    TP_STRUCT__entry(
 		    __field(unsigned int,	local		)
@@ -513,7 +515,7 @@ TRACE_EVENT(rxrpc_local,
 			     ),
 
 	    TP_fast_assign(
-		    __entry->local = local_debug_id;
+		    __entry->local = local->debug_id;
 		    __entry->op = op;
 		    __entry->usage = usage;
 		    __entry->where = where;
@@ -1381,7 +1383,7 @@ TRACE_EVENT(rxrpc_rx_eproto,
 			     ),
 
 	    TP_fast_assign(
-		    __entry->call = call ? call->debug_id : 0;
+		    __entry->call = call->debug_id;
 		    __entry->serial = serial;
 		    __entry->why = why;
 			   ),

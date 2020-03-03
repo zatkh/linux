@@ -111,22 +111,6 @@ config LCD_HP700
 	  If you have an HP Jornada 700 series handheld (710/720/728)
 	  say Y to enable LCD control driver.
 
-config LCD_S6E63M0
-	tristate "S6E63M0 AMOLED LCD Driver"
-	depends on SPI && BACKLIGHT_CLASS_DEVICE
-	default n
-	help
-	  If you have an S6E63M0 LCD Panel, say Y to enable its
-	  LCD control driver.
-
-config LCD_LD9040
-	tristate "LD9040 AMOLED LCD Driver"
-	depends on SPI && BACKLIGHT_CLASS_DEVICE
-	default n
-	help
-	  If you have an LD9040 Panel, say Y to enable its
-	  control driver.
-
 config LCD_AMS369FG06
 	tristate "AMS369FG06 AMOLED LCD Driver"
 	depends on SPI && BACKLIGHT_CLASS_DEVICE
@@ -271,13 +255,6 @@ config BACKLIGHT_PWM
 	help
 	  If you have a LCD backlight adjustable by PWM, say Y to enable
 	  this driver.
-
-config BACKLIGHT_RPI
-	tristate "Raspberry Pi display firmware driven backlight"
-	depends on RASPBERRYPI_FIRMWARE
-	help
-	  If you have the Raspberry Pi DSI touchscreen display, say Y to
-	  enable the mailbox-controlled backlight driver.
 
 config BACKLIGHT_DA903X
 	tristate "Backlight Driver for DA9030/DA9034 using WLED"

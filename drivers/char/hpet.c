@@ -570,7 +570,8 @@ static inline unsigned long hpet_time_div(struct hpets *hpets,
 	unsigned long long m;
 
 	m = hpets->hp_tick_freq + (dis >> 1);
-	return div64_ul(m, dis);
+	do_div(m, dis);
+	return (unsigned long)m;
 }
 
 static int
@@ -841,7 +842,6 @@ int hpet_alloc(struct hpet_data *hdp)
 	struct hpet_dev *devp;
 	u32 i, ntimer;
 	struct hpets *hpetp;
-	size_t siz;
 	struct hpet __iomem *hpet;
 	static struct hpets *last;
 	unsigned long period;
@@ -859,10 +859,8 @@ int hpet_alloc(struct hpet_data *hdp)
 		return 0;
 	}
 
-	siz = sizeof(struct hpets) + ((hdp->hd_nirqs - 1) *
-				      sizeof(struct hpet_dev));
-
-	hpetp = kzalloc(siz, GFP_KERNEL);
+	hpetp = kzalloc(struct_size(hpetp, hp_dev, hdp->hd_nirqs - 1),
+			GFP_KERNEL);
 
 	if (!hpetp)
 		return -ENOMEM;

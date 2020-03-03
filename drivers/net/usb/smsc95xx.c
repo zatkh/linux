@@ -60,7 +60,6 @@
 #define SUSPEND_SUSPEND3		(0x08)
 #define SUSPEND_ALLMODES		(SUSPEND_SUSPEND0 | SUSPEND_SUSPEND1 | \
 					 SUSPEND_SUSPEND2 | SUSPEND_SUSPEND3)
-#define MAC_ADDR_LEN                    (6)
 
 #define CARRIER_CHECK_DELAY (2 * HZ)
 
@@ -82,18 +81,6 @@ struct smsc95xx_priv {
 static bool turbo_mode = true;
 module_param(turbo_mode, bool, 0644);
 MODULE_PARM_DESC(turbo_mode, "Enable multiple frames per Rx transaction");
-
-static bool truesize_mode = false;
-module_param(truesize_mode, bool, 0644);
-MODULE_PARM_DESC(truesize_mode, "Report larger truesize value");
-
-static int packetsize = 2560;
-module_param(packetsize, int, 0644);
-MODULE_PARM_DESC(packetsize, "Override the RX URB packet size");
-
-static char *macaddr = ":";
-module_param(macaddr, charp, 0);
-MODULE_PARM_DESC(macaddr, "MAC address");
 
 static int __must_check __smsc95xx_read_reg(struct usbnet *dev, u32 index,
 					    u32 *data, int in_pm)
@@ -631,9 +618,7 @@ static void smsc95xx_status(struct usbnet *dev, struct urb *urb)
 		return;
 	}
 
-	memcpy(&intdata, urb->transfer_buffer, 4);
-	le32_to_cpus(&intdata);
-
+	intdata = get_unaligned_le32(urb->transfer_buffer);
 	netif_dbg(dev, link, dev->net, "intdata: 0x%08X\n", intdata);
 
 	if (intdata & INT_ENP_PHY_INT_)
@@ -926,53 +911,6 @@ static int smsc95xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
 	return generic_mii_ioctl(&dev->mii, if_mii(rq), cmd, NULL);
 }
 
-/* Check the macaddr module parameter for a MAC address */
-static int smsc95xx_is_macaddr_param(struct usbnet *dev, u8 *dev_mac)
-{
-       int i, j, got_num, num;
-       u8 mtbl[MAC_ADDR_LEN];
-
-       if (macaddr[0] == ':')
-               return 0;
-
-       i = 0;
-       j = 0;
-       num = 0;
-       got_num = 0;
-       while (j < MAC_ADDR_LEN) {
-               if (macaddr[i] && macaddr[i] != ':') {
-                       got_num++;
-                       if ('0' <= macaddr[i] && macaddr[i] <= '9')
-                               num = num * 16 + macaddr[i] - '0';
-                       else if ('A' <= macaddr[i] && macaddr[i] <= 'F')
-                               num = num * 16 + 10 + macaddr[i] - 'A';
-                       else if ('a' <= macaddr[i] && macaddr[i] <= 'f')
-                               num = num * 16 + 10 + macaddr[i] - 'a';
-                       else
-                               break;
-                       i++;
-               } else if (got_num == 2) {
-                       mtbl[j++] = (u8) num;
-                       num = 0;
-                       got_num = 0;
-                       i++;
-               } else {
-                       break;
-               }
-       }
-
-       if (j == MAC_ADDR_LEN) {
-               netif_dbg(dev, ifup, dev->net, "Overriding MAC address with: "
-               "%02x:%02x:%02x:%02x:%02x:%02x\n", mtbl[0], mtbl[1], mtbl[2],
-                                               mtbl[3], mtbl[4], mtbl[5]);
-               for (i = 0; i < MAC_ADDR_LEN; i++)
-                       dev_mac[i] = mtbl[i];
-               return 1;
-       } else {
-               return 0;
-       }
-}
-
 static void smsc95xx_init_mac_address(struct usbnet *dev)
 {
 	const u8 *mac_addr;
@@ -993,10 +931,6 @@ static void smsc95xx_init_mac_address(struct usbnet *dev)
 			return;
 		}
 	}
-
-	/* Check module parameters */
-	if (smsc95xx_is_macaddr_param(dev, dev->net->dev_addr))
-		return;
 
 	/* no useful static MAC address found. generate a random one */
 	eth_hw_addr_random(dev->net);
@@ -1169,13 +1103,13 @@ static int smsc95xx_reset(struct usbnet *dev)
 
 	if (!turbo_mode) {
 		burst_cap = 0;
-		dev->rx_urb_size = packetsize ? packetsize : MAX_SINGLE_PACKET_SIZE;
+		dev->rx_urb_size = MAX_SINGLE_PACKET_SIZE;
 	} else if (dev->udev->speed == USB_SPEED_HIGH) {
-		dev->rx_urb_size = packetsize ? packetsize : DEFAULT_HS_BURST_CAP_SIZE;
-		burst_cap = dev->rx_urb_size / HS_USB_PKT_SIZE;
+		burst_cap = DEFAULT_HS_BURST_CAP_SIZE / HS_USB_PKT_SIZE;
+		dev->rx_urb_size = DEFAULT_HS_BURST_CAP_SIZE;
 	} else {
-		dev->rx_urb_size = packetsize ? packetsize : DEFAULT_FS_BURST_CAP_SIZE;
-		burst_cap = dev->rx_urb_size / FS_USB_PKT_SIZE;
+		burst_cap = DEFAULT_FS_BURST_CAP_SIZE / FS_USB_PKT_SIZE;
+		dev->rx_urb_size = DEFAULT_FS_BURST_CAP_SIZE;
 	}
 
 	netif_dbg(dev, ifup, dev->net, "rx_urb_size=%ld\n",
@@ -1998,8 +1932,7 @@ static int smsc95xx_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
 		unsigned char *packet;
 		u16 size;
 
-		memcpy(&header, skb->data, sizeof(header));
-		le32_to_cpus(&header);
+		header = get_unaligned_le32(skb->data);
 		skb_pull(skb, 4 + NET_IP_ALIGN);
 		packet = skb->data;
 
@@ -2036,8 +1969,7 @@ static int smsc95xx_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
 				if (dev->net->features & NETIF_F_RXCSUM)
 					smsc95xx_rx_csum_offload(skb);
 				skb_trim(skb, skb->len - 4); /* remove fcs */
-				if (truesize_mode)
-					skb->truesize = size + sizeof(struct sk_buff);
+				skb->truesize = size + sizeof(struct sk_buff);
 
 				return 1;
 			}
@@ -2055,8 +1987,7 @@ static int smsc95xx_rx_fixup(struct usbnet *dev, struct sk_buff *skb)
 			if (dev->net->features & NETIF_F_RXCSUM)
 				smsc95xx_rx_csum_offload(ax_skb);
 			skb_trim(ax_skb, ax_skb->len - 4); /* remove fcs */
-			if (truesize_mode)
-				ax_skb->truesize = size + sizeof(struct sk_buff);
+			ax_skb->truesize = size + sizeof(struct sk_buff);
 
 			usbnet_skb_return(dev, ax_skb);
 		}
@@ -2078,12 +2009,30 @@ static u32 smsc95xx_calc_csum_preamble(struct sk_buff *skb)
 	return (high_16 << 16) | low_16;
 }
 
+/* The TX CSUM won't work if the checksum lies in the last 4 bytes of the
+ * transmission. This is fairly unlikely, only seems to trigger with some
+ * short TCP ACK packets sent.
+ *
+ * Note, this calculation should probably check for the alignment of the
+ * data as well, but a straight check for csum being in the last four bytes
+ * of the packet should be ok for now.
+ */
+static bool smsc95xx_can_tx_checksum(struct sk_buff *skb)
+{
+       unsigned int len = skb->len - skb_checksum_start_offset(skb);
+
+       if (skb->len <= 45)
+	       return false;
+       return skb->csum_offset < (len - (4 + 1));
+}
+
 static struct sk_buff *smsc95xx_tx_fixup(struct usbnet *dev,
 					 struct sk_buff *skb, gfp_t flags)
 {
 	bool csum = skb->ip_summed == CHECKSUM_PARTIAL;
 	int overhead = csum ? SMSC95XX_TX_OVERHEAD_CSUM : SMSC95XX_TX_OVERHEAD;
 	u32 tx_cmd_a, tx_cmd_b;
+	void *ptr;
 
 	/* We do not advertise SG, so skbs should be already linearized */
 	BUG_ON(skb_shinfo(skb)->nr_frags);
@@ -2097,8 +2046,11 @@ static struct sk_buff *smsc95xx_tx_fixup(struct usbnet *dev,
 		return NULL;
 	}
 
+	tx_cmd_b = (u32)skb->len;
+	tx_cmd_a = tx_cmd_b | TX_CMD_A_FIRST_SEG_ | TX_CMD_A_LAST_SEG_;
+
 	if (csum) {
-		if (skb->len <= 45) {
+		if (!smsc95xx_can_tx_checksum(skb)) {
 			/* workaround - hardware tx checksum does not work
 			 * properly with extremely small packets */
 			long csstart = skb_checksum_start_offset(skb);
@@ -2110,24 +2062,18 @@ static struct sk_buff *smsc95xx_tx_fixup(struct usbnet *dev,
 			csum = false;
 		} else {
 			u32 csum_preamble = smsc95xx_calc_csum_preamble(skb);
-			skb_push(skb, 4);
-			cpu_to_le32s(&csum_preamble);
-			memcpy(skb->data, &csum_preamble, 4);
+			ptr = skb_push(skb, 4);
+			put_unaligned_le32(csum_preamble, ptr);
+
+			tx_cmd_a += 4;
+			tx_cmd_b += 4;
+			tx_cmd_b |= TX_CMD_B_CSUM_ENABLE;
 		}
 	}
 
-	skb_push(skb, 4);
-	tx_cmd_b = (u32)(skb->len - 4);
-	if (csum)
-		tx_cmd_b |= TX_CMD_B_CSUM_ENABLE;
-	cpu_to_le32s(&tx_cmd_b);
-	memcpy(skb->data, &tx_cmd_b, 4);
-
-	skb_push(skb, 4);
-	tx_cmd_a = (u32)(skb->len - 8) | TX_CMD_A_FIRST_SEG_ |
-		TX_CMD_A_LAST_SEG_;
-	cpu_to_le32s(&tx_cmd_a);
-	memcpy(skb->data, &tx_cmd_a, 4);
+	ptr = skb_push(skb, 8);
+	put_unaligned_le32(tx_cmd_a, ptr);
+	put_unaligned_le32(tx_cmd_b, ptr+4);
 
 	return skb;
 }

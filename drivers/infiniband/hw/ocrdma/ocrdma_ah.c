@@ -83,6 +83,7 @@ static inline int set_av_attr(struct ocrdma_dev *dev, struct ocrdma_ah *ah,
 	struct iphdr ipv4;
 	const struct ib_global_route *ib_grh;
 	union {
+		struct sockaddr     _sockaddr;
 		struct sockaddr_in  _sockaddr_in;
 		struct sockaddr_in6 _sockaddr_in6;
 	} sgid_addr, dgid_addr;
@@ -132,9 +133,9 @@ static inline int set_av_attr(struct ocrdma_dev *dev, struct ocrdma_ah *ah,
 		ipv4.tot_len = htons(0);
 		ipv4.ttl = ib_grh->hop_limit;
 		ipv4.protocol = nxthdr;
-		rdma_gid2ip((struct sockaddr *)&sgid_addr, sgid);
+		rdma_gid2ip(&sgid_addr._sockaddr, sgid);
 		ipv4.saddr = sgid_addr._sockaddr_in.sin_addr.s_addr;
-		rdma_gid2ip((struct sockaddr*)&dgid_addr, &ib_grh->dgid);
+		rdma_gid2ip(&dgid_addr._sockaddr, &ib_grh->dgid);
 		ipv4.daddr = dgid_addr._sockaddr_in.sin_addr.s_addr;
 		memcpy((u8 *)ah->av + eth_sz, &ipv4, sizeof(struct iphdr));
 	} else {
@@ -156,7 +157,7 @@ static inline int set_av_attr(struct ocrdma_dev *dev, struct ocrdma_ah *ah,
 }
 
 struct ib_ah *ocrdma_create_ah(struct ib_pd *ibpd, struct rdma_ah_attr *attr,
-			       struct ib_udata *udata)
+			       u32 flags, struct ib_udata *udata)
 {
 	u32 *ahid_addr;
 	int status;
@@ -218,7 +219,7 @@ av_err:
 	return ERR_PTR(status);
 }
 
-int ocrdma_destroy_ah(struct ib_ah *ibah)
+int ocrdma_destroy_ah(struct ib_ah *ibah, u32 flags)
 {
 	struct ocrdma_ah *ah = get_ocrdma_ah(ibah);
 	struct ocrdma_dev *dev = get_ocrdma_dev(ibah->device);

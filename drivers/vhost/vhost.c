@@ -413,24 +413,8 @@ static void vhost_dev_free_iovecs(struct vhost_dev *dev)
 		vhost_vq_free_iovecs(dev->vqs[i]);
 }
 
-bool vhost_exceeds_weight(struct vhost_virtqueue *vq,
-			  int pkts, int total_len)
-{
-	struct vhost_dev *dev = vq->dev;
-
-	if ((dev->byte_weight && total_len >= dev->byte_weight) ||
-	    pkts >= dev->weight) {
-		vhost_poll_queue(&vq->poll);
-		return true;
-	}
-
-	return false;
-}
-EXPORT_SYMBOL_GPL(vhost_exceeds_weight);
-
 void vhost_dev_init(struct vhost_dev *dev,
-		    struct vhost_virtqueue **vqs, int nvqs,
-		    int iov_limit, int weight, int byte_weight)
+		    struct vhost_virtqueue **vqs, int nvqs, int iov_limit)
 {
 	struct vhost_virtqueue *vq;
 	int i;
@@ -444,8 +428,6 @@ void vhost_dev_init(struct vhost_dev *dev,
 	dev->mm = NULL;
 	dev->worker = NULL;
 	dev->iov_limit = iov_limit;
-	dev->weight = weight;
-	dev->byte_weight = byte_weight;
 	init_llist_head(&dev->work_list);
 	init_waitqueue_head(&dev->wait);
 	INIT_LIST_HEAD(&dev->read_list);
@@ -674,7 +656,7 @@ static bool log_access_ok(void __user *log_base, u64 addr, unsigned long sz)
 	    a + (unsigned long)log_base > ULONG_MAX)
 		return false;
 
-	return access_ok(VERIFY_WRITE, log_base + a,
+	return access_ok(log_base + a,
 			 (sz + VHOST_PAGE_SIZE * 8 - 1) / VHOST_PAGE_SIZE / 8);
 }
 
@@ -700,7 +682,7 @@ static bool vq_memory_access_ok(void __user *log_base, struct vhost_umem *umem,
 			return false;
 
 
-		if (!access_ok(VERIFY_WRITE, (void __user *)a,
+		if (!access_ok((void __user *)a,
 				    node->size))
 			return false;
 		else if (log_all && !log_access_ok(log_base,
@@ -996,10 +978,10 @@ static bool umem_access_ok(u64 uaddr, u64 size, int access)
 		return false;
 
 	if ((access & VHOST_ACCESS_RO) &&
-	    !access_ok(VERIFY_READ, (void __user *)a, size))
+	    !access_ok((void __user *)a, size))
 		return false;
 	if ((access & VHOST_ACCESS_WO) &&
-	    !access_ok(VERIFY_WRITE, (void __user *)a, size))
+	    !access_ok((void __user *)a, size))
 		return false;
 	return true;
 }
@@ -1210,12 +1192,12 @@ static bool vq_access_ok(struct vhost_virtqueue *vq, unsigned int num,
 			 struct vring_used __user *used)
 
 {
-	size_t s = vhost_has_feature(vq, VIRTIO_RING_F_EVENT_IDX) ? 2 : 0;
+	size_t s __maybe_unused = vhost_has_feature(vq, VIRTIO_RING_F_EVENT_IDX) ? 2 : 0;
 
-	return access_ok(VERIFY_READ, desc, num * sizeof *desc) &&
-	       access_ok(VERIFY_READ, avail,
+	return access_ok(desc, num * sizeof *desc) &&
+	       access_ok(avail,
 			 sizeof *avail + num * sizeof *avail->ring + s) &&
-	       access_ok(VERIFY_WRITE, used,
+	       access_ok(used,
 			sizeof *used + num * sizeof *used->ring + s);
 }
 
@@ -1913,7 +1895,7 @@ int vhost_vq_init_access(struct vhost_virtqueue *vq)
 		goto err;
 	vq->signalled_used_valid = false;
 	if (!vq->iotlb &&
-	    !access_ok(VERIFY_READ, &vq->used->idx, sizeof vq->used->idx)) {
+	    !access_ok(&vq->used->idx, sizeof vq->used->idx)) {
 		r = -EFAULT;
 		goto err;
 	}
@@ -2073,7 +2055,7 @@ static int get_indirect(struct vhost_virtqueue *vq,
 		/* If this is an input descriptor, increment that count. */
 		if (access == VHOST_ACCESS_WO) {
 			*in_num += ret;
-			if (unlikely(log && ret)) {
+			if (unlikely(log)) {
 				log[*log_num].addr = vhost64_to_cpu(vq, desc.addr);
 				log[*log_num].len = vhost32_to_cpu(vq, desc.len);
 				++*log_num;
@@ -2216,7 +2198,7 @@ int vhost_get_vq_desc(struct vhost_virtqueue *vq,
 			/* If this is an input descriptor,
 			 * increment that count. */
 			*in_num += ret;
-			if (unlikely(log && ret)) {
+			if (unlikely(log)) {
 				log[*log_num].addr = vhost64_to_cpu(vq, desc.addr);
 				log[*log_num].len = vhost32_to_cpu(vq, desc.len);
 				++*log_num;

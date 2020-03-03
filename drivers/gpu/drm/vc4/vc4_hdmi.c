@@ -43,8 +43,8 @@
  */
 
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_probe_helper.h>
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/i2c.h>
@@ -109,7 +109,6 @@ struct vc4_hdmi_encoder {
 	struct vc4_encoder base;
 	bool hdmi_monitor;
 	bool limited_rgb_range;
-	bool rgb_range_selectable;
 };
 
 static inline struct vc4_hdmi_encoder *
@@ -280,11 +279,6 @@ static int vc4_hdmi_connector_get_modes(struct drm_connector *connector)
 
 	vc4_encoder->hdmi_monitor = drm_detect_hdmi_monitor(edid);
 
-	if (edid && edid->input & DRM_EDID_INPUT_DIGITAL) {
-		vc4_encoder->rgb_range_selectable =
-			drm_rgb_quant_range_selectable(edid);
-	}
-
 	drm_connector_update_edid_property(connector, edid);
 	ret = drm_add_edid_modes(connector, edid);
 	kfree(edid);
@@ -292,17 +286,11 @@ static int vc4_hdmi_connector_get_modes(struct drm_connector *connector)
 	return ret;
 }
 
-static void vc4_hdmi_connector_reset(struct drm_connector *connector)
-{
-	drm_atomic_helper_connector_reset(connector);
-	drm_atomic_helper_connector_tv_reset(connector);
-}
-
 static const struct drm_connector_funcs vc4_hdmi_connector_funcs = {
 	.detect = vc4_hdmi_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.destroy = vc4_hdmi_connector_destroy,
-	.reset = vc4_hdmi_connector_reset,
+	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 };
@@ -430,18 +418,18 @@ static void vc4_hdmi_set_avi_infoframe(struct drm_encoder *encoder)
 	union hdmi_infoframe frame;
 	int ret;
 
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi, mode, false);
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi,
+						       hdmi->connector, mode);
 	if (ret < 0) {
 		DRM_ERROR("couldn't fill AVI infoframe\n");
 		return;
 	}
 
-	drm_hdmi_avi_infoframe_quant_range(&frame.avi, mode,
+	drm_hdmi_avi_infoframe_quant_range(&frame.avi,
+					   hdmi->connector, mode,
 					   vc4_encoder->limited_rgb_range ?
 					   HDMI_QUANTIZATION_RANGE_LIMITED :
-					   HDMI_QUANTIZATION_RANGE_FULL,
-					   vc4_encoder->rgb_range_selectable,
-					   false);
+					   HDMI_QUANTIZATION_RANGE_FULL);
 
 	frame.avi.right_bar = cstate->tv.margins.right;
 	frame.avi.left_bar = cstate->tv.margins.left;
@@ -1093,12 +1081,10 @@ static int vc4_hdmi_audio_init(struct vc4_hdmi *hdmi)
 	struct device *dev = &hdmi->pdev->dev;
 	const __be32 *addr;
 	int ret;
-	int len;
 
-	if (!of_find_property(dev->of_node, "dmas", &len) ||
-	    len == 0) {
+	if (!of_find_property(dev->of_node, "dmas", NULL)) {
 		dev_warn(dev,
-			 "'dmas' DT property is missing or empty, no HDMI audio\n");
+			 "'dmas' DT property is missing, no HDMI audio\n");
 		return 0;
 	}
 

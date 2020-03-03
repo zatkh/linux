@@ -678,7 +678,7 @@ static int vfat_add_entry(struct inode *dir, const struct qstr *qname,
 		goto cleanup;
 
 	/* update timestamp */
-	dir->i_ctime = dir->i_mtime = dir->i_atime = *ts;
+	fat_truncate_time(dir, ts, S_CTIME|S_MTIME);
 	if (IS_DIRSYNC(dir))
 		(void)fat_sync_inode(dir);
 	else
@@ -755,8 +755,13 @@ error:
 	return ERR_PTR(err);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		       bool excl)
+#else
+static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		       bool excl, void* label)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
@@ -779,7 +784,7 @@ static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		goto out;
 	}
 	inode_inc_iversion(inode);
-	inode->i_mtime = inode->i_atime = inode->i_ctime = ts;
+	fat_truncate_time(inode, &ts, S_ATIME|S_CTIME|S_MTIME);
 	/* timestamp is already written, so mark_inode_dirty() is unneeded. */
 
 	d_instantiate(dentry, inode);
@@ -810,7 +815,7 @@ static int vfat_rmdir(struct inode *dir, struct dentry *dentry)
 	drop_nlink(dir);
 
 	clear_nlink(inode);
-	inode->i_mtime = inode->i_atime = current_time(inode);
+	fat_truncate_time(inode, NULL, S_ATIME|S_MTIME);
 	fat_detach(inode);
 	vfat_d_version_set(dentry, inode_query_iversion(dir));
 out:
@@ -836,7 +841,7 @@ static int vfat_unlink(struct inode *dir, struct dentry *dentry)
 	if (err)
 		goto out;
 	clear_nlink(inode);
-	inode->i_mtime = inode->i_atime = current_time(inode);
+	fat_truncate_time(inode, NULL, S_ATIME|S_MTIME);
 	fat_detach(inode);
 	vfat_d_version_set(dentry, inode_query_iversion(dir));
 out:
@@ -845,7 +850,13 @@ out:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode, void* label)
+#endif
+
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
@@ -876,7 +887,7 @@ static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	}
 	inode_inc_iversion(inode);
 	set_nlink(inode, 2);
-	inode->i_mtime = inode->i_atime = inode->i_ctime = ts;
+	fat_truncate_time(inode, &ts, S_ATIME|S_CTIME|S_MTIME);
 	/* timestamp is already written, so mark_inode_dirty() is unneeded. */
 
 	d_instantiate(dentry, inode);
@@ -969,7 +980,7 @@ static int vfat_rename(struct inode *old_dir, struct dentry *old_dentry,
 	if (err)
 		goto error_dotdot;
 	inode_inc_iversion(old_dir);
-	old_dir->i_ctime = old_dir->i_mtime = ts;
+	fat_truncate_time(old_dir, &ts, S_CTIME|S_MTIME);
 	if (IS_DIRSYNC(old_dir))
 		(void)fat_sync_inode(old_dir);
 	else
@@ -979,7 +990,7 @@ static int vfat_rename(struct inode *old_dir, struct dentry *old_dentry,
 		drop_nlink(new_inode);
 		if (is_dir)
 			drop_nlink(new_inode);
-		new_inode->i_ctime = ts;
+		fat_truncate_time(new_inode, &ts, S_CTIME);
 	}
 out:
 	brelse(sinfo.bh);
@@ -1032,6 +1043,7 @@ static const struct inode_operations vfat_dir_inode_operations = {
 	.rename		= vfat_rename,
 	.setattr	= fat_setattr,
 	.getattr	= fat_getattr,
+	.update_time	= fat_update_time,
 };
 
 static void setup(struct super_block *sb)

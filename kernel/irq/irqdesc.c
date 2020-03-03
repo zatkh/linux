@@ -294,18 +294,6 @@ static void irq_sysfs_add(int irq, struct irq_desc *desc)
 	}
 }
 
-static void irq_sysfs_del(struct irq_desc *desc)
-{
-	/*
-	 * If irq_sysfs_init() has not yet been invoked (early boot), then
-	 * irq_kobj_base is NULL and the descriptor was never added.
-	 * kobject_del() complains about a object with no parent, so make
-	 * it conditional.
-	 */
-	if (irq_kobj_base)
-		kobject_del(&desc->kobj);
-}
-
 static int __init irq_sysfs_init(void)
 {
 	struct irq_desc *desc;
@@ -336,7 +324,6 @@ static struct kobj_type irq_kobj_type = {
 };
 
 static void irq_sysfs_add(int irq, struct irq_desc *desc) {}
-static void irq_sysfs_del(struct irq_desc *desc) {}
 
 #endif /* CONFIG_SYSFS */
 
@@ -450,7 +437,7 @@ static void free_desc(unsigned int irq)
 	 * The sysfs entry must be serialized against a concurrent
 	 * irq_sysfs_init() as well.
 	 */
-	irq_sysfs_del(desc);
+	kobject_del(&desc->kobj);
 	delete_irq_desc(irq);
 
 	/*
@@ -463,30 +450,34 @@ static void free_desc(unsigned int irq)
 }
 
 static int alloc_descs(unsigned int start, unsigned int cnt, int node,
-		       const struct cpumask *affinity, struct module *owner)
+		       const struct irq_affinity_desc *affinity,
+		       struct module *owner)
 {
-	const struct cpumask *mask = NULL;
 	struct irq_desc *desc;
-	unsigned int flags;
 	int i;
 
 	/* Validate affinity mask(s) */
 	if (affinity) {
-		for (i = 0, mask = affinity; i < cnt; i++, mask++) {
-			if (cpumask_empty(mask))
+		for (i = 0; i < cnt; i++) {
+			if (cpumask_empty(&affinity[i].mask))
 				return -EINVAL;
 		}
 	}
 
-	flags = affinity ? IRQD_AFFINITY_MANAGED | IRQD_MANAGED_SHUTDOWN : 0;
-	mask = NULL;
-
 	for (i = 0; i < cnt; i++) {
+		const struct cpumask *mask = NULL;
+		unsigned int flags = 0;
+
 		if (affinity) {
-			node = cpu_to_node(cpumask_first(affinity));
-			mask = affinity;
+			if (affinity->is_managed) {
+				flags = IRQD_AFFINITY_MANAGED |
+					IRQD_MANAGED_SHUTDOWN;
+			}
+			mask = &affinity->mask;
+			node = cpu_to_node(cpumask_first(mask));
 			affinity++;
 		}
+
 		desc = alloc_desc(start + i, node, flags, mask, owner);
 		if (!desc)
 			goto err;
@@ -590,7 +581,7 @@ static void free_desc(unsigned int irq)
 }
 
 static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
-			      const struct cpumask *affinity,
+			      const struct irq_affinity_desc *affinity,
 			      struct module *owner)
 {
 	u32 i;
@@ -680,6 +671,41 @@ int __handle_domain_irq(struct irq_domain *domain, unsigned int hwirq,
 	set_irq_regs(old_regs);
 	return ret;
 }
+
+#ifdef CONFIG_IRQ_DOMAIN
+/**
+ * handle_domain_nmi - Invoke the handler for a HW irq belonging to a domain
+ * @domain:	The domain where to perform the lookup
+ * @hwirq:	The HW irq number to convert to a logical one
+ * @regs:	Register file coming from the low-level handling code
+ *
+ * Returns:	0 on success, or -EINVAL if conversion has failed
+ */
+int handle_domain_nmi(struct irq_domain *domain, unsigned int hwirq,
+		      struct pt_regs *regs)
+{
+	struct pt_regs *old_regs = set_irq_regs(regs);
+	unsigned int irq;
+	int ret = 0;
+
+	nmi_enter();
+
+	irq = irq_find_mapping(domain, hwirq);
+
+	/*
+	 * ack_bad_irq is not NMI-safe, just report
+	 * an invalid interrupt.
+	 */
+	if (likely(irq))
+		generic_handle_irq(irq);
+	else
+		ret = -EINVAL;
+
+	nmi_exit();
+	set_irq_regs(old_regs);
+	return ret;
+}
+#endif
 #endif
 
 /* Dynamic interrupt handling */
@@ -720,7 +746,7 @@ EXPORT_SYMBOL_GPL(irq_free_descs);
  */
 int __ref
 __irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
-		  struct module *owner, const struct cpumask *affinity)
+		  struct module *owner, const struct irq_affinity_desc *affinity)
 {
 	int start, ret;
 

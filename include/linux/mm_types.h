@@ -17,12 +17,19 @@
 
 #include <asm/mmu.h>
 
+#ifdef CONFIG_SW_UDOM
+
+#include <linux/smv_mm.h>
+#include <linux/smv.h>
+#include <linux/memdom.h>
+
+#endif //CONFIG_SW_UDOM// 
+
 #ifndef AT_VECTOR_SIZE_ARCH
 #define AT_VECTOR_SIZE_ARCH 0
 #endif
 #define AT_VECTOR_SIZE (2*(AT_VECTOR_SIZE_ARCH + AT_VECTOR_SIZE_BASE + 1))
 
-typedef int vm_fault_t;
 
 struct address_space;
 struct mem_cgroup;
@@ -80,7 +87,7 @@ struct page {
 		struct {	/* Page cache and anonymous pages */
 			/**
 			 * @lru: Pageout list, eg. active_list protected by
-			 * zone_lru_lock.  Sometimes used as a generic list
+			 * pgdat->lru_lock.  Sometimes used as a generic list
 			 * by the page owner.
 			 */
 			struct list_head lru;
@@ -94,6 +101,13 @@ struct page {
 			 * Indicates order in the buddy system if PageBuddy.
 			 */
 			unsigned long private;
+		};
+		struct {	/* page_pool used by netstack */
+			/**
+			 * @dma_addr: might require a 64-bit value even on
+			 * 32-bit architectures.
+			 */
+			dma_addr_t dma_addr;
 		};
 		struct {	/* slab, slob and slub */
 			union {
@@ -205,6 +219,11 @@ struct page {
 	int _last_cpupid;
 #endif
 } _struct_page_alignment;
+
+/*
+ * Used for sizing the vmemmap region on some architectures
+ */
+#define STRUCT_PAGE_MAX_SHIFT	(order_base_2(sizeof(struct page)))
 
 #define PAGE_FRAG_CACHE_MAX_SIZE	__ALIGN_MASK(32768, ~PAGE_MASK)
 #define PAGE_FRAG_CACHE_MAX_ORDER	get_order(PAGE_FRAG_CACHE_MAX_SIZE)
@@ -323,6 +342,10 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+
+#ifdef CONFIG_SW_UDOM
+	int memdom_id; /* Record which memdom does this vma belong to */
+#endif
 } __randomize_layout;
 
 struct core_thread {
@@ -338,7 +361,10 @@ struct core_state {
 
 struct kioctx_table;
 struct mm_struct {
+	
+	
 	struct {
+
 		struct vm_area_struct *mmap;		/* list of VMAs */
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
@@ -400,7 +426,7 @@ struct mm_struct {
 
 		unsigned long total_vm;	   /* Total pages mapped */
 		unsigned long locked_vm;   /* Pages that have PG_mlocked set */
-		unsigned long pinned_vm;   /* Refcount permanently increased */
+		atomic64_t    pinned_vm;   /* Refcount permanently increased */
 		unsigned long data_vm;	   /* VM_WRITE & ~VM_SHARED & ~VM_STACK */
 		unsigned long exec_vm;	   /* VM_EXEC & ~VM_WRITE & ~VM_STACK */
 		unsigned long stack_vm;	   /* VM_STACK */
@@ -493,6 +519,22 @@ struct mm_struct {
 #endif
 	} __randomize_layout;
 
+#ifdef CONFIG_SW_UDOM
+
+/* Additional fields to support the secure memory view model */
+    atomic_t num_smvs;	/* number of smvs the current process has */
+	atomic_t num_memdoms;	/* number of memdoms the current process has */
+	DECLARE_BITMAP(memdom_bitmapInUse, SMV_ARRAY_SIZE); /* Bitmap of memdoms in use.  set to 1 if memdom[i] is in use, 0 otherwise. */
+    DECLARE_BITMAP(smv_bitmapInUse, SMV_ARRAY_SIZE); /* Bitmap of smvs in use.  set to 1 if smv[i] is in use, 0 otherwise. */
+	struct memdom_struct *memdom_metadata[SMV_ARRAY_SIZE];	/* Bookkeeping of per-process memory domains info */
+	struct smv_struct *smv_metadata[SMV_ARRAY_SIZE];	/* Bookkeeping of per-process smvs info */
+	struct mutex smv_metadataMutex;	/* mutex protecting memdom/smv_metadata and memdom/smv_bitmap */
+	int using_smv;	/* set to 1 if current mm is using the secure memory view model */
+	int standby_smv_id; /* For smv_thread_create to tell the kernel what smv an about-to-run thread will be running in */
+	pgd_t *pgd_smv[SMV_ARRAY_SIZE];   /* Page table used by smv threads.  Index at MAX_RIBBON-th pgd is for main thread */
+	spinlock_t page_table_lock_smv[SMV_ARRAY_SIZE];		/* Protects page tables and some counters for smvs. Index at MAX_RIBBON-th pgd is for main thread  */
+
+#endif
 	/*
 	 * The mm_cpumask needs to be at the end of mm_struct, because it
 	 * is dynamically sized based on nr_cpu_ids.
@@ -608,6 +650,78 @@ static inline bool mm_tlb_flush_nested(struct mm_struct *mm)
 }
 
 struct vm_fault;
+
+/**
+ * typedef vm_fault_t - Return type for page fault handlers.
+ *
+ * Page fault handlers return a bitmask of %VM_FAULT values.
+ */
+typedef __bitwise unsigned int vm_fault_t;
+
+/**
+ * enum vm_fault_reason - Page fault handlers return a bitmask of
+ * these values to tell the core VM what happened when handling the
+ * fault. Used to decide whether a process gets delivered SIGBUS or
+ * just gets major/minor fault counters bumped up.
+ *
+ * @VM_FAULT_OOM:		Out Of Memory
+ * @VM_FAULT_SIGBUS:		Bad access
+ * @VM_FAULT_MAJOR:		Page read from storage
+ * @VM_FAULT_WRITE:		Special case for get_user_pages
+ * @VM_FAULT_HWPOISON:		Hit poisoned small page
+ * @VM_FAULT_HWPOISON_LARGE:	Hit poisoned large page. Index encoded
+ *				in upper bits
+ * @VM_FAULT_SIGSEGV:		segmentation fault
+ * @VM_FAULT_NOPAGE:		->fault installed the pte, not return page
+ * @VM_FAULT_LOCKED:		->fault locked the returned page
+ * @VM_FAULT_RETRY:		->fault blocked, must retry
+ * @VM_FAULT_FALLBACK:		huge page fault failed, fall back to small
+ * @VM_FAULT_DONE_COW:		->fault has fully handled COW
+ * @VM_FAULT_NEEDDSYNC:		->fault did not modify page tables and needs
+ *				fsync() to complete (for synchronous page faults
+ *				in DAX)
+ * @VM_FAULT_HINDEX_MASK:	mask HINDEX value
+ *
+ */
+enum vm_fault_reason {
+	VM_FAULT_OOM            = (__force vm_fault_t)0x000001,
+	VM_FAULT_SIGBUS         = (__force vm_fault_t)0x000002,
+	VM_FAULT_MAJOR          = (__force vm_fault_t)0x000004,
+	VM_FAULT_WRITE          = (__force vm_fault_t)0x000008,
+	VM_FAULT_HWPOISON       = (__force vm_fault_t)0x000010,
+	VM_FAULT_HWPOISON_LARGE = (__force vm_fault_t)0x000020,
+	VM_FAULT_SIGSEGV        = (__force vm_fault_t)0x000040,
+	VM_FAULT_NOPAGE         = (__force vm_fault_t)0x000100,
+	VM_FAULT_LOCKED         = (__force vm_fault_t)0x000200,
+	VM_FAULT_RETRY          = (__force vm_fault_t)0x000400,
+	VM_FAULT_FALLBACK       = (__force vm_fault_t)0x000800,
+	VM_FAULT_DONE_COW       = (__force vm_fault_t)0x001000,
+	VM_FAULT_NEEDDSYNC      = (__force vm_fault_t)0x002000,
+	VM_FAULT_HINDEX_MASK    = (__force vm_fault_t)0x0f0000,
+};
+
+/* Encode hstate index for a hwpoisoned large page */
+#define VM_FAULT_SET_HINDEX(x) ((__force vm_fault_t)((x) << 16))
+#define VM_FAULT_GET_HINDEX(x) (((__force unsigned int)(x) >> 16) & 0xf)
+
+#define VM_FAULT_ERROR (VM_FAULT_OOM | VM_FAULT_SIGBUS |	\
+			VM_FAULT_SIGSEGV | VM_FAULT_HWPOISON |	\
+			VM_FAULT_HWPOISON_LARGE | VM_FAULT_FALLBACK)
+
+#define VM_FAULT_RESULT_TRACE \
+	{ VM_FAULT_OOM,                 "OOM" },	\
+	{ VM_FAULT_SIGBUS,              "SIGBUS" },	\
+	{ VM_FAULT_MAJOR,               "MAJOR" },	\
+	{ VM_FAULT_WRITE,               "WRITE" },	\
+	{ VM_FAULT_HWPOISON,            "HWPOISON" },	\
+	{ VM_FAULT_HWPOISON_LARGE,      "HWPOISON_LARGE" },	\
+	{ VM_FAULT_SIGSEGV,             "SIGSEGV" },	\
+	{ VM_FAULT_NOPAGE,              "NOPAGE" },	\
+	{ VM_FAULT_LOCKED,              "LOCKED" },	\
+	{ VM_FAULT_RETRY,               "RETRY" },	\
+	{ VM_FAULT_FALLBACK,            "FALLBACK" },	\
+	{ VM_FAULT_DONE_COW,            "DONE_COW" },	\
+	{ VM_FAULT_NEEDDSYNC,           "NEEDDSYNC" }
 
 struct vm_special_mapping {
 	const char *name;	/* The name, e.g. "[vdso]". */

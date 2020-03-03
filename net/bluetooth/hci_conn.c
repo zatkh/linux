@@ -1272,13 +1272,8 @@ int hci_conn_check_link_mode(struct hci_conn *conn)
 			return 0;
 	}
 
-	/* If Secure Simple Pairing is not enabled, then legacy connection
-	 * setup is used and no encryption or key sizes can be enforced.
-	 */
-	if (!hci_conn_ssp_enabled(conn))
-		return 1;
-
-	if (!test_bit(HCI_CONN_ENCRYPT, &conn->flags))
+	if (hci_conn_ssp_enabled(conn) &&
+	    !test_bit(HCI_CONN_ENCRYPT, &conn->flags))
 		return 0;
 
 	return 1;
@@ -1397,16 +1392,8 @@ auth:
 		return 0;
 
 encrypt:
-	if (test_bit(HCI_CONN_ENCRYPT, &conn->flags)) {
-		/* Ensure that the encryption key size has been read,
-		 * otherwise stall the upper layer responses.
-		 */
-		if (!conn->enc_key_size)
-			return 0;
-
-		/* Nothing else needed, all requirements are met */
+	if (test_bit(HCI_CONN_ENCRYPT, &conn->flags))
 		return 1;
-	}
 
 	hci_conn_encrypt(conn);
 	return 0;

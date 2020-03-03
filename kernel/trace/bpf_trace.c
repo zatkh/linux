@@ -17,6 +17,43 @@
 #include "trace_probe.h"
 #include "trace.h"
 
+#ifdef CONFIG_MODULES
+struct bpf_trace_module {
+	struct module *module;
+	struct list_head list;
+};
+
+static LIST_HEAD(bpf_trace_modules);
+static DEFINE_MUTEX(bpf_module_mutex);
+
+static struct bpf_raw_event_map *bpf_get_raw_tracepoint_module(const char *name)
+{
+	struct bpf_raw_event_map *btp, *ret = NULL;
+	struct bpf_trace_module *btm;
+	unsigned int i;
+
+	mutex_lock(&bpf_module_mutex);
+	list_for_each_entry(btm, &bpf_trace_modules, list) {
+		for (i = 0; i < btm->module->num_bpf_raw_events; ++i) {
+			btp = &btm->module->bpf_raw_events[i];
+			if (!strcmp(btp->tp->name, name)) {
+				if (try_module_get(btm->module))
+					ret = btp;
+				goto out;
+			}
+		}
+	}
+out:
+	mutex_unlock(&bpf_module_mutex);
+	return ret;
+}
+#else
+static struct bpf_raw_event_map *bpf_get_raw_tracepoint_module(const char *name)
+{
+	return NULL;
+}
+#endif /* CONFIG_MODULES */
+
 u64 bpf_get_stackid(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 u64 bpf_get_stack(u64 r1, u64 r2, u64 r3, u64 r4, u64 r5);
 
@@ -133,7 +170,7 @@ BPF_CALL_3(bpf_probe_write_user, void *, unsafe_ptr, const void *, src,
 		return -EPERM;
 	if (unlikely(uaccess_kernel()))
 		return -EPERM;
-	if (!access_ok(VERIFY_WRITE, unsafe_ptr, size))
+	if (!access_ok(unsafe_ptr, size))
 		return -EPERM;
 
 	return probe_kernel_write(unsafe_ptr, src, size);
@@ -365,6 +402,8 @@ static const struct bpf_func_proto bpf_perf_event_read_value_proto = {
 	.arg4_type	= ARG_CONST_SIZE,
 };
 
+static DEFINE_PER_CPU(struct perf_sample_data, bpf_trace_sd);
+
 static __always_inline u64
 __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 			u64 flags, struct perf_sample_data *sd)
@@ -392,54 +431,27 @@ __bpf_perf_event_output(struct pt_regs *regs, struct bpf_map *map,
 	if (unlikely(event->oncpu != cpu))
 		return -EOPNOTSUPP;
 
-	perf_event_output(event, sd, regs);
-	return 0;
+	return perf_event_output(event, sd, regs);
 }
 
-/*
- * Support executing tracepoints in normal, irq, and nmi context that each call
- * bpf_perf_event_output
- */
-struct bpf_trace_sample_data {
-	struct perf_sample_data sds[3];
-};
-
-static DEFINE_PER_CPU(struct bpf_trace_sample_data, bpf_trace_sds);
-static DEFINE_PER_CPU(int, bpf_trace_nest_level);
 BPF_CALL_5(bpf_perf_event_output, struct pt_regs *, regs, struct bpf_map *, map,
 	   u64, flags, void *, data, u64, size)
 {
-	struct bpf_trace_sample_data *sds = this_cpu_ptr(&bpf_trace_sds);
-	int nest_level = this_cpu_inc_return(bpf_trace_nest_level);
+	struct perf_sample_data *sd = this_cpu_ptr(&bpf_trace_sd);
 	struct perf_raw_record raw = {
 		.frag = {
 			.size = size,
 			.data = data,
 		},
 	};
-	struct perf_sample_data *sd;
-	int err;
 
-	if (WARN_ON_ONCE(nest_level > ARRAY_SIZE(sds->sds))) {
-		err = -EBUSY;
-		goto out;
-	}
-
-	sd = &sds->sds[nest_level - 1];
-
-	if (unlikely(flags & ~(BPF_F_INDEX_MASK))) {
-		err = -EINVAL;
-		goto out;
-	}
+	if (unlikely(flags & ~(BPF_F_INDEX_MASK)))
+		return -EINVAL;
 
 	perf_sample_data_init(sd, 0, 0);
 	sd->raw = &raw;
 
-	err = __bpf_perf_event_output(regs, map, flags, sd);
-
-out:
-	this_cpu_dec(bpf_trace_nest_level);
-	return err;
+	return __bpf_perf_event_output(regs, map, flags, sd);
 }
 
 static const struct bpf_func_proto bpf_perf_event_output_proto = {
@@ -796,48 +808,16 @@ pe_prog_func_proto(enum bpf_func_id func_id, const struct bpf_prog *prog)
 /*
  * bpf_raw_tp_regs are separate from bpf_pt_regs used from skb/xdp
  * to avoid potential recursive reuse issue when/if tracepoints are added
- * inside bpf_*_event_output, bpf_get_stackid and/or bpf_get_stack.
- *
- * Since raw tracepoints run despite bpf_prog_active, support concurrent usage
- * in normal, irq, and nmi context.
+ * inside bpf_*_event_output, bpf_get_stackid and/or bpf_get_stack
  */
-struct bpf_raw_tp_regs {
-	struct pt_regs regs[3];
-};
-static DEFINE_PER_CPU(struct bpf_raw_tp_regs, bpf_raw_tp_regs);
-static DEFINE_PER_CPU(int, bpf_raw_tp_nest_level);
-static struct pt_regs *get_bpf_raw_tp_regs(void)
-{
-	struct bpf_raw_tp_regs *tp_regs = this_cpu_ptr(&bpf_raw_tp_regs);
-	int nest_level = this_cpu_inc_return(bpf_raw_tp_nest_level);
-
-	if (WARN_ON_ONCE(nest_level > ARRAY_SIZE(tp_regs->regs))) {
-		this_cpu_dec(bpf_raw_tp_nest_level);
-		return ERR_PTR(-EBUSY);
-	}
-
-	return &tp_regs->regs[nest_level - 1];
-}
-
-static void put_bpf_raw_tp_regs(void)
-{
-	this_cpu_dec(bpf_raw_tp_nest_level);
-}
-
+static DEFINE_PER_CPU(struct pt_regs, bpf_raw_tp_regs);
 BPF_CALL_5(bpf_perf_event_output_raw_tp, struct bpf_raw_tracepoint_args *, args,
 	   struct bpf_map *, map, u64, flags, void *, data, u64, size)
 {
-	struct pt_regs *regs = get_bpf_raw_tp_regs();
-	int ret;
-
-	if (IS_ERR(regs))
-		return PTR_ERR(regs);
+	struct pt_regs *regs = this_cpu_ptr(&bpf_raw_tp_regs);
 
 	perf_fetch_caller_regs(regs);
-	ret = ____bpf_perf_event_output(regs, map, flags, data, size);
-
-	put_bpf_raw_tp_regs();
-	return ret;
+	return ____bpf_perf_event_output(regs, map, flags, data, size);
 }
 
 static const struct bpf_func_proto bpf_perf_event_output_proto_raw_tp = {
@@ -854,18 +834,12 @@ static const struct bpf_func_proto bpf_perf_event_output_proto_raw_tp = {
 BPF_CALL_3(bpf_get_stackid_raw_tp, struct bpf_raw_tracepoint_args *, args,
 	   struct bpf_map *, map, u64, flags)
 {
-	struct pt_regs *regs = get_bpf_raw_tp_regs();
-	int ret;
-
-	if (IS_ERR(regs))
-		return PTR_ERR(regs);
+	struct pt_regs *regs = this_cpu_ptr(&bpf_raw_tp_regs);
 
 	perf_fetch_caller_regs(regs);
 	/* similar to bpf_perf_event_output_tp, but pt_regs fetched differently */
-	ret = bpf_get_stackid((unsigned long) regs, (unsigned long) map,
-			      flags, 0, 0);
-	put_bpf_raw_tp_regs();
-	return ret;
+	return bpf_get_stackid((unsigned long) regs, (unsigned long) map,
+			       flags, 0, 0);
 }
 
 static const struct bpf_func_proto bpf_get_stackid_proto_raw_tp = {
@@ -880,17 +854,11 @@ static const struct bpf_func_proto bpf_get_stackid_proto_raw_tp = {
 BPF_CALL_4(bpf_get_stack_raw_tp, struct bpf_raw_tracepoint_args *, args,
 	   void *, buf, u32, size, u64, flags)
 {
-	struct pt_regs *regs = get_bpf_raw_tp_regs();
-	int ret;
-
-	if (IS_ERR(regs))
-		return PTR_ERR(regs);
+	struct pt_regs *regs = this_cpu_ptr(&bpf_raw_tp_regs);
 
 	perf_fetch_caller_regs(regs);
-	ret = bpf_get_stack((unsigned long) regs, (unsigned long) buf,
-			    (unsigned long) size, flags, 0);
-	put_bpf_raw_tp_regs();
-	return ret;
+	return bpf_get_stack((unsigned long) regs, (unsigned long) buf,
+			     (unsigned long) size, flags, 0);
 }
 
 static const struct bpf_func_proto bpf_get_stack_proto_raw_tp = {
@@ -1144,7 +1112,7 @@ int perf_event_query_prog_array(struct perf_event *event, void __user *info)
 extern struct bpf_raw_event_map __start__bpf_raw_tp[];
 extern struct bpf_raw_event_map __stop__bpf_raw_tp[];
 
-struct bpf_raw_event_map *bpf_find_raw_tracepoint(const char *name)
+struct bpf_raw_event_map *bpf_get_raw_tracepoint(const char *name)
 {
 	struct bpf_raw_event_map *btp = __start__bpf_raw_tp;
 
@@ -1152,7 +1120,16 @@ struct bpf_raw_event_map *bpf_find_raw_tracepoint(const char *name)
 		if (!strcmp(btp->tp->name, name))
 			return btp;
 	}
-	return NULL;
+
+	return bpf_get_raw_tracepoint_module(name);
+}
+
+void bpf_put_raw_tracepoint(struct bpf_raw_event_map *btp)
+{
+	struct module *mod = __module_address((unsigned long)btp);
+
+	if (mod)
+		module_put(mod);
 }
 
 static __always_inline
@@ -1280,3 +1257,52 @@ int bpf_get_perf_event_info(const struct perf_event *event, u32 *prog_id,
 
 	return err;
 }
+
+#ifdef CONFIG_MODULES
+int bpf_event_notify(struct notifier_block *nb, unsigned long op, void *module)
+{
+	struct bpf_trace_module *btm, *tmp;
+	struct module *mod = module;
+
+	if (mod->num_bpf_raw_events == 0 ||
+	    (op != MODULE_STATE_COMING && op != MODULE_STATE_GOING))
+		return 0;
+
+	mutex_lock(&bpf_module_mutex);
+
+	switch (op) {
+	case MODULE_STATE_COMING:
+		btm = kzalloc(sizeof(*btm), GFP_KERNEL);
+		if (btm) {
+			btm->module = module;
+			list_add(&btm->list, &bpf_trace_modules);
+		}
+		break;
+	case MODULE_STATE_GOING:
+		list_for_each_entry_safe(btm, tmp, &bpf_trace_modules, list) {
+			if (btm->module == module) {
+				list_del(&btm->list);
+				kfree(btm);
+				break;
+			}
+		}
+		break;
+	}
+
+	mutex_unlock(&bpf_module_mutex);
+
+	return 0;
+}
+
+static struct notifier_block bpf_module_nb = {
+	.notifier_call = bpf_event_notify,
+};
+
+int __init bpf_event_init(void)
+{
+	register_module_notifier(&bpf_module_nb);
+	return 0;
+}
+
+fs_initcall(bpf_event_init);
+#endif /* CONFIG_MODULES */

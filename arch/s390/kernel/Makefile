@@ -23,6 +23,10 @@ KCOV_INSTRUMENT_early_nobss.o	:= n
 UBSAN_SANITIZE_early.o		:= n
 UBSAN_SANITIZE_early_nobss.o	:= n
 
+KASAN_SANITIZE_early_nobss.o	:= n
+KASAN_SANITIZE_ipl.o		:= n
+KASAN_SANITIZE_machine_kexec.o	:= n
+
 #
 # Passing null pointers is ok for smp code, since we access the lowcore here.
 #
@@ -47,7 +51,7 @@ obj-y	+= debug.o irq.o ipl.o dis.o diag.o vdso.o early_nobss.o
 obj-y	+= sysinfo.o lgr.o os_info.o machine_kexec.o pgm_check.o
 obj-y	+= runtime_instr.o cache.o fpu.o dumpstack.o guarded_storage.o sthyi.o
 obj-y	+= entry.o reipl.o relocate_kernel.o kdebugfs.o alternative.o
-obj-y	+= nospec-branch.o
+obj-y	+= nospec-branch.o ipl_vmparm.o
 
 extra-y				+= head64.o vmlinux.lds
 
@@ -61,7 +65,7 @@ obj-$(CONFIG_HIBERNATION)	+= suspend.o swsusp.o
 obj-$(CONFIG_AUDIT)		+= audit.o
 compat-obj-$(CONFIG_AUDIT)	+= compat_audit.o
 obj-$(CONFIG_COMPAT)		+= compat_linux.o compat_signal.o
-obj-$(CONFIG_COMPAT)		+= compat_wrapper.o $(compat-obj-y)
+obj-$(CONFIG_COMPAT)		+= $(compat-obj-y)
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o
 obj-$(CONFIG_STACKTRACE)	+= stacktrace.o
 obj-$(CONFIG_KPROBES)		+= kprobes.o
@@ -73,8 +77,10 @@ obj-$(CONFIG_JUMP_LABEL)	+= jump_label.o
 obj-$(CONFIG_KEXEC_FILE)	+= machine_kexec_file.o kexec_image.o
 obj-$(CONFIG_KEXEC_FILE)	+= kexec_elf.o
 
-obj-$(CONFIG_PERF_EVENTS)	+= perf_event.o perf_cpum_cf.o perf_cpum_sf.o
+obj-$(CONFIG_PERF_EVENTS)	+= perf_event.o perf_cpum_cf_common.o
+obj-$(CONFIG_PERF_EVENTS)	+= perf_cpum_cf.o perf_cpum_sf.o
 obj-$(CONFIG_PERF_EVENTS)	+= perf_cpum_cf_events.o perf_regs.o
+obj-$(CONFIG_PERF_EVENTS)	+= perf_cpum_cf_diag.o
 
 obj-$(CONFIG_TRACEPOINTS)	+= trace.o
 

@@ -137,6 +137,13 @@ static long ccu_nkmp_round_rate(struct clk_hw *hw, unsigned long rate,
 	if (nkmp->common.features & CCU_FEATURE_FIXED_POSTDIV)
 		rate *= nkmp->fixed_post_div;
 
+	if (nkmp->max_rate && rate > nkmp->max_rate) {
+		rate = nkmp->max_rate;
+		if (nkmp->common.features & CCU_FEATURE_FIXED_POSTDIV)
+			rate /= nkmp->fixed_post_div;
+		return rate;
+	}
+
 	_nkmp.min_n = nkmp->n.min ?: 1;
 	_nkmp.max_n = nkmp->n.max ?: 1 << nkmp->n.width;
 	_nkmp.min_k = nkmp->k.min ?: 1;
@@ -179,6 +186,12 @@ static int ccu_nkmp_set_rate(struct clk_hw *hw, unsigned long rate,
 
 	ccu_nkmp_find_best(parent_rate, rate, &_nkmp);
 
+	/*
+	 * If width is 0, GENMASK() macro may not generate expected mask (0)
+	 * as it falls under undefined behaviour by C standard due to shifts
+	 * which are equal or greater than width of left operand. This can
+	 * be easily avoided by explicitly checking if width is 0.
+	 */
 	if (nkmp->n.width)
 		n_mask = GENMASK(nkmp->n.width + nkmp->n.shift - 1,
 				 nkmp->n.shift);

@@ -436,10 +436,8 @@ const struct of_device_id cs42xx8_of_match[] = {
 	{ .compatible = "cirrus,cs42888", .data = &cs42888_data, },
 	{ /* sentinel */ }
 };
-#if !IS_ENABLED(CONFIG_SND_SOC_CS42XX8_I2C)
 MODULE_DEVICE_TABLE(of, cs42xx8_of_match);
 EXPORT_SYMBOL_GPL(cs42xx8_of_match);
-#endif
 
 int cs42xx8_probe(struct device *dev, struct regmap *regmap)
 {
@@ -560,7 +558,6 @@ static int cs42xx8_runtime_resume(struct device *dev)
 	msleep(5);
 
 	regcache_cache_only(cs42xx8->regmap, false);
-	regcache_mark_dirty(cs42xx8->regmap);
 
 	ret = regcache_sync(cs42xx8->regmap);
 	if (ret) {

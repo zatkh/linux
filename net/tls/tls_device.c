@@ -61,7 +61,7 @@ static void tls_device_free_ctx(struct tls_context *ctx)
 	if (ctx->rx_conf == TLS_HW)
 		kfree(tls_offload_ctx_rx(ctx));
 
-	tls_ctx_free(ctx);
+	kfree(ctx);
 }
 
 static void tls_device_gc_task(struct work_struct *work)
@@ -219,6 +219,13 @@ void tls_device_sk_destruct(struct sock *sk)
 }
 EXPORT_SYMBOL(tls_device_sk_destruct);
 
+void tls_device_free_resources_tx(struct sock *sk)
+{
+	struct tls_context *tls_ctx = tls_get_ctx(sk);
+
+	tls_free_partial_record(sk, tls_ctx);
+}
+
 static void tls_append_frag(struct tls_record_info *record,
 			    struct page_frag *pfrag,
 			    int size)
@@ -250,6 +257,7 @@ static int tls_push_record(struct sock *sk,
 			   int flags,
 			   unsigned char record_type)
 {
+	struct tls_prot_info *prot = &ctx->prot_info;
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct page_frag dummy_tag_frag;
 	skb_frag_t *frag;
@@ -259,21 +267,21 @@ static int tls_push_record(struct sock *sk,
 	frag = &record->frags[0];
 	tls_fill_prepend(ctx,
 			 skb_frag_address(frag),
-			 record->len - ctx->tx.prepend_size,
-			 record_type);
+			 record->len - prot->prepend_size,
+			 record_type,
+			 ctx->crypto_send.info.version);
 
 	/* HW doesn't care about the data in the tag, because it fills it. */
 	dummy_tag_frag.page = skb_frag_page(frag);
 	dummy_tag_frag.offset = 0;
 
-	tls_append_frag(record, &dummy_tag_frag, ctx->tx.tag_size);
+	tls_append_frag(record, &dummy_tag_frag, prot->tag_size);
 	record->end_seq = tp->write_seq + record->len;
 	spin_lock_irq(&offload_ctx->lock);
 	list_add_tail(&record->list, &offload_ctx->records_list);
 	spin_unlock_irq(&offload_ctx->lock);
 	offload_ctx->open_record = NULL;
-	set_bit(TLS_PENDING_CLOSED_RECORD, &ctx->flags);
-	tls_advance_record_sn(sk, &ctx->tx);
+	tls_advance_record_sn(sk, &ctx->tx, ctx->crypto_send.info.version);
 
 	for (i = 0; i < record->num_frags; i++) {
 		frag = &record->frags[i];
@@ -349,6 +357,7 @@ static int tls_push_data(struct sock *sk,
 			 unsigned char record_type)
 {
 	struct tls_context *tls_ctx = tls_get_ctx(sk);
+	struct tls_prot_info *prot = &tls_ctx->prot_info;
 	struct tls_offload_context_tx *ctx = tls_offload_ctx_tx(tls_ctx);
 	int tls_push_record_flags = flags | MSG_SENDPAGE_NOTLAST;
 	int more = flags & (MSG_SENDPAGE_NOTLAST | MSG_MORE);
@@ -368,9 +377,11 @@ static int tls_push_data(struct sock *sk,
 		return -sk->sk_err;
 
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
-	rc = tls_complete_pending_work(sk, tls_ctx, flags, &timeo);
-	if (rc < 0)
-		return rc;
+	if (tls_is_partially_sent_record(tls_ctx)) {
+		rc = tls_push_partial_record(sk, tls_ctx, flags);
+		if (rc < 0)
+			return rc;
+	}
 
 	pfrag = sk_page_frag(sk);
 
@@ -378,10 +389,10 @@ static int tls_push_data(struct sock *sk,
 	 * we need to leave room for an authentication tag.
 	 */
 	max_open_record_len = TLS_MAX_PAYLOAD_SIZE +
-			      tls_ctx->tx.prepend_size;
+			      prot->prepend_size;
 	do {
 		rc = tls_do_allocation(sk, ctx, pfrag,
-				       tls_ctx->tx.prepend_size);
+				       prot->prepend_size);
 		if (rc) {
 			rc = sk_stream_wait_memory(sk, &timeo);
 			if (!rc)
@@ -399,7 +410,7 @@ handle_error:
 				size = orig_size;
 				destroy_record(record);
 				ctx->open_record = NULL;
-			} else if (record->len > tls_ctx->tx.prepend_size) {
+			} else if (record->len > prot->prepend_size) {
 				goto last_record;
 			}
 
@@ -424,7 +435,7 @@ last_record:
 			tls_push_record_flags = flags;
 			if (more) {
 				tls_ctx->pending_open_record_frags =
-						record->num_frags;
+						!!record->num_frags;
 				break;
 			}
 
@@ -492,7 +503,7 @@ int tls_device_sendpage(struct sock *sk, struct page *page,
 
 	iov.iov_base = kaddr + offset;
 	iov.iov_len = size;
-	iov_iter_kvec(&msg_iter, WRITE | ITER_KVEC, &iov, 1, size);
+	iov_iter_kvec(&msg_iter, WRITE, &iov, 1, size);
 	rc = tls_push_data(sk, &msg_iter, size,
 			   flags, TLS_RECORD_TYPE_DATA);
 	kunmap(page);
@@ -541,26 +552,28 @@ static int tls_device_push_pending_record(struct sock *sk, int flags)
 {
 	struct iov_iter	msg_iter;
 
-	iov_iter_kvec(&msg_iter, WRITE | ITER_KVEC, NULL, 0, 0);
+	iov_iter_kvec(&msg_iter, WRITE, NULL, 0, 0);
 	return tls_push_data(sk, &msg_iter, 0, flags, TLS_RECORD_TYPE_DATA);
 }
 
-static void tls_device_resync_rx(struct tls_context *tls_ctx,
-				 struct sock *sk, u32 seq, u64 rcd_sn)
+void tls_device_write_space(struct sock *sk, struct tls_context *ctx)
 {
-	struct net_device *netdev;
+	int rc = 0;
 
-	if (WARN_ON(test_and_set_bit(TLS_RX_SYNC_RUNNING, &tls_ctx->flags)))
-		return;
-	netdev = READ_ONCE(tls_ctx->netdev);
-	if (netdev)
-		netdev->tlsdev_ops->tls_dev_resync_rx(netdev, sk, seq, rcd_sn);
-	clear_bit_unlock(TLS_RX_SYNC_RUNNING, &tls_ctx->flags);
+	if (!sk->sk_write_pending && tls_is_partially_sent_record(ctx)) {
+		gfp_t sk_allocation = sk->sk_allocation;
+
+		sk->sk_allocation = GFP_ATOMIC;
+		rc = tls_push_partial_record(sk, ctx,
+					     MSG_DONTWAIT | MSG_NOSIGNAL);
+		sk->sk_allocation = sk_allocation;
+	}
 }
 
 void handle_device_resync(struct sock *sk, u32 seq, u64 rcd_sn)
 {
 	struct tls_context *tls_ctx = tls_get_ctx(sk);
+	struct net_device *netdev = tls_ctx->netdev;
 	struct tls_offload_context_rx *rx_ctx;
 	u32 is_req_pending;
 	s64 resync_req;
@@ -575,10 +588,10 @@ void handle_device_resync(struct sock *sk, u32 seq, u64 rcd_sn)
 	is_req_pending = resync_req;
 
 	if (unlikely(is_req_pending) && req_seq == seq &&
-	    atomic64_try_cmpxchg(&rx_ctx->resync_req, &resync_req, 0)) {
-		seq += TLS_HEADER_SIZE - 1;
-		tls_device_resync_rx(tls_ctx, sk, seq, rcd_sn);
-	}
+	    atomic64_try_cmpxchg(&rx_ctx->resync_req, &resync_req, 0))
+		netdev->tlsdev_ops->tls_dev_resync_rx(netdev, sk,
+						      seq + TLS_HEADER_SIZE - 1,
+						      rcd_sn);
 }
 
 static int tls_device_reencrypt(struct sock *sk, struct sk_buff *skb)
@@ -689,6 +702,8 @@ int tls_device_decrypted(struct sock *sk, struct sk_buff *skb)
 int tls_set_device_offload(struct sock *sk, struct tls_context *ctx)
 {
 	u16 nonce_size, tag_size, iv_size, rec_seq_size;
+	struct tls_context *tls_ctx = tls_get_ctx(sk);
+	struct tls_prot_info *prot = &tls_ctx->prot_info;
 	struct tls_record_info *start_marker_record;
 	struct tls_offload_context_tx *offload_ctx;
 	struct tls_crypto_info *crypto_info;
@@ -734,10 +749,10 @@ int tls_set_device_offload(struct sock *sk, struct tls_context *ctx)
 		goto free_offload_ctx;
 	}
 
-	ctx->tx.prepend_size = TLS_HEADER_SIZE + nonce_size;
-	ctx->tx.tag_size = tag_size;
-	ctx->tx.overhead_size = ctx->tx.prepend_size + ctx->tx.tag_size;
-	ctx->tx.iv_size = iv_size;
+	prot->prepend_size = TLS_HEADER_SIZE + nonce_size;
+	prot->tag_size = tag_size;
+	prot->overhead_size = prot->prepend_size + prot->tag_size;
+	prot->iv_size = iv_size;
 	ctx->tx.iv = kmalloc(iv_size + TLS_CIPHER_AES_GCM_128_SALT_SIZE,
 			     GFP_KERNEL);
 	if (!ctx->tx.iv) {
@@ -747,7 +762,7 @@ int tls_set_device_offload(struct sock *sk, struct tls_context *ctx)
 
 	memcpy(ctx->tx.iv + TLS_CIPHER_AES_GCM_128_SALT_SIZE, iv, iv_size);
 
-	ctx->tx.rec_seq_size = rec_seq_size;
+	prot->rec_seq_size = rec_seq_size;
 	ctx->tx.rec_seq = kmemdup(rec_seq, rec_seq_size, GFP_KERNEL);
 	if (!ctx->tx.rec_seq) {
 		rc = -ENOMEM;
@@ -928,6 +943,12 @@ void tls_device_offload_cleanup_rx(struct sock *sk)
 	if (!netdev)
 		goto out;
 
+	if (!(netdev->features & NETIF_F_HW_TLS_RX)) {
+		pr_err_ratelimited("%s: device is missing NETIF_F_HW_TLS_RX cap\n",
+				   __func__);
+		goto out;
+	}
+
 	netdev->tlsdev_ops->tls_dev_del(netdev, tls_ctx,
 					TLS_OFFLOAD_CTX_DIR_RX);
 
@@ -966,10 +987,7 @@ static int tls_device_down(struct net_device *netdev)
 		if (ctx->rx_conf == TLS_HW)
 			netdev->tlsdev_ops->tls_dev_del(netdev, ctx,
 							TLS_OFFLOAD_CTX_DIR_RX);
-		WRITE_ONCE(ctx->netdev, NULL);
-		smp_mb__before_atomic(); /* pairs with test_and_set_bit() */
-		while (test_bit(TLS_RX_SYNC_RUNNING, &ctx->flags))
-			usleep_range(10, 200);
+		ctx->netdev = NULL;
 		dev_put(netdev);
 		list_del_init(&ctx->list);
 
@@ -989,8 +1007,7 @@ static int tls_dev_event(struct notifier_block *this, unsigned long event,
 {
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 
-	if (!dev->tlsdev_ops &&
-	    !(dev->features & (NETIF_F_HW_TLS_RX | NETIF_F_HW_TLS_TX)))
+	if (!(dev->features & (NETIF_F_HW_TLS_RX | NETIF_F_HW_TLS_TX)))
 		return NOTIFY_DONE;
 
 	switch (event) {

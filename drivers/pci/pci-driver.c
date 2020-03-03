@@ -100,7 +100,7 @@ static ssize_t new_id_store(struct device_driver *driver, const char *buf,
 {
 	struct pci_driver *pdrv = to_pci_driver(driver);
 	const struct pci_device_id *ids = pdrv->id_table;
-	__u32 vendor, device, subvendor = PCI_ANY_ID,
+	u32 vendor, device, subvendor = PCI_ANY_ID,
 		subdevice = PCI_ANY_ID, class = 0, class_mask = 0;
 	unsigned long driver_data = 0;
 	int fields = 0;
@@ -168,7 +168,7 @@ static ssize_t remove_id_store(struct device_driver *driver, const char *buf,
 {
 	struct pci_dynid *dynid, *n;
 	struct pci_driver *pdrv = to_pci_driver(driver);
-	__u32 vendor, device, subvendor = PCI_ANY_ID,
+	u32 vendor, device, subvendor = PCI_ANY_ID,
 		subdevice = PCI_ANY_ID, class = 0, class_mask = 0;
 	int fields = 0;
 	size_t retval = -ENODEV;
@@ -414,9 +414,6 @@ static int pci_device_probe(struct device *dev)
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 	struct pci_driver *drv = to_pci_driver(dev->driver);
 
-	if (!pci_device_can_probe(pci_dev))
-		return -ENODEV;
-
 	pci_assign_irq(pci_dev);
 
 	error = pcibios_alloc_irq(pci_dev);
@@ -424,10 +421,12 @@ static int pci_device_probe(struct device *dev)
 		return error;
 
 	pci_dev_get(pci_dev);
-	error = __pci_device_probe(drv, pci_dev);
-	if (error) {
-		pcibios_free_irq(pci_dev);
-		pci_dev_put(pci_dev);
+	if (pci_device_can_probe(pci_dev)) {
+		error = __pci_device_probe(drv, pci_dev);
+		if (error) {
+			pcibios_free_irq(pci_dev);
+			pci_dev_put(pci_dev);
+		}
 	}
 
 	return error;
@@ -1598,10 +1597,8 @@ static int pci_dma_configure(struct device *dev)
 		ret = of_dma_configure(dev, bridge->parent->of_node, true);
 	} else if (has_acpi_companion(bridge)) {
 		struct acpi_device *adev = to_acpi_device_node(bridge->fwnode);
-		enum dev_dma_attr attr = acpi_get_dma_attr(adev);
 
-		if (attr != DEV_DMA_NOT_SUPPORTED)
-			ret = acpi_dma_configure(dev, attr);
+		ret = acpi_dma_configure(dev, acpi_get_dma_attr(adev));
 	}
 
 	pci_put_host_bridge_device(bridge);

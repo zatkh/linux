@@ -39,7 +39,7 @@
 #include <asm/tls.h>
 #include <asm/vdso.h>
 
-#ifdef CONFIG_STACKPROTECTOR
+#if defined(CONFIG_STACKPROTECTOR) && !defined(CONFIG_STACKPROTECTOR_PER_TASK)
 #include <linux/stackprotector.h>
 unsigned long __stack_chk_guard __read_mostly;
 EXPORT_SYMBOL(__stack_chk_guard);
@@ -148,9 +148,9 @@ void __show_regs(struct pt_regs *regs)
 		const char *segment;
 
 		if ((domain & domain_mask(DOMAIN_USER)) ==
-		    domain_val(DOMAIN_USER, DOMAIN_NOACCESS))
+		    domain_val(DOMAIN_USER, DOMAIN_CLIENT))
 			segment = "none";
-		else if (fs == get_ds())
+		else if (fs == KERNEL_DS)
 			segment = "kernel";
 		else
 			segment = "user";
@@ -235,7 +235,6 @@ copy_thread(unsigned long clone_flags, unsigned long stack_start,
 
 	memset(&thread->cpu_context, 0, sizeof(struct cpu_context_save));
 
-#ifdef CONFIG_CPU_USE_DOMAINS
 	/*
 	 * Copy the initial value of the domain access control register
 	 * from the current thread: thread->addr_limit will have been
@@ -243,7 +242,6 @@ copy_thread(unsigned long clone_flags, unsigned long stack_start,
 	 * kernel/fork.c
 	 */
 	thread->cpu_domain = get_domain();
-#endif
 
 	if (likely(!(p->flags & PF_KTHREAD))) {
 		*childregs = *current_pt_regs();
@@ -266,6 +264,10 @@ copy_thread(unsigned long clone_flags, unsigned long stack_start,
 	thread->tp_value[1] = get_tpuser();
 
 	thread_notify(THREAD_NOTIFY_COPY, thread);
+
+#ifdef CONFIG_STACKPROTECTOR_PER_TASK
+	thread->stack_canary = p->stack_canary;
+#endif
 
 	return 0;
 }

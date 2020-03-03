@@ -380,8 +380,8 @@ static int ocrdma_alloc_q(struct ocrdma_dev *dev,
 	q->len = len;
 	q->entry_size = entry_size;
 	q->size = len * entry_size;
-	q->va = dma_zalloc_coherent(&dev->nic_info.pdev->dev, q->size,
-				    &q->dma, GFP_KERNEL);
+	q->va = dma_alloc_coherent(&dev->nic_info.pdev->dev, q->size, &q->dma,
+				   GFP_KERNEL);
 	if (!q->va)
 		return -ENOMEM;
 	return 0;
@@ -792,7 +792,7 @@ static void ocrdma_dispatch_ibevent(struct ocrdma_dev *dev,
 						     qp->srq->ibsrq.
 						     srq_context);
 	} else if (dev_event) {
-		pr_err("%s: Fatal event received\n", dev->ibdev.name);
+		dev_err(&dev->ibdev.dev, "Fatal event received\n");
 		ib_dispatch_event(&ib_evt);
 	}
 
@@ -1819,7 +1819,7 @@ int ocrdma_mbx_create_cq(struct ocrdma_dev *dev, struct ocrdma_cq *cq,
 		return -ENOMEM;
 	ocrdma_init_mch(&cmd->cmd.req, OCRDMA_CMD_CREATE_CQ,
 			OCRDMA_SUBSYS_COMMON, sizeof(*cmd));
-	cq->va = dma_zalloc_coherent(&pdev->dev, cq->len, &cq->pa, GFP_KERNEL);
+	cq->va = dma_alloc_coherent(&pdev->dev, cq->len, &cq->pa, GFP_KERNEL);
 	if (!cq->va) {
 		status = -ENOMEM;
 		goto mem_err;
@@ -2209,7 +2209,7 @@ static int ocrdma_set_create_qp_sq_cmd(struct ocrdma_create_qp_req *cmd,
 	qp->sq.max_cnt = max_wqe_allocated;
 	len = (hw_pages * hw_page_size);
 
-	qp->sq.va = dma_zalloc_coherent(&pdev->dev, len, &pa, GFP_KERNEL);
+	qp->sq.va = dma_alloc_coherent(&pdev->dev, len, &pa, GFP_KERNEL);
 	if (!qp->sq.va)
 		return -EINVAL;
 	qp->sq.len = len;
@@ -2259,7 +2259,7 @@ static int ocrdma_set_create_qp_rq_cmd(struct ocrdma_create_qp_req *cmd,
 	qp->rq.max_cnt = max_rqe_allocated;
 	len = (hw_pages * hw_page_size);
 
-	qp->rq.va = dma_zalloc_coherent(&pdev->dev, len, &pa, GFP_KERNEL);
+	qp->rq.va = dma_alloc_coherent(&pdev->dev, len, &pa, GFP_KERNEL);
 	if (!qp->rq.va)
 		return -ENOMEM;
 	qp->rq.pa = pa;
@@ -2315,8 +2315,8 @@ static int ocrdma_set_create_qp_ird_cmd(struct ocrdma_create_qp_req *cmd,
 	if (dev->attr.ird == 0)
 		return 0;
 
-	qp->ird_q_va = dma_zalloc_coherent(&pdev->dev, ird_q_len, &pa,
-					   GFP_KERNEL);
+	qp->ird_q_va = dma_alloc_coherent(&pdev->dev, ird_q_len, &pa,
+					  GFP_KERNEL);
 	if (!qp->ird_q_va)
 		return -ENOMEM;
 	ocrdma_build_q_pages(&cmd->ird_addr[0], dev->attr.num_ird_pages,
@@ -2499,6 +2499,7 @@ static int ocrdma_set_av_params(struct ocrdma_qp *qp,
 	u32 vlan_id = 0xFFFF;
 	u8 mac_addr[6], hdr_type;
 	union {
+		struct sockaddr     _sockaddr;
 		struct sockaddr_in  _sockaddr_in;
 		struct sockaddr_in6 _sockaddr_in6;
 	} sgid_addr, dgid_addr;
@@ -2540,8 +2541,8 @@ static int ocrdma_set_av_params(struct ocrdma_qp *qp,
 
 	hdr_type = rdma_gid_attr_network_type(sgid_attr);
 	if (hdr_type == RDMA_NETWORK_IPV4) {
-		rdma_gid2ip((struct sockaddr *)&sgid_addr, &sgid_attr->gid);
-		rdma_gid2ip((struct sockaddr *)&dgid_addr, &grh->dgid);
+		rdma_gid2ip(&sgid_addr._sockaddr, &sgid_attr->gid);
+		rdma_gid2ip(&dgid_addr._sockaddr, &grh->dgid);
 		memcpy(&cmd->params.dgid[0],
 		       &dgid_addr._sockaddr_in.sin_addr.s_addr, 4);
 		memcpy(&cmd->params.sgid[0],

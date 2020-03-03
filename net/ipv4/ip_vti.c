@@ -359,9 +359,9 @@ static int vti4_err(struct sk_buff *skb, u32 info)
 		return 0;
 
 	if (icmp_hdr(skb)->type == ICMP_DEST_UNREACH)
-		ipv4_update_pmtu(skb, net, info, 0, 0, protocol, 0);
+		ipv4_update_pmtu(skb, net, info, 0, protocol);
 	else
-		ipv4_redirect(skb, net, 0, 0, protocol, 0);
+		ipv4_redirect(skb, net, 0, protocol);
 	xfrm_state_put(x);
 
 	return 0;
@@ -646,10 +646,8 @@ static int __init vti_init(void)
 
 	msg = "ipip tunnel";
 	err = xfrm4_tunnel_register(&ipip_handler, AF_INET);
-	if (err < 0) {
-		pr_info("%s: cant't register tunnel\n",__func__);
+	if (err < 0)
 		goto xfrm_tunnel_failed;
-	}
 
 	msg = "netlink interface";
 	err = rtnl_link_register(&vti_link_ops);
