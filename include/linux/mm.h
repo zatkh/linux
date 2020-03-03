@@ -1362,6 +1362,9 @@ struct zap_details {
 	struct address_space *check_mapping;	/* Check page->mapping if set */
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
+	#ifdef CONFIG_SW_UDOM
+	int smv_id;				/* Indicate which smv's page tables zap_page_range() is working on */
+	#endif
 };
 
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -1373,8 +1376,13 @@ struct page *vm_normal_page_pmd(struct vm_area_struct *vma, unsigned long addr,
 
 void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 		  unsigned long size);
+#ifdef CONFIG_SW_UDOM
+void zap_page_range(struct vm_area_struct *vma, unsigned long address,
+		    unsigned long size,struct zap_details *details);
+#else
 void zap_page_range(struct vm_area_struct *vma, unsigned long address,
 		    unsigned long size);
+#endif
 void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 		unsigned long start, unsigned long end);
 

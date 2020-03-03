@@ -1409,9 +1409,13 @@ void unmap_vmas(struct mmu_gather *tlb,
  */
 
 
-//ztodo
+#ifndef CONFIG_SW_UDOM
 void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 		unsigned long size)
+#else
+void zap_page_range(struct vm_area_struct *vma, unsigned long start,
+		unsigned long size,struct zap_details *details)
+#endif		
 {
 	struct mmu_notifier_range range;
 	struct mmu_gather tlb;
@@ -1419,6 +1423,14 @@ void zap_page_range(struct vm_area_struct *vma, unsigned long start,
 	lru_add_drain();
 	mmu_notifier_range_init(&range, vma->vm_mm, start, start + size);
 	tlb_gather_mmu(&tlb, vma->vm_mm, start, range.end);
+#ifdef CONFIG_SW_UDOM
+
+		/* Update smv_id in tlb if the caller is madvise_dontneed() */
+	if (details) {
+		tlb.smv_id = details->smv_id;
+	}
+#endif	
+
 	update_hiwater_rss(vma->vm_mm);
 	mmu_notifier_invalidate_range_start(&range);
 	for ( ; vma && vma->vm_start < range.end; vma = vma->vm_next)
