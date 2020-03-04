@@ -1916,7 +1916,17 @@ static inline spinlock_t *ptlock_ptr(struct page *page)
 
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
+	#ifdef CONFIG_SW_UDOM
+
+	if (mm->using_smv) {
+		return &mm->page_table_lock_smv[current->smv_id];
+	}
+	else{
+		return &mm->page_table_lock;
+	}
+	#else
 	return ptlock_ptr(pmd_page(*pmd));
+	#endif
 }
 
 static inline bool ptlock_init(struct page *page)
