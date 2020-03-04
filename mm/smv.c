@@ -104,7 +104,7 @@ int smv_create(void){
     /* Increase total number of smv count in mm_struct */
     atomic_inc(&mm->num_smvs);
 
-    slog(KERN_INFO "Created new smv with ID %d, #smvs: %d / %d\n", 
+    printk(KERN_INFO "Created new smv with ID %d, #smvs: %d / %d\n", 
             smv_id, atomic_read(&mm->num_smvs), SMV_ARRAY_SIZE);
     goto out;
 
