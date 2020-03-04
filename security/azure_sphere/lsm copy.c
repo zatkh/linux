@@ -3206,7 +3206,7 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 // can find the domain based on the target address, does not need be exact addr.
 // we could ask for specific domain_id, but i think finding domains based on addr is more convinient (and possibly safe)
 // we will find the doamin
-asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
+asmlinkage unsigned long sys_udom_ops(unsigned long addr,
         unsigned long stack, struct pt_regs *regs)
 {
 
@@ -3253,7 +3253,7 @@ asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
 
 }
 
-asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
+asmlinkage void sys_udom_mem_ops(struct pt_regs *regs)
 {
 	difc_lsm_debug(" enter\n");
 }
