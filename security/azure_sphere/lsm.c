@@ -973,15 +973,6 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 				change_label(&tsec->ilabel, &new_label);
 			}
 		}
-	
-
-		// init udom
-
-	if (smv_main_init()!=0)
-			{difc_lsm_debug( "faild initing udom\n");}
-
-	difc_lsm_debug( "udom init ok\n");
-
 
 		return tag_content;
 	}else{
@@ -3148,11 +3139,13 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 // can find the domain based on the target address, does not need be exact addr.
 // we could ask for specific domain_id, but i think finding domains based on addr is more convinient (and possibly safe)
 // we will find the doamin
-asmlinkage int sys_udom_ops(int smv_op, long smv_id, int smv_domain_op,
+
+//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, RUN, UDOM_OPS};
+//enum smv_udom_ops {JOIN = 0, LEAVE, CHECK};
+
+asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops smv_domain_op,
                                           long memdom_id1)
 {
-
-
 
     int rc = 0;
 	if(smv_op == 0){
@@ -3174,7 +3167,11 @@ asmlinkage int sys_udom_ops(int smv_op, long smv_id, int smv_domain_op,
         rc = smv_kill(smv_id, NULL);
     }else if(smv_op == 4){
         difc_lsm_debug( " smv_run(%ld)\n", smv_id);
+		
     }else if(smv_op == 5){
+		rc= smv_exists(smv_id);
+        difc_lsm_debug( " smv_exists(%ld)\n", smv_id);
+    } else if(smv_op == 6){
         if(smv_domain_op == 0){
             difc_lsm_debug( "smv_join_domain(%ld, %ld)\n", memdom_id1, smv_id);
             rc = smv_join_memdom(memdom_id1, smv_id);
@@ -3185,6 +3182,7 @@ asmlinkage int sys_udom_ops(int smv_op, long smv_id, int smv_domain_op,
             difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
             rc = smv_is_in_memdom(memdom_id1, smv_id);
         }
+
     }
     return rc;
 	
