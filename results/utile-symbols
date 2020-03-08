@@ -23919,7 +23919,7 @@
 0000003c T sys_udom_mprotect_evict
 0000003c T sys_set_task_label
 0000003c T sys_execve
-0000003c T sys_difc_enter_domain
+0000003c T sys_udom_ops
 0000003c T sync_file_get_fence
 0000003c T swap_duplicate
 0000003c t svc_sock_free
@@ -25675,7 +25675,7 @@
 00000030 r sysfs_bin_kfops_rw
 00000030 r sysfs_bin_kfops_ro
 00000030 r sysfs_bin_kfops_mmap
-00000030 T sys_difc_exit_domain
+00000030 T sys_udom_mem_ops
 00000030 t sysctl_print_dir
 00000030 t sysctl_core_net_init
 00000030 t sysctl_core_net_exit
@@ -47946,8 +47946,8 @@
 00000008 W sys_fanotify_init
 00000008 W sys_fadvise64
 00000008 T sys_eventfd
-00000008 t sys_difc_exit_domain_wrapper
-00000008 t sys_difc_enter_domain_wrapper
+00000008 t sys_udom_mem_ops_wrapper
+00000008 t sys_udom_ops_wrapper
 00000008 t sysctl_net_exit
 00000008 D sysctl_lowmem_reserve_ratio
 00000008 d syscore_ops_list

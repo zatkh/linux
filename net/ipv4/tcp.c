@@ -1780,7 +1780,14 @@ static int tcp_zerocopy_receive(struct sock *sk,
 	zc->length = min_t(u32, zc->length, inq);
 	zc->length &= ~(PAGE_SIZE - 1);
 	if (zc->length) {
-		zap_page_range(vma, address, zc->length);
+		#ifdef CONFIG_SW_UDOM
+
+			zap_page_range(vma, address, zc->length,NULL);
+
+		#else
+			zap_page_range(vma, address, zc->length);
+
+		#endif
 		zc->recv_skip_hint = 0;
 	} else {
 		zc->recv_skip_hint = inq;

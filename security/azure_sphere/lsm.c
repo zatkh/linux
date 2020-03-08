@@ -57,6 +57,7 @@
 #include <asm/udom.h>
 #include "lsm.h"
 #include "difc.h"
+#include "linux/smv.h"
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
@@ -972,7 +973,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 				change_label(&tsec->ilabel, &new_label);
 			}
 		}
-	
+
 		return tag_content;
 	}else{
 
@@ -980,6 +981,11 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		difc_lsm_debug( "no specific label mode;just owning a tag\n");
 
 	}
+
+
+
+
+
 
 
 }
@@ -3004,7 +3010,7 @@ static void azure_sphere_cred_init_security(void)
 				  0, SLAB_PANIC, NULL);	
 	//KMEM_CACHE(tag, SLAB_PANIC);
 
-
+/*
 	difc_caps_kcache = 
 		kmem_cache_create("difc_cap_segment",
 				  sizeof(struct cap_segment),
@@ -3014,7 +3020,7 @@ static void azure_sphere_cred_init_security(void)
 		kmem_cache_create("difc_object_struct",
 				  sizeof(struct object_security_struct),
 				  0, SLAB_PANIC, NULL);
-
+*/
 	atomic_set(&max_caps_num, CAPS_INIT);
 
 	alloc_hash();
@@ -3133,54 +3139,58 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 // can find the domain based on the target address, does not need be exact addr.
 // we could ask for specific domain_id, but i think finding domains based on addr is more convinient (and possibly safe)
 // we will find the doamin
-asmlinkage unsigned long sys_difc_enter_domain(unsigned long addr,
-        unsigned long stack, struct pt_regs *regs)
+
+//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, RUN, UDOM_OPS};
+//enum smv_udom_ops {JOIN = 0, LEAVE, CHECK};
+
+asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops smv_domain_op,
+                                          long memdom_id1)
 {
 
-		difc_lsm_debug("enter \n");
-		return 0;
+    int rc = 0;
+	if(smv_op == 0){
+        difc_lsm_debug( "smv_main_init()\n");
+        rc = smv_main_init();
+    }else if(smv_op == 1){
+        difc_lsm_debug( "smv_init_create()\n");
+		rc=smv_main_init();
+		if (rc != 0) {
+    		difc_lsm_debug("smv_main_init() failed\n");
+  			  return -1;
+  		}
+        rc = smv_create();
+    }else if(smv_op == 2){
+        difc_lsm_debug( "smv_create()\n");
+        rc = smv_create();
+    }else if(smv_op == 3){
+        difc_lsm_debug( "smv_kill(%ld)\n", smv_id);
+        rc = smv_kill(smv_id, NULL);
+    }else if(smv_op == 4){
+        difc_lsm_debug( " smv_run(%ld)\n", smv_id);
+		
+    }else if(smv_op == 5){
+		rc= smv_exists(smv_id);
+        difc_lsm_debug( " smv_exists(%ld)\n", smv_id);
+    } else if(smv_op == 6){
+        if(smv_domain_op == 0){
+            difc_lsm_debug( "smv_join_domain(%ld, %ld)\n", memdom_id1, smv_id);
+            rc = smv_join_memdom(memdom_id1, smv_id);
+        }else if(smv_domain_op == 1){
+            difc_lsm_debug( "[%s] smv_leave_domain(%ld, %ld)\n", __func__, smv_id, memdom_id1);
+            rc = smv_leave_memdom(memdom_id1, smv_id, NULL);
+        }else if(smv_domain_op == 2){
+            difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            rc = smv_is_in_memdom(memdom_id1, smv_id);
+        }
 
-	unsigned long dacr = 0;
-	unsigned int domain;
-	int domain_copy;
-
-	int ret_val=0;
-    pgd_t *pgd;
-    pud_t *pud;
-    pmd_t *pmd;
-
-	difc_lsm_debug("enter\n");
-	difc_lsm_debug("pid = %d, tid = %d\n", task_tgid_vnr(current), task_pid_vnr(current));
-	difc_lsm_debug("domain fault at 0x%08lx\n", addr);
-	difc_lsm_debug("domain fault pc=0x%08lx, sp=0x%08lx\n", regs->ARM_pc, regs->ARM_sp);
-
-    pgd = pgd_offset(current->mm, addr);
-    pud = pud_offset(pgd, addr);
-    pmd = pmd_offset(pud, addr);
-    if (addr & SECTION_SIZE)
-       { pmd++;}
-
-	domain=get_pmd_domain(pmd);
-	domain_copy=domain;
-	if(domain<0)
-		difc_lsm_debug("not registered domain\n");
-
-
-	difc_lsm_debug("pmd_domain %u\n",domain);
-
-
-    __asm__ __volatile__(
-            "mrc p15, 0, %[result], c3, c0, 0\n"
-            : [result] "=r" (dacr) : );
-    difc_lsm_debug("dacr=0x%lx\n", dacr);
-
-	return ret_val;
+    }
+    return rc;
 	
 
 
 }
 
-asmlinkage void sys_difc_exit_domain(struct pt_regs *regs)
+asmlinkage void sys_udom_mem_ops(struct pt_regs *regs)
 {
 	difc_lsm_debug(" enter\n");
 }

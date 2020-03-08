@@ -61,7 +61,7 @@ int memdom_create(void){
     /* Increase total number of memdom count in mm_struct */
     atomic_inc(&mm->num_memdoms);
 
-    slog(KERN_INFO "Created new memdom with ID %d, #memdom: %d / %d\n", 
+    printk(KERN_INFO "Created new memdom with ID %d, #memdom: %d / %d\n", 
             memdom_id, atomic_read(&mm->num_memdoms), SMV_ARRAY_SIZE);
     goto out;
 

@@ -41,6 +41,11 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	if (!new_pgd)
 		goto no_pgd;
 
+	/*ztodo Only assign pgd for normal threads */
+//	if (mm->using_smv == 0) {
+//		mm->pgd = new_pgd;
+//	}	
+
 	memset(new_pgd, 0, USER_PTRS_PER_PGD * sizeof(pgd_t));
 
 	/*

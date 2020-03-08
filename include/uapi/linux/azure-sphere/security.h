@@ -73,6 +73,9 @@ struct object_security_struct {
 };
 
 enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING};
+enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, RUN, EXISTS,NO_SMV_OPS};
+enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
+
 
 struct tag {
 	struct list_head next;
