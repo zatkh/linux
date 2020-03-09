@@ -58,6 +58,9 @@
 #include "lsm.h"
 #include "difc.h"
 #include "linux/smv.h"
+#include "linux/memdom.h"
+
+
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
@@ -3190,10 +3193,54 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
 
 }
 
-asmlinkage void sys_udom_mem_ops(struct pt_regs *regs)
-{
-	difc_lsm_debug(" enter\n");
+
+//enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_PRIV_OPS};
+//enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
+
+asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
+                                         enum udom_priv_ops memdom_priv_op, long memdom_priv_value){
+    int rc = 0;
+//  unsigned long memdom_data_addr = 0;
+    if(memdom_op == UDOM_CREATE){        
+        printk( "[%s] memdom_create()\n", __func__);
+        rc = memdom_create();        
+    }
+    else if(memdom_op == UDOM_KILL){        
+        printk( "[%s] memdom_kill(%ld)\n", __func__, memdom_id1);
+        rc = memdom_kill(memdom_id1, NULL);        
+    }
+    else if(memdom_op == UDOM_MMAP_REG){        
+        printk(KERN_CRIT "[%s] memdom_mmap_register(%ld)\n", __func__, memdom_id1);
+        rc = memdom_mmap_register(memdom_id1);
+    }
+    else if(memdom_op == UDOM_DATA){
+//      printk("[%s] converting %s to unsigned long\n", __func__, memdom_data);
+//      rc = kstrtoul(memdom_data, 10, &memdom_data_addr);
+//      if (rc) {
+//          printk("[%s] Error: convert memdom_data address to unsigned long failed, returned %d\n", __func__, rc);
+//      }
+//      printk("[%s] memdom_munmap(%ld, 0x%08lx)\n", __func__, memdom_id1, memdom_data_addr);
+//      rc = memdom_munmap(memdom_data_addr);
+    }
+    else if(memdom_op == UDOM_PRIV_OPS){      
+        if(memdom_priv_op == UDOM_GET){            
+            printk(KERN_CRIT "[%s] memdom_priv_get(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            rc = memdom_priv_get(memdom_id1, smv_id);            
+        }        
+        else if(memdom_priv_op == UDOM_ADD){            
+            printk(KERN_CRIT "[%s] memdom_priv_add(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            rc = memdom_priv_add(memdom_id1, smv_id, memdom_priv_value);            
+        }        
+        else if(memdom_priv_op == UDOM_REMOVE){            
+            printk(KERN_CRIT "[%s] memdom_priv_del(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            rc = memdom_priv_del(memdom_id1, smv_id, memdom_priv_value);            
+        }        
+    }
+
+    return rc;
 }
+
+
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
