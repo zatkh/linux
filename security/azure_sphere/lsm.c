@@ -1605,7 +1605,7 @@ static int difc_inode_init_security(struct inode *inode, struct inode *dir,
 		*value = kstrdup(labels, GFP_NOFS);
 		kfree(labels);
 		if (!*value) {
-			difc_lsm_debug( "memory error in %s, %d\n", __func__, __LINE__);
+			difc_lsm_debug( "memory error in %s, %d\n",__LINE__);
 			return -ENOMEM;
 		}	
 		*len = llen;
@@ -3179,10 +3179,10 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
             difc_lsm_debug( "smv_join_domain(%ld, %ld)\n", memdom_id1, smv_id);
             rc = smv_join_memdom(memdom_id1, smv_id);
         }else if(smv_domain_op == 1){
-            difc_lsm_debug( "[%s] smv_leave_domain(%ld, %ld)\n", __func__, smv_id, memdom_id1);
+            difc_lsm_debug( "[%s] smv_leave_domain(%ld, %ld)\n",smv_id, memdom_id1);
             rc = smv_leave_memdom(memdom_id1, smv_id, NULL);
         }else if(smv_domain_op == 2){
-            difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n",memdom_id1, smv_id);
             rc = smv_is_in_memdom(memdom_id1, smv_id);
         }
 
@@ -3194,7 +3194,7 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
 }
 
 
-//enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_PRIV_OPS};
+//enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIV_OPS};
 //enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
 
 asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
@@ -3202,39 +3202,53 @@ asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long sm
     int rc = 0;
 //  unsigned long memdom_data_addr = 0;
     if(memdom_op == UDOM_CREATE){        
-        printk( "[%s] memdom_create()\n", __func__);
+        difc_lsm_debug( "memdom_create()\n");
         rc = memdom_create();        
     }
     else if(memdom_op == UDOM_KILL){        
-        printk( "[%s] memdom_kill(%ld)\n", __func__, memdom_id1);
+        difc_lsm_debug( "memdom_kill(%ld)\n",memdom_id1);
         rc = memdom_kill(memdom_id1, NULL);        
     }
     else if(memdom_op == UDOM_MMAP_REG){        
-        printk(KERN_CRIT "[%s] memdom_mmap_register(%ld)\n", __func__, memdom_id1);
+        difc_lsm_debug( " memdom_mmap_register(%ld)\n",memdom_id1);
         rc = memdom_mmap_register(memdom_id1);
     }
     else if(memdom_op == UDOM_DATA){
-//      printk("[%s] converting %s to unsigned long\n", __func__, memdom_data);
+//      difc_lsm_debug("[%s] converting %s to unsigned long\n",memdom_data);
 //      rc = kstrtoul(memdom_data, 10, &memdom_data_addr);
 //      if (rc) {
-//          printk("[%s] Error: convert memdom_data address to unsigned long failed, returned %d\n", __func__, rc);
+//          difc_lsm_debug("[%s] Error: convert memdom_data address to unsigned long failed, returned %d\n",rc);
 //      }
-//      printk("[%s] memdom_munmap(%ld, 0x%08lx)\n", __func__, memdom_id1, memdom_data_addr);
+//      difc_lsm_debug("[%s] memdom_munmap(%ld, 0x%08lx)\n",memdom_id1, memdom_data_addr);
 //      rc = memdom_munmap(memdom_data_addr);
     }
+	else if(memdom_op == UDOM_MAINID){
+			rc= memdom_main_id();
+    }
+	else if(memdom_op == UDOM_QUERYID){//ztodo:fix this
+			unsigned long address = 0;
+			rc=memdom_query_id(address);
+
+    }
+
+	else if(memdom_op == UDOM_PRIVID){
+		rc = memdom_private_id();
+	}
     else if(memdom_op == UDOM_PRIV_OPS){      
         if(memdom_priv_op == UDOM_GET){            
-            printk(KERN_CRIT "[%s] memdom_priv_get(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            difc_lsm_debug( "memdom_priv_get(%ld, %ld)\n", memdom_id1, smv_id);
             rc = memdom_priv_get(memdom_id1, smv_id);            
         }        
         else if(memdom_priv_op == UDOM_ADD){            
-            printk(KERN_CRIT "[%s] memdom_priv_add(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            difc_lsm_debug( "memdom_priv_add(%ld, %ld, %ld)\n",memdom_id1, smv_id, memdom_priv_value);
             rc = memdom_priv_add(memdom_id1, smv_id, memdom_priv_value);            
         }        
         else if(memdom_priv_op == UDOM_REMOVE){            
-            printk(KERN_CRIT "[%s] memdom_priv_del(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            difc_lsm_debug( "memdom_priv_del(%ld, %ld, %ld)\n",memdom_id1, smv_id, memdom_priv_value);
             rc = memdom_priv_del(memdom_id1, smv_id, memdom_priv_value);            
-        }        
+        }   
+
+
     }
 
     return rc;
