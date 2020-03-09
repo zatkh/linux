@@ -835,9 +835,9 @@ __SYSCALL(__NR_io_uring_register, sys_io_uring_register)
 #define __NR_set_task_domain 428
 __SYSCALL(__NR_set_task_domain, sys_set_task_domain)
 #define __NR_udom_ops 429
-__SYSCALL(__NR_udom_ops, sys_udom_ops_wrapper)
+__SYSCALL(__NR_udom_ops, sys_udom_ops)
 #define __NR_udom_mem_ops 430
-__SYSCALL(__NR_udom_mem_ops, sys_udom_mem_ops_wrapper)
+__SYSCALL(__NR_udom_mem_ops, sys_udom_mem_ops)
 #define __NR_udom_alloc 431
 __SYSCALL(__NR_udom_alloc, sys_udom_alloc)
 #define __NR_udom_free 432

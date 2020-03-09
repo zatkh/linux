@@ -3143,7 +3143,7 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 // we could ask for specific domain_id, but i think finding domains based on addr is more convinient (and possibly safe)
 // we will find the doamin
 
-//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, RUN, UDOM_OPS};
+//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, UDOM_OPS};
 //enum smv_udom_ops {JOIN = 0, LEAVE, CHECK};
 
 asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops smv_domain_op,
@@ -3169,7 +3169,9 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
         difc_lsm_debug( "smv_kill(%ld)\n", smv_id);
         rc = smv_kill(smv_id, NULL);
     }else if(smv_op == 4){
-        difc_lsm_debug( " smv_run(%ld)\n", smv_id);
+        difc_lsm_debug( " register_smv_thread(%ld)\n", smv_id);
+
+		register_smv_thread(smv_id);
 		
     }else if(smv_op == 5){
 		rc= smv_exists(smv_id);
@@ -3200,6 +3202,8 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
 asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
                                          enum udom_priv_ops memdom_priv_op, long memdom_priv_value){
     int rc = 0;
+
+
 //  unsigned long memdom_data_addr = 0;
     if(memdom_op == UDOM_CREATE){        
         difc_lsm_debug( "memdom_create()\n");

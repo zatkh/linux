@@ -406,6 +406,7 @@ sys_fstatfs64_wrapper:
 		b	sys_fstatfs64
 ENDPROC(sys_fstatfs64_wrapper)
 
+/* 
 sys_udom_ops_wrapper:
         add	r2, sp, #S_OFF
 		b	sys_udom_ops
@@ -416,6 +417,7 @@ sys_udom_mem_ops_wrapper:
 		b	sys_udom_mem_ops
 ENDPROC(sys_udom_mem_ops_wrapper)
 
+*/
 /*
  * Note: off_4k (r5) is always units of 4K.  If we can't do the requested
  * offset, we return EINVAL.
