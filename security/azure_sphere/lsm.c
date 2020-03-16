@@ -58,6 +58,9 @@
 #include "lsm.h"
 #include "difc.h"
 #include "linux/smv.h"
+#include "linux/memdom.h"
+
+
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
@@ -914,7 +917,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		{	
 			// merge floating initializations here
 			pid_t tid=task_pid_vnr(current);
-			new_tag->floating=true;
+			new_tag->type=TAG_FLO;
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
 
 
@@ -945,6 +948,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 				ret = -ENOMEM;
 				return ret;
 			}
+			tsec->confined = true;
 			label_tag->content = tag_content;
 
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
@@ -1455,7 +1459,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
  
 			for(i; i<=sec_num; i++){
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			new_tag->floating = user_label->sList[sec_num+1];
+			isec->type = TAG_EXP;//user_label->sList[sec_num+1];
 			new_tag->content = user_label->sList[i];
 
 			list_add_tail_rcu(&new_tag->next, &isec->slabel);
@@ -1465,7 +1469,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 		else if(integ_num) 
 		{
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			new_tag->floating = user_label->iList[integ_num+1];
+			isec->type= TAG_EXP;//user_label->iList[integ_num+1];
  
 			for(i; i<=integ_num; i++){
 			
@@ -1504,7 +1508,7 @@ static struct inode_difc *new_inode_difc(void) {
 
 	INIT_LIST_HEAD(&isp->slabel);
 	INIT_LIST_HEAD(&isp->ilabel);
-	isp->floating=false;
+	isp->type=TAG_CONF;
 
 	tsp = current_security();
 
@@ -1535,7 +1539,7 @@ static int difc_inode_alloc_security(struct inode *inode) {
 		return -ENOMEM;
 
 	inode->i_security = isp;
-	difc_lsm_debug("successfull inode alloc init\n");
+//	difc_lsm_debug("successfull inode alloc init\n");
 
 
 	/*
@@ -1569,7 +1573,7 @@ static void difc_inode_free_security(struct inode *inode) {
 	kfree(isp);
 	
 
-	difc_lsm_debug("successful free");
+//	difc_lsm_debug("successful free");
 }
 
 static int difc_inode_init_security(struct inode *inode, struct inode *dir,
@@ -1602,7 +1606,7 @@ static int difc_inode_init_security(struct inode *inode, struct inode *dir,
 		*value = kstrdup(labels, GFP_NOFS);
 		kfree(labels);
 		if (!*value) {
-			difc_lsm_debug( "memory error in %s, %d\n", __func__, __LINE__);
+			difc_lsm_debug( "memory error in %s, %d\n",__LINE__);
 			return -ENOMEM;
 		}	
 		*len = llen;
@@ -1652,6 +1656,8 @@ static int difc_inode_setsecurity(struct inode *inode, const char *name,
 		difc_lsm_debug( "inode->i_security is null (%s)\n", __func__);
 		return rc; 
 	}
+
+	isp->type=TAG_EXP;
 
 	rc = security_set_labels(&isp->slabel, &isp->ilabel, tsp, value, size);
 	if (rc < 0)
@@ -1760,9 +1766,10 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	if (mask == 0 || !isp || inode->i_ino == 2) 
 		return rc;
 
-	if (!tsp->confined)
+	//if (!tsp->confined && isp->type==TAG_CONF)
+	if (isp->type==TAG_CONF)
 		return rc;
-
+/*
 	switch (sbp->s_magic) {
 		case PIPEFS_MAGIC:
 		case SOCKFS_MAGIC:
@@ -1775,11 +1782,15 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		case DEBUGFS_MAGIC:
 			return rc;
 		default:
-			/* For now, only check on the rest cases */
+			// For now, only check on the rest cases 
 			break;
 	}
-
+	*/
 	if (mask & (MAY_READ | MAY_EXEC)) {
+
+				difc_lsm_debug("MAY_READ | MAY_EXEC\n");
+
+
 		/*
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 65535 and secrecy label contains 0, the inode is globally readable
@@ -1790,9 +1801,10 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			if (t->content == 65535)
 				top = 0;
 		list_for_each_entry_rcu(t, &isp->slabel, next)
+		{
 			if (t->content == 0)
 				down = 0;
-		
+		}
 		if (top ==0 && down == 0)
 			goto out;
 
@@ -1812,6 +1824,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			/*
 			*  Secrecy: Sq <= Sp + Op
 			*/
+					difc_lsm_debug("before checking\n");
+
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
 				difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -1826,6 +1840,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 0 and secrecy label contains 65535, the inode is globally writable
 		*/
+		difc_lsm_debug("MAY_WRITE | MAY_APPEND\n");
+
 		top = -1;
 		down = -1;
 		list_for_each_entry_rcu(t, &isp->ilabel, next)
@@ -1834,7 +1850,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		list_for_each_entry_rcu(t, &isp->slabel, next)
 			if (t->content == 65535)
 				down = 0;
-		
+			
 		if (top ==0 && down == 0)
 			goto out;
 
@@ -1854,6 +1870,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			/*
 			*  Secrecy: Sp <= Sq + Op
 			*/
+				difc_lsm_debug("before check\n");
+
 			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
 			if (rc < 0) {
 				difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -1866,6 +1884,72 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 out:
 	/* Always allow for debugging */
 	rc = 0;
+	return rc;
+}
+
+
+
+static int difc_file_permission(struct file *file, int mask)
+{
+	struct task_security_struct *tsec = current_security();
+	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode_difc *isp = inode->i_security;
+	struct super_block *sbp = inode->i_sb;
+	int pid=current->pid;
+/*	int uid = inode->i_uid;
+	int euid = current->cred->euid;
+	int gid=inode->i_gid;
+	int inode_no = inode->i_ino;*/
+	char *path=NULL;
+	int rc=0;
+	int i =0 ;
+	struct tag *t;
+	int top, down;
+
+	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
+	if (mask == 0 ) 
+		return rc;
+
+	if(!tsec){
+	    difc_lsm_debug(" file_permission. tsec NULL for pid %d \n",pid);
+	    goto out;
+	} 
+
+	if (!tsec->confined && isp->type==TAG_CONF)
+		return rc;
+
+//	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
+//	    goto out;
+//	}
+
+	getFilePath(file,&path);
+	if(path==NULL){
+	    goto out;
+	}
+	
+		//The check.
+	if( (mask & MAY_READ) || (mask & MAY_EXEC) ){
+						difc_lsm_debug("before check: MAY_READ\n");
+
+		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
+		if (rc < 0) {
+			difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+			rc = -EACCES;
+			goto out;
+		}
+	}
+	if( (mask & MAY_WRITE) || (mask & MAY_APPEND) ){
+						difc_lsm_debug("before check: MAY_WRITE\n");
+
+		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
+		if (rc < 0) {
+			difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+			rc = -EACCES;
+			goto out;
+		}
+	}
+out:
+//	if(fseclabel!=NULL) kfree(fseclabel);
 	return rc;
 }
 
@@ -3140,7 +3224,7 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 // we could ask for specific domain_id, but i think finding domains based on addr is more convinient (and possibly safe)
 // we will find the doamin
 
-//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, RUN, UDOM_OPS};
+//enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, UDOM_OPS};
 //enum smv_udom_ops {JOIN = 0, LEAVE, CHECK};
 
 asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops smv_domain_op,
@@ -3166,7 +3250,9 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
         difc_lsm_debug( "smv_kill(%ld)\n", smv_id);
         rc = smv_kill(smv_id, NULL);
     }else if(smv_op == 4){
-        difc_lsm_debug( " smv_run(%ld)\n", smv_id);
+        difc_lsm_debug( " register_smv_thread(%ld)\n", smv_id);
+
+		register_smv_thread(smv_id);
 		
     }else if(smv_op == 5){
 		rc= smv_exists(smv_id);
@@ -3176,10 +3262,10 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
             difc_lsm_debug( "smv_join_domain(%ld, %ld)\n", memdom_id1, smv_id);
             rc = smv_join_memdom(memdom_id1, smv_id);
         }else if(smv_domain_op == 1){
-            difc_lsm_debug( "[%s] smv_leave_domain(%ld, %ld)\n", __func__, smv_id, memdom_id1);
+            difc_lsm_debug( "[%s] smv_leave_domain(%ld, %ld)\n",smv_id, memdom_id1);
             rc = smv_leave_memdom(memdom_id1, smv_id, NULL);
         }else if(smv_domain_op == 2){
-            difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            difc_lsm_debug("[%s] smv_is_in_domain(%ld, %ld)\n",memdom_id1, smv_id);
             rc = smv_is_in_memdom(memdom_id1, smv_id);
         }
 
@@ -3190,10 +3276,70 @@ asmlinkage int sys_udom_ops(enum smv_ops smv_op, long smv_id, enum smv_udom_ops 
 
 }
 
-asmlinkage void sys_udom_mem_ops(struct pt_regs *regs)
-{
-	difc_lsm_debug(" enter\n");
+
+//enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIV_OPS};
+//enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
+
+asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long smv_id,
+                                         enum udom_priv_ops memdom_priv_op, long memdom_priv_value){
+    int rc = 0;
+
+
+//  unsigned long memdom_data_addr = 0;
+    if(memdom_op == UDOM_CREATE){        
+        difc_lsm_debug( "memdom_create()\n");
+        rc = memdom_create();        
+    }
+    else if(memdom_op == UDOM_KILL){        
+        difc_lsm_debug( "memdom_kill(%ld)\n",memdom_id1);
+        rc = memdom_kill(memdom_id1, NULL);        
+    }
+    else if(memdom_op == UDOM_MMAP_REG){        
+        difc_lsm_debug( " memdom_mmap_register(%ld)\n",memdom_id1);
+        rc = memdom_mmap_register(memdom_id1);
+    }
+    else if(memdom_op == UDOM_DATA){
+//      difc_lsm_debug("[%s] converting %s to unsigned long\n",memdom_data);
+//      rc = kstrtoul(memdom_data, 10, &memdom_data_addr);
+//      if (rc) {
+//          difc_lsm_debug("[%s] Error: convert memdom_data address to unsigned long failed, returned %d\n",rc);
+//      }
+//      difc_lsm_debug("[%s] memdom_munmap(%ld, 0x%08lx)\n",memdom_id1, memdom_data_addr);
+//      rc = memdom_munmap(memdom_data_addr);
+    }
+	else if(memdom_op == UDOM_MAINID){
+			rc= memdom_main_id();
+    }
+	else if(memdom_op == UDOM_QUERYID){//ztodo:fix this
+			unsigned long address = 0;
+			rc=memdom_query_id(address);
+
+    }
+
+	else if(memdom_op == UDOM_PRIVID){
+		rc = memdom_private_id();
+	}
+    else if(memdom_op == UDOM_PRIV_OPS){      
+        if(memdom_priv_op == UDOM_GET){            
+            difc_lsm_debug( "memdom_priv_get(%ld, %ld)\n", memdom_id1, smv_id);
+            rc = memdom_priv_get(memdom_id1, smv_id);            
+        }        
+        else if(memdom_priv_op == UDOM_ADD){            
+            difc_lsm_debug( "memdom_priv_add(%ld, %ld, %ld)\n",memdom_id1, smv_id, memdom_priv_value);
+            rc = memdom_priv_add(memdom_id1, smv_id, memdom_priv_value);            
+        }        
+        else if(memdom_priv_op == UDOM_REMOVE){            
+            difc_lsm_debug( "memdom_priv_del(%ld, %ld, %ld)\n",memdom_id1, smv_id, memdom_priv_value);
+            rc = memdom_priv_del(memdom_id1, smv_id, memdom_priv_value);            
+        }   
+
+
+    }
+
+    return rc;
 }
+
+
 
 #endif /*CONFIG_EXTENDED_LSM_DIFC */
 
@@ -3227,6 +3373,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
+	LSM_HOOK_INIT(file_permission,difc_file_permission),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
 	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
@@ -3234,6 +3381,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
 	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
+
+	
 
 
 
