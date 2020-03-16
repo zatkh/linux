@@ -4034,8 +4034,8 @@ retry_deleg:
 
 
 
-	//error =  security_inode_permission(inode, MAY_READ|MAY_EXEC);
-//security_path_chmod(path, mode);
+	error =  security_inode_permission(inode, MAY_READ|MAY_EXEC);
+	//security_path_chmod(path, mode);
 	if (error)
 		goto out_unlock;
 	newattrs.ia_mode = (mode & S_IALLUGO) | (inode->i_mode & ~S_IALLUGO);

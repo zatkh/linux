@@ -948,6 +948,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 				ret = -ENOMEM;
 				return ret;
 			}
+			tsec->confined = true;
 			label_tag->content = tag_content;
 
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
@@ -1538,7 +1539,7 @@ static int difc_inode_alloc_security(struct inode *inode) {
 		return -ENOMEM;
 
 	inode->i_security = isp;
-	difc_lsm_debug("successfull inode alloc init\n");
+//	difc_lsm_debug("successfull inode alloc init\n");
 
 
 	/*
@@ -1572,7 +1573,7 @@ static void difc_inode_free_security(struct inode *inode) {
 	kfree(isp);
 	
 
-	difc_lsm_debug("successful free");
+//	difc_lsm_debug("successful free");
 }
 
 static int difc_inode_init_security(struct inode *inode, struct inode *dir,
@@ -1765,7 +1766,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 
 	if (!tsp->confined)
 		return rc;
-
+/*
 	switch (sbp->s_magic) {
 		case PIPEFS_MAGIC:
 		case SOCKFS_MAGIC:
@@ -1778,11 +1779,15 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		case DEBUGFS_MAGIC:
 			return rc;
 		default:
-			/* For now, only check on the rest cases */
+			// For now, only check on the rest cases 
 			break;
 	}
-
+	*/
 	if (mask & (MAY_READ | MAY_EXEC)) {
+
+				difc_lsm_debug("MAY_READ | MAY_EXEC\n");
+
+
 		/*
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 65535 and secrecy label contains 0, the inode is globally readable
@@ -1793,9 +1798,10 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			if (t->content == 65535)
 				top = 0;
 		list_for_each_entry_rcu(t, &isp->slabel, next)
+		{
 			if (t->content == 0)
 				down = 0;
-		
+		}
 		if (top ==0 && down == 0)
 			goto out;
 
@@ -1815,6 +1821,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			/*
 			*  Secrecy: Sq <= Sp + Op
 			*/
+					difc_lsm_debug("before checking\n");
+
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
 				difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -1829,6 +1837,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 0 and secrecy label contains 65535, the inode is globally writable
 		*/
+		difc_lsm_debug("MAY_WRITE | MAY_APPEND\n");
+
 		top = -1;
 		down = -1;
 		list_for_each_entry_rcu(t, &isp->ilabel, next)
@@ -1837,7 +1847,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		list_for_each_entry_rcu(t, &isp->slabel, next)
 			if (t->content == 65535)
 				down = 0;
-		
+			
 		if (top ==0 && down == 0)
 			goto out;
 
@@ -1857,6 +1867,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			/*
 			*  Secrecy: Sp <= Sq + Op
 			*/
+				difc_lsm_debug("before check\n");
+
 			rc = is_label_subset(&tsp->slabel, &tsp->olabel, &isp->slabel);
 			if (rc < 0) {
 				difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
@@ -1869,6 +1881,72 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 out:
 	/* Always allow for debugging */
 	rc = 0;
+	return rc;
+}
+
+
+
+static int difc_file_permission(struct file *file, int mask)
+{
+	struct task_security_struct *tsec = current_security();
+	struct inode *inode = file->f_path.dentry->d_inode;
+	struct inode_difc *isp = inode->i_security;
+	struct super_block *sbp = inode->i_sb;
+	int pid=current->pid;
+/*	int uid = inode->i_uid;
+	int euid = current->cred->euid;
+	int gid=inode->i_gid;
+	int inode_no = inode->i_ino;*/
+	char *path=NULL;
+	int rc=0;
+	int i =0 ;
+	struct tag *t;
+	int top, down;
+
+	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
+	if (mask == 0 ) 
+		return rc;
+
+	if(!tsec){
+	    difc_lsm_debug(" file_permission. tsec NULL for pid %d \n",pid);
+	    goto out;
+	} 
+
+	if (!tsec->confined)
+		return rc;
+
+//	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
+//	    goto out;
+//	}
+
+	getFilePath(file,&path);
+	if(path==NULL){
+	    goto out;
+	}
+	
+		//The check.
+	if( (mask & MAY_READ) || (mask & MAY_EXEC) ){
+						difc_lsm_debug("before check: MAY_READ\n");
+
+		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
+		if (rc < 0) {
+			difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+			rc = -EACCES;
+			goto out;
+		}
+	}
+	if( (mask & MAY_WRITE) || (mask & MAY_APPEND) ){
+						difc_lsm_debug("before check: MAY_WRITE\n");
+
+		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
+		if (rc < 0) {
+			difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
+			rc = -EACCES;
+			goto out;
+		}
+	}
+out:
+//	if(fseclabel!=NULL) kfree(fseclabel);
 	return rc;
 }
 
@@ -3292,6 +3370,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
 	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
+	LSM_HOOK_INIT(file_permission,difc_file_permission),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
 	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
@@ -3299,6 +3378,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
 	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
+
+	
 
 
 
