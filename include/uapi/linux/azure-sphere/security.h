@@ -77,12 +77,12 @@ enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, EXISTS,NO_SMV_OPS};
 enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
 enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIVID,UDOM_PRIV_OPS};
 enum udom_priv_ops {UDOM_GET = 0, UDOM_ADD, UDOM_REMOVE,NO_UDOM_PRIV_OPS};
-
+enum tag_type {TAG_CONF = 0, TAG_EXP, TAG_FLO};
 
 struct tag {
 	struct list_head next;
 	unsigned long content;
-	bool floating;
+	int type;
 
 };
 

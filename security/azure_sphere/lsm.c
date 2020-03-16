@@ -917,7 +917,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 		{	
 			// merge floating initializations here
 			pid_t tid=task_pid_vnr(current);
-			new_tag->floating=true;
+			new_tag->type=TAG_FLO;
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
 
 
@@ -1459,7 +1459,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
  
 			for(i; i<=sec_num; i++){
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			new_tag->floating = user_label->sList[sec_num+1];
+			isec->type = TAG_EXP;//user_label->sList[sec_num+1];
 			new_tag->content = user_label->sList[i];
 
 			list_add_tail_rcu(&new_tag->next, &isec->slabel);
@@ -1469,7 +1469,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 		else if(integ_num) 
 		{
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			new_tag->floating = user_label->iList[integ_num+1];
+			isec->type= TAG_EXP;//user_label->iList[integ_num+1];
  
 			for(i; i<=integ_num; i++){
 			
@@ -1508,7 +1508,7 @@ static struct inode_difc *new_inode_difc(void) {
 
 	INIT_LIST_HEAD(&isp->slabel);
 	INIT_LIST_HEAD(&isp->ilabel);
-	isp->type=0;
+	isp->type=TAG_CONF;
 
 	tsp = current_security();
 
@@ -1657,7 +1657,7 @@ static int difc_inode_setsecurity(struct inode *inode, const char *name,
 		return rc; 
 	}
 
-	isp->type=1;
+	isp->type=TAG_EXP;
 
 	rc = security_set_labels(&isp->slabel, &isp->ilabel, tsp, value, size);
 	if (rc < 0)
@@ -1766,7 +1766,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	if (mask == 0 || !isp || inode->i_ino == 2) 
 		return rc;
 
-	if (!tsp->confined && isp->type==0)
+	//if (!tsp->confined && isp->type==TAG_CONF)
+	if (isp->type==TAG_CONF)
 		return rc;
 /*
 	switch (sbp->s_magic) {
@@ -1914,7 +1915,7 @@ static int difc_file_permission(struct file *file, int mask)
 	    goto out;
 	} 
 
-	if (!tsec->confined && isp->type==0)
+	if (!tsec->confined && isp->type==TAG_CONF)
 		return rc;
 
 //	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
