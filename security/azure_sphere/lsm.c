@@ -1508,7 +1508,7 @@ static struct inode_difc *new_inode_difc(void) {
 
 	INIT_LIST_HEAD(&isp->slabel);
 	INIT_LIST_HEAD(&isp->ilabel);
-	isp->floating=false;
+	isp->type=0;
 
 	tsp = current_security();
 
@@ -1657,6 +1657,8 @@ static int difc_inode_setsecurity(struct inode *inode, const char *name,
 		return rc; 
 	}
 
+	isp->type=1;
+
 	rc = security_set_labels(&isp->slabel, &isp->ilabel, tsp, value, size);
 	if (rc < 0)
 		return rc;
@@ -1764,7 +1766,7 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	if (mask == 0 || !isp || inode->i_ino == 2) 
 		return rc;
 
-	if (!tsp->confined)
+	if (!tsp->confined && isp->type==0)
 		return rc;
 /*
 	switch (sbp->s_magic) {
@@ -1912,7 +1914,7 @@ static int difc_file_permission(struct file *file, int mask)
 	    goto out;
 	} 
 
-	if (!tsec->confined)
+	if (!tsec->confined && isp->type==0)
 		return rc;
 
 //	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
