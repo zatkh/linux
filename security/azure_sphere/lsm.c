@@ -198,8 +198,6 @@ static struct task_security_struct *new_task_security_struct(gfp_t gfp) {
 	INIT_LIST_HEAD(&tsp->slabel);
 	INIT_LIST_HEAD(&tsp->ilabel);
 	INIT_LIST_HEAD(&tsp->olabel);
-	INIT_LIST_HEAD(&tsp->capList);
-	INIT_LIST_HEAD(&tsp->suspendedCaps);
 	
 	return tsp;
 } 
@@ -1114,18 +1112,6 @@ out:
 
 }
 
-// get capability of a label
-static inline capability_t cred_get_capability(struct task_security_struct *tsec, label_t label)
-{
-
-	capability_t index, cap;
-	struct cap_segment *cap_seg;
-	list_for_each_cap(index, cap, cap_seg, tsec->capList)
-		if((cap & CAP_LABEL_MASK) == label)
-			return cap;
-
-	return -1;
-}
 
 //copy user's label to kernel label_struct
 static void *difc_copy_user_label(const char __user *label)
@@ -2096,542 +2082,6 @@ static int difc_inode_set_label(struct inode *inode, void __user *new_label)
 }
 */
 
-// difc_permanent_declassify  should be used for dropping capabilities permanently. 
-// the temporarly version is used before cloning new thread instead of setting other tasks credentials that is not a good practice from securitypoint of view 
-static int difc_permanent_declassify  (void __user *ucap_list, unsigned int ucap_list_size, int cap_type, int label_type)
-{
-	
-	struct cred *cred ;
-	struct task_security_struct *tsec;
-	int ret_val=0;
-	int found_cap = 0;
-	capability_t *capList;
-	capability_t temp;
-	struct cap_segment *cap_seg;
-	int i;
-	capability_t cap;
-	label_t label;
-	int len;
-
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-  	cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug(" not enough memory\n");
-        return -ENOENT;
-    }
-
-	capList = kmalloc(sizeof(capability_t) * ucap_list_size, GFP_KERNEL);
-	if(!capList){
-	  	difc_lsm_debug(" not enough memory\n");
-		return -ENOMEM;
-	}
-	ret_val = copy_from_user(capList, ucap_list, sizeof(capability_t) * ucap_list_size);
-	if(ret_val){
-		difc_lsm_debug(" Bad copy: %d bytes missing\n", ret_val);
-		kfree(capList);
-		return -ENOMEM;
-	}
-	//spin_lock(&tsec->cap_lock);
-
-	
-	list_for_each_entry(cap_seg, &tsec->capList, list){
-			if(cap_seg->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
-			break;
-		}
-	}	
-
-	if(label_type==SECRECY_LABEL){
-
-		len=tsec->label.sList[0];
-		for(i = 0; i < len; i++){
-			label=tsec->label.sList[i+1];
-			cap=cap_seg->caps[i+1];
-			temp=capList[i];
-
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if((cap_type & PLUS_CAPABILITY)){
-				difc_lsm_debug("plus cap\n");
-			}
-			if((cap_type & MINUS_CAPABILITY)){			
-				difc_lsm_debug("minus cap\n");}
-
-			if(found_cap)
-			{
-				cap_seg->caps[i+1] = cap_seg->caps[i+2];
-				(cap_seg->caps[0])--;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-		}
-	}
-	else if(label_type==INTEGRITY_LABEL)
-	{
-		len=tsec->label.iList[0];
-		for(i = 0; i < len; i++){
-			label=tsec->label.iList[i+1];
-			cap=cap_seg->caps[i+1];
-			temp=capList[i];
-
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if(found_cap)
-			{
-				cap_seg->caps[i+1] = cap_seg->caps[i+2];
-				(cap_seg->caps[0])--;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-		}
-	}else{
-		difc_lsm_debug("not vaid label_type, only secrecy and integrety support\n");
-		return -1;
-	}
-
-	//spin_unlock(&tsec->cap_lock);
-	cred->security = tsec;
-	commit_creds(cred);
-
-	kfree(capList);
-	return ret_val;
-}
-
-// difc_temporarily_declassify stores caps in suspendedCaps that can be used before clone if we don'twant the child to inherits the capabilities 
-// ZTODO: it can be merged with permanent_declassify as well
-
-static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_size, int cap_type,int label_type)
-{
-	
-	struct cred *cred ;
-	struct task_security_struct *tsec;
-	int ret_val=0;
-	int found_cap = 0;
-	int not_max  = 0;
-	capability_t *capList;
-	capability_t temp;
-	struct cap_segment *cap_seg;
-	struct cap_segment *sus_caps;
-	int i;
-	capability_t cap;
-	label_t label;
-	int len;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-  	cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug(" not enough memory\n");
-        return -ENOENT;
-    }
-
-	capList = kmalloc(sizeof(capability_t) * ucap_list_size, GFP_KERNEL);
-	if(!capList){
-	  	difc_lsm_debug(" not enough memory\n");
-		return -ENOMEM;
-	}
-	ret_val = copy_from_user(capList, ucap_list, sizeof(capability_t) * ucap_list_size);
-	if(ret_val){
-		difc_lsm_debug(" Bad copy: %d bytes missing\n", ret_val);
-		kfree(capList);
-		return -ENOMEM;
-	}
-	//spin_lock(&tsec->cap_lock);
-
-	
-
-// drop from the main capList first but then store in suspendedCaps list
-
-	list_for_each_entry(cap_seg, &tsec->capList, list){
-			if(cap_seg->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",cap_seg->caps[0]);
-			break;
-		}
-	}	
-
-	//difc_lsm_debug(" just checking: %lld, %lld\n", tsec->label.sList[0],tsec->label.sList[1]);
-	if(label_type==SECRECY_LABEL){
-		len=tsec->label.sList[0];
-
-		for(i = 0; i < len; i++){
-			label=tsec->label.sList[i+1];
-			cap=cap_seg->caps[i+1];
-			temp=capList[i];
-
-			if(( cap & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-			}
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if((cap_type & PLUS_CAPABILITY)){
-				difc_lsm_debug("plus cap\n");
-			}
-			if((cap_type & MINUS_CAPABILITY)){			
-				difc_lsm_debug("minus cap\n");}
-
-			if(found_cap)
-			{
-			cap_seg->caps[i+1] = cap_seg->caps[i+2];
-			(cap_seg->caps[0])--;
-
-	// store caps in the suspendedCaps list
-
-			list_for_each_entry(sus_caps, &tsec->suspendedCaps, list){
-					if(sus_caps->caps[0] < CAP_LIST_MAX_ENTRIES){
-						not_max  = 1;
-						break;
-					}
-				}
-				if(!not_max ){
-					sus_caps = alloc_cap_segment();
-					INIT_LIST_HEAD(&sus_caps->list);
-					list_add_tail(&sus_caps->list, &tsec->suspendedCaps);
-				}
-
-				sus_caps->caps[++(sus_caps->caps[0])] = temp ;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-		}
-	}
-	else if(label_type==INTEGRITY_LABEL)
-	{
-		len=tsec->label.iList[0];
-		for(i = 0; i < len; i++){
-			label=tsec->label.iList[i+1];
-			cap=cap_seg->caps[i+1];
-			temp=capList[i];
-
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if(found_cap)
-			{
-				cap_seg->caps[i+1] = cap_seg->caps[i+2];
-				(cap_seg->caps[0])--;
-
-	// store caps in the suspendedCaps list
-
-			list_for_each_entry(sus_caps, &tsec->suspendedCaps, list){
-					if(sus_caps->caps[0] < CAP_LIST_MAX_ENTRIES){
-						not_max  = 1;
-						break;
-					}
-				}
-				if(!not_max ){
-					sus_caps = alloc_cap_segment();
-					INIT_LIST_HEAD(&sus_caps->list);
-					list_add_tail(&sus_caps->list, &tsec->suspendedCaps);
-				}
-
-				sus_caps->caps[++(sus_caps->caps[0])] = temp ;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-	}
-	}
-	else{
-		difc_lsm_debug("not vaid label_type, only secrecy and integrety support\n");
-		return -1;
-	}
-	
-/* //just for debugging
-	list_for_each_entry(cs, &tsec->capList, list){
-			if(cs->caps[0] ==0){
-		difc_lsm_debug("yep empty %lld \n",cap_seg->caps[0]);
-			break;
-		}
-	}
-
-	list_for_each_entry(cs2, &tsec->suspendedCaps, list){
-			if(cs2->caps[0] ==1){
-		difc_lsm_debug("yep added %lld \n",cs2->caps[0]);
-			break;
-		}
-	}		
-*/
-	//spin_unlock(&tsec->cap_lock);
-	tsec->type=TAG_CONF; //ztodo
-	cred->security = tsec;
-	commit_creds(cred);
-
-	kfree(capList);
-	return ret_val;
-}
-
-// resume the suspended capabilities
-static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned int ucap_list_size, int cap_type,int label_type)
-{
-	
-	struct cred *cred ;
-	struct task_security_struct *tsec;
-	int ret_val=0;
-	int found_cap = 0;
-	int not_max  = 0;
-	capability_t *capList;
-	capability_t temp;
-	struct cap_segment *cap_seg;
-	struct cap_segment *sus_caps;
-	int i;
-	capability_t cap;
-	label_t label;
-	int len;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-  	cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug(" not enough memory\n");
-        return -ENOENT;
-    }
-
-	capList = kmalloc(sizeof(capability_t) * ucap_list_size, GFP_KERNEL);
-	if(!capList){
-	  	difc_lsm_debug(" not enough memory\n");
-		return -ENOMEM;
-	}
-	ret_val = copy_from_user(capList, ucap_list, sizeof(capability_t) * ucap_list_size);
-	if(ret_val){
-		difc_lsm_debug(" Bad copy: %d bytes missing\n", ret_val);
-		kfree(capList);
-		return -ENOMEM;
-	}
-
-	//spin_lock(&tsec->cap_lock);
-
-// drop from the suspended capList first then restore it to main capList
-
-	list_for_each_entry(sus_caps, &tsec->suspendedCaps, list){
-			if(sus_caps->caps[0] > 0){
-			difc_lsm_debug("not empty caplist %lld \n",sus_caps->caps[0]);
-			break;
-		}
-	}	
-
-	if(label_type==SECRECY_LABEL){
-
-		len=tsec->label.sList[0];
-		for(i = 0; i < len; i++){
-			label=tsec->label.sList[i+1];
-			cap=sus_caps->caps[i+1];
-			temp=capList[i];
-
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if(found_cap)
-			{
-				sus_caps->caps[i+1] = sus_caps->caps[i+2];
-				(sus_caps->caps[0])--;
-
-	// store suspended caps in the capList 
-
-			list_for_each_entry(cap_seg, &tsec->capList, list){
-					if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
-						not_max  = 1;
-						break;
-					}
-				}
-				if(!not_max ){
-					cap_seg = alloc_cap_segment();
-					INIT_LIST_HEAD(&cap_seg->list);
-					list_add_tail(&cap_seg->list, &tsec->capList);
-				}
-
-				cap_seg->caps[++(cap_seg->caps[0])] = temp ;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-		}
-	}
-	else if(label_type==INTEGRITY_LABEL)
-	{
-		len=tsec->label.iList[0];
-		for(i = 0; i < len; i++){
-			label=tsec->label.iList[i+1];
-			cap=sus_caps->caps[i+1];
-			temp=capList[i];
-
-			if(( temp & CAP_LABEL_MASK) == label)
-			{
-				difc_lsm_debug("cap[%d] matches the label \n",i+1);
-				found_cap=1;
-			}		
-
-			if(found_cap)
-			{
-				sus_caps->caps[i+1] = sus_caps->caps[i+2];
-				(sus_caps->caps[0])--;
-
-	// store suspended caps in the capList 
-
-			list_for_each_entry(cap_seg, &tsec->capList, list){
-					if(cap_seg->caps[0] < CAP_LIST_MAX_ENTRIES){
-						not_max  = 1;
-						break;
-					}
-				}
-				if(!not_max ){
-					cap_seg = alloc_cap_segment();
-					INIT_LIST_HEAD(&cap_seg->list);
-					list_add_tail(&cap_seg->list, &tsec->capList);
-				}
-
-				cap_seg->caps[++(cap_seg->caps[0])] = temp ;
-
-			}
-			else{
-				difc_lsm_debug("no cap\n");
-				return -1;
-			}
-
-		}
-	}else{
-		difc_lsm_debug("not vaid label_type, only secrecy and integrety support\n");
-		return -1;
-	}
-
-	//spin_unlock(&tsec->cap_lock);
-	tsec->type=REGULAR_TCB;
-	cred->security = tsec;
-	commit_creds(cred);
-
-	kfree(capList);
-	return ret_val;
-}
-
-//ZTODO: find a better way of passing caps than direct change of another task's credentials
-static int difc_send_task_capabilities(pid_t pid, void __user *ucap_list, unsigned int ucap_list_size, int cap_type){
-
-
-	struct cred *cred;
-	const struct cred *rcred;
-	struct task_security_struct *tsec;// curent cred
-	struct task_security_struct *rsec;// reciver cred
-	struct task_struct *dest_task = pid_task(find_vpid(pid), PIDTYPE_PID); 
-	capability_t *capList;
-	int ret_val=0;
-
-	tsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-	rsec = kzalloc(sizeof(struct task_security_struct), GFP_KERNEL);
-
-
-  	cred = prepare_creds();
-    if (!cred) {
-        return -ENOMEM;
-    }
-    tsec = cred->security;
-
-    if (!tsec) {
-		difc_lsm_debug(" not enough memory\n");
-        return -ENOENT;
-    }
-
-	rcred=get_task_cred(dest_task);
-	if (!rcred) {
-        return -ENOMEM;
-    }
-    rsec = rcred->security;
-
-    if (!rsec) {
-		difc_lsm_debug(" not enough memory\n");
-        return -ENOENT;
-    }
-
-	capList = kmalloc(sizeof(capability_t) * ucap_list_size, GFP_KERNEL);
-	if(!capList){
-	  	difc_lsm_debug(" not enough memory\n");
-		return -ENOMEM;
-	}
-
-	ret_val = copy_from_user(capList, ucap_list, sizeof(capability_t) * ucap_list_size);
-	if(ret_val){
-		difc_lsm_debug(" Bad copy: %d bytes missing\n", ret_val);
-		kfree(capList);
-		return -ENOMEM;
-	}
-/*	
-	if(&tsec->cap_lock < &rsec->cap_lock){
-		//spin_lock(&tsec->cap_lock);
-		//spin_lock(&rsec->cap_lock);
-	} else {
-		//spin_lock(&rsec->cap_lock);
-		//spin_lock(&tsec->cap_lock);
-	}
-
-	if(&tsec->cap_lock < &rsec->cap_lock){
-		//spin_unlock(&rsec->cap_lock);
-		//spin_unlock(&tsec->cap_lock);
-	} else {
-		//spin_unlock(&tsec->cap_lock);
-		//spin_unlock(&rsec->cap_lock);
-	}
-*/
-
-
-	//store the reciver task cred, current task doesn't need to be saved
-	//rcred->security = rsec;
-	//commit_creds(rcred);
-
-	kfree(capList);
-	return ret_val;
-}
 
 static inline const char *get_pmd_domain_name(pmd_t *pmd)
 {
@@ -2779,24 +2229,10 @@ static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 	INIT_LIST_HEAD(&tsec->slabel);
 	INIT_LIST_HEAD(&tsec->ilabel);
 	INIT_LIST_HEAD(&tsec->olabel);
-	INIT_LIST_HEAD(&tsec->capList);
-	INIT_LIST_HEAD(&tsec->suspendedCaps);
 
 	tag_seg=alloc_tag_struct();
 	INIT_LIST_HEAD(&tag_seg->next);
-		
 
-
-
-	cap_seg = alloc_cap_segment();
-	INIT_LIST_HEAD(&cap_seg->list);
-	cap_seg->caps[0]=0;//first cell keeps the total number of caps
-	list_add_tail(&cap_seg->list, &tsec->capList);
-
-	sus_seg = alloc_cap_segment();
-	INIT_LIST_HEAD(&sus_seg->list);
-	sus_seg->caps[0]=0;
-	list_add_tail(&sus_seg->list, &tsec->suspendedCaps);
 
 
 	//spin_unlock(&tsec->cap_lock);
@@ -2890,8 +2326,6 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 	INIT_LIST_HEAD(&tsec->slabel);
 	INIT_LIST_HEAD(&tsec->ilabel);
 	INIT_LIST_HEAD(&tsec->olabel);
-	INIT_LIST_HEAD(&tsec->capList);
-	INIT_LIST_HEAD(&tsec->suspendedCaps);
 
 	tag_seg=alloc_tag_struct();
 	INIT_LIST_HEAD(&tag_seg->next);	
@@ -3084,7 +2518,7 @@ asmlinkage long sys_alloc_label(int type, enum label_types mode)
 asmlinkage long sys_permanent_declassify(void __user *ucap_list, unsigned int ucap_list_size, int cap_type,int label_type){
 
 	difc_lsm_debug("enter\n");
-	return difc_permanent_declassify(ucap_list, ucap_list_size, cap_type,label_type);
+	//return difc_permanent_declassify(ucap_list, ucap_list_size, cap_type,label_type);
 	return 0;
 
 }
@@ -3092,7 +2526,7 @@ asmlinkage long sys_permanent_declassify(void __user *ucap_list, unsigned int uc
 asmlinkage long sys_temporarily_declassify(void __user *ucap_list, int ucap_list_size, int cap_type,int label_type){
 
 	difc_lsm_debug("enter %d\n",ucap_list_size);
-	return difc_temporarily_declassify(ucap_list, ucap_list_size, cap_type,label_type);
+	//return difc_temporarily_declassify(ucap_list, ucap_list_size, cap_type,label_type);
 	return 0;
 }
 
@@ -3100,7 +2534,7 @@ asmlinkage long sys_temporarily_declassify(void __user *ucap_list, int ucap_list
 asmlinkage long sys_restore_suspended_capabilities(void __user *ucap_list, unsigned int ucap_list_size, int cap_type, int label_type){
 
 	difc_lsm_debug("enter\n");
-	return difc_restore_suspended_capabilities(ucap_list, ucap_list_size, cap_type,label_type);
+//	return difc_restore_suspended_capabilities(ucap_list, ucap_list_size, cap_type,label_type);
 return 0;
 }
 
@@ -3135,7 +2569,7 @@ asmlinkage long sys_send_task_capabilities(pid_t pid, void __user *ucap_list, un
 {
 
 	difc_lsm_debug(" enter\n");
-	return difc_send_task_capabilities(pid,ucap_list,ucap_list_size,cap_type);
+	//return difc_send_task_capabilities(pid,ucap_list,ucap_list_size,cap_type);
 	return 0;
 }
 
