@@ -126,12 +126,12 @@ struct task_security_struct {
 	struct list_head capList; // list of task's capabilities
 	struct list_head suspendedCaps;//can be used for fork/clone to temporarly drop caps
 	//spinlock_t cap_lock; // lock capabilities.
-	int tcb;  //special tag: fthread=1 ethread=2 not_labeld=3
+	int type;  //special tag: fthread=1 ethread=2 not_labeld=3
 
-	bool confined;
 	struct list_head slabel;
 	struct list_head ilabel;
 	struct list_head olabel;
+
 
 #endif  
 

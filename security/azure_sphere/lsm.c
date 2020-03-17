@@ -194,13 +194,12 @@ static struct task_security_struct *new_task_security_struct(gfp_t gfp) {
 	
 	if (!tsp)
 		return NULL;
-	tsp->confined = false;
+	tsp->type = TAG_CONF;
 	INIT_LIST_HEAD(&tsp->slabel);
 	INIT_LIST_HEAD(&tsp->ilabel);
 	INIT_LIST_HEAD(&tsp->olabel);
 	INIT_LIST_HEAD(&tsp->capList);
 	INIT_LIST_HEAD(&tsp->suspendedCaps);
-	tsp->tcb=FLOATING_TCB;// by default is FLOATING label task
 	
 	return tsp;
 } 
@@ -948,7 +947,7 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 				ret = -ENOMEM;
 				return ret;
 			}
-			tsec->confined = true;
+			tsec->type = TAG_EXP;
 			label_tag->content = tag_content;
 
 			list_add_tail_rcu(&new_tag->next, &tsec->olabel);
@@ -1156,18 +1155,18 @@ static inline int is_task_labeled(struct task_struct *tsk)
     tsec = cred->security;
     if (!tsec) {
         put_cred(cred);
-        return 1;
+        return -1;
     }
 
-	if((tsec->tcb != REGULAR_TCB) && (tsec->tcb != APPMAN_TCB))
+	if(tsec->type != TAG_CONF)
 	{
-		//difc_lsm_debug("the task is not labeled \n");
+		put_cred(cred);
 		return 1;
 	}
 
-	difc_lsm_debug("this task is labeled \n");
+	difc_lsm_debug("this task is not labeled \n");
 	put_cred(cred);
-	return 0;
+	return -1;
 }
 
 int difc_check_task_labeled(struct task_struct *tsk)
@@ -1175,83 +1174,6 @@ int difc_check_task_labeled(struct task_struct *tsk)
 	return is_task_labeled(tsk);
 
 }
-
-
-// add label to lables list: 
-// secrecy or integrity labels are seperated via label_type 
-
-static inline int add_label(struct label_struct *lables_list, label_t label, int label_type)
-{
-	label_t index, l;
-	labelList_t list;
-
-	//difc_lsm_debug("start adding %llu to the labels\n", label);
-	
-    switch(label_type){
-	case SECRECY_LABEL: list = lables_list->sList; break;
-	case INTEGRITY_LABEL: list = lables_list->iList; break;
-	default: 
-	  difc_lsm_debug("Invalid label, only secrecy & integrity labels are allowed\n");
-	  return -EINVAL;
-	}
-	//check for not repeated label
-	list_for_each_label(index, l, list)
-	  if(label == l){
-	   // difc_lsm_debug("Label already exists\n");
-			return -EEXIST;
-	  }
-	//check the first cell for not exceeding max number of labells
-	if((*list) == LABEL_LIST_MAX_ENTRIES){
-	  	difc_lsm_debug("reached the max number of label entries\n");
-		return -ENOMEM;
-	}
-    // add the lable to the list
-    list[++(*list)] = label;
-	difc_lsm_debug("added the label to the list\n");
-
-	return 0;
-}
-
-// remove label from lables list: 
-// secrecy or integrity labels are seperated via label_type 
-
-static inline int remove_label(struct label_struct *lables_list, label_t label, int label_type)
-{
-	label_t index, l;
-	labelList_t list;
-
-	difc_lsm_debug("start removing %llu from the labels\n", label);
-	
-    switch(label_type){
-	case SECRECY_LABEL: list = lables_list->sList; break;
-	case INTEGRITY_LABEL: list = lables_list->iList; break;
-	default: 
-	  difc_lsm_debug("Invalid label, only secrecy & integrity labels\n");
-	  return -EINVAL;
-	}
-	// Find the label 
-	list_for_each_label(index, l, list)
-		if(label == l)
-			break;
-
-	if(index > (*list)){
-	  	  difc_lsm_debug("Label doesn't exist\n");
-		return -ENOENT;
-	}
-
-	//shifting others after removing the label
-	while(index < (*list)){
-		list[index] = list[index+1];
-		index++;
-	}
-	(*list)--;
-
-    difc_lsm_debug("removed the label from the list\n");
-
-	
-    return 0;
-}
-
 
 
 // this checks if difc constraints are ok for two labels
@@ -1703,7 +1625,7 @@ static int difc_inode_unlink(struct inode *dir, struct dentry *dentry) {
 	struct inode_difc *isp = dentry->d_inode->i_security;
 	struct tag *t;
 
-	if (!tsp->confined)
+	if (tsp->type == TAG_CONF)
 		return rc;
 
 	if ((dir->i_mode & S_ISVTX) == 0)
@@ -1766,8 +1688,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	if (mask == 0 || !isp || inode->i_ino == 2) 
 		return rc;
 
-	//if (!tsp->confined && isp->type==TAG_CONF)
-	if (isp->type==TAG_CONF)
+	if (tsp->type==TAG_CONF && isp->type==TAG_CONF)
+	//if (isp->type==TAG_CONF)
 		return rc;
 /*
 	switch (sbp->s_magic) {
@@ -1915,7 +1837,7 @@ static int difc_file_permission(struct file *file, int mask)
 	    goto out;
 	} 
 
-	if (!tsec->confined && isp->type==TAG_CONF)
+	if (tsec->type==TAG_CONF && isp->type==TAG_CONF)
 		return rc;
 
 //	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
@@ -2473,7 +2395,7 @@ static int difc_temporarily_declassify(void __user *ucap_list, int ucap_list_siz
 	}		
 */
 	//spin_unlock(&tsec->cap_lock);
-	tsec->tcb=TEMP_DCL_TCB;
+	tsec->type=TAG_CONF; //ztodo
 	cred->security = tsec;
 	commit_creds(cred);
 
@@ -2626,7 +2548,7 @@ static int difc_restore_suspended_capabilities(void __user *ucap_list, unsigned 
 	}
 
 	//spin_unlock(&tsec->cap_lock);
-	tsec->tcb=REGULAR_TCB;
+	tsec->type=REGULAR_TCB;
 	cred->security = tsec;
 	commit_creds(cred);
 
@@ -2852,8 +2774,7 @@ static int difc_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 
 	//spin_lock_init(&tsec->cap_lock);
 
-	tsec->tcb=FLOATING_TCB;
-	tsec->confined = false;
+	tsec->type=TAG_CONF;
 
 	INIT_LIST_HEAD(&tsec->slabel);
 	INIT_LIST_HEAD(&tsec->ilabel);
@@ -2964,8 +2885,7 @@ static int difc_cred_prepare(struct cred *new, const struct cred *old, gfp_t gfp
 
 
 	
-	tsec->tcb=FLOATING_TCB;
-	tsec->confined = old_tsec->confined;
+	tsec->type = old_tsec->type;
 
 	INIT_LIST_HEAD(&tsec->slabel);
 	INIT_LIST_HEAD(&tsec->ilabel);
