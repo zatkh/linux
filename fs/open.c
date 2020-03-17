@@ -1099,28 +1099,44 @@ SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags,
 	return do_sys_open(dfd, filename, flags, mode);
 }
 
+
 long do_create_labeled(const char __user *pathname, int flags, int mode, const char __user * label)
 {
 	int error = 0;
 	struct dentry *dentry;
 	struct filename* fname;
-	//struct inode *inode;
+	struct inode *inode;
 	//struct nameidata nd;
 	struct path path;
 	struct open_flags op;
-
-
+	struct file* file;
 
 	void *lbl = security_copy_user_label(label);
 
 	fname = getname(pathname);
 	if (fname==NULL){
 		printk(KERN_INFO "[sys_create_labeled] Failed getname\n");
-		goto out_err;
+		goto out;
 	}
 
 	int err = build_open_flags(flags, mode, &op);
-	return err ? ERR_PTR(err) : do_filp_open(AT_FDCWD, fname, &op);
+	if(err)
+		{ ERR_PTR(err);
+			goto out;
+		}
+
+	file=do_filp_open(AT_FDCWD, fname, &op);
+
+	inode=file->f_path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out;
+	}
+
+	inode_lock(inode);
+
+	error=security_inode_set_security(inode, pathname,lbl, 0, 0);
+
 
 /*
 	error =filename_lookup(AT_FDCWD, fname,LOOKUP_PARENT, &path, NULL);
@@ -1163,15 +1179,13 @@ long do_create_labeled(const char __user *pathname, int flags, int mode, const c
 
 	dput(dentry);
 //out_unlock:
-	//spin_unlock(&inode->i_lock);
-	//path_release(&nd);
-//out:
-//	putname(fname);
+	inode_lock(inode);
+
 	*/
-out_err:
-	if(lbl)
-		kfree(lbl);
- 
+out:
+	putname(fname);
+	inode_unlock(inode);
+
 	return error;
 
 }

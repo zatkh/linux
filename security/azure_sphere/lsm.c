@@ -2717,14 +2717,13 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
 	/*
 		LSM_HOOK_INIT(inode_permission, difc_inode_permission),
-
+	LSM_HOOK_INIT(file_permission,difc_file_permission),
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 	LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),
 	LSM_HOOK_INIT(inode_getsecurity, difc_inode_getsecurity),
 	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
-	LSM_HOOK_INIT(file_permission,difc_file_permission),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
 	*/
