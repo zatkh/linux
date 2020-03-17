@@ -67,9 +67,9 @@ size_t difc_confine_task(struct file *file, const char __user *buf,
 		return -EINVAL;
 
 	if (confine == 1)
-		tsp->confined = true;
+		tsp->type = TAG_CONF;
 	else if (confine == 0)
-		tsp->confined = false;
+		tsp->type = TAG_CONF;
 	else
 		return -EINVAL;
 

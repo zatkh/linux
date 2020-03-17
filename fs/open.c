@@ -32,6 +32,7 @@
 #include <linux/dnotify.h>
 #include <linux/compat.h>
 
+
 #include "internal.h"
 
 int do_truncate(struct dentry *dentry, loff_t length, unsigned int time_attrs,
@@ -1087,6 +1088,8 @@ SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t, mode)
 	return do_sys_open(AT_FDCWD, filename, flags, mode);
 }
 
+
+
 SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags,
 		umode_t, mode)
 {
@@ -1094,6 +1097,107 @@ SYSCALL_DEFINE4(openat, int, dfd, const char __user *, filename, int, flags,
 		flags |= O_LARGEFILE;
 
 	return do_sys_open(dfd, filename, flags, mode);
+}
+
+
+long do_create_labeled(const char __user *pathname, int flags, int mode, const char __user * label)
+{
+	int error = 0;
+	struct dentry *dentry;
+	struct filename* fname;
+	struct inode *inode;
+	//struct nameidata nd;
+	struct path path;
+	struct open_flags op;
+	struct file* file;
+
+	void *lbl = security_copy_user_label(label);
+
+	fname = getname(pathname);
+	if (fname==NULL){
+		printk(KERN_INFO "[sys_create_labeled] Failed getname\n");
+		goto out;
+	}
+
+	int err = build_open_flags(flags, mode, &op);
+	if(err)
+		{ ERR_PTR(err);
+			goto out;
+		}
+
+	file=do_filp_open(AT_FDCWD, fname, &op);
+
+	inode=file->f_path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out;
+	}
+	//printk(KERN_INFO "[sys_create_labeled] before setting inode labels\n");
+
+	inode_lock(inode);
+
+	error=security_inode_set_security(inode, pathname,lbl, 0, 0);
+
+
+/*
+	error =filename_lookup(AT_FDCWD, fname,LOOKUP_PARENT, &path, NULL);
+	//error = do_path_lookup(AT_FDCWD, tmp, LOOKUP_PARENT, &nd);
+	if (error)
+		goto out;
+
+	inode = path.dentry->d_inode;
+	if(unlikely(IS_ERR(inode))){
+		error = PTR_ERR(inode);
+		goto out;
+	}
+	dentry = path.dentry;//lookup_create(&nd, 0);
+	error = PTR_ERR(dentry);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(inode))
+		mode &= ~current->fs->umask;
+		
+
+	*/
+/*
+ 	dentry = user_path_create(AT_FDCWD, pathname, &path, LOOKUP_REVAL);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
+
+	if (!IS_POSIXACL(path.dentry->d_inode))
+		mode &= ~current_umask();
+
+	//printk(KERN_INFO "[sys_create_labeled] before setting inode labels\n");
+
+
+
+	error=security_inode_set_security(path.dentry->d_inode, pathname,lbl, 0, 0);
+	//printk(KERN_INFO "[sys_create_labeled] before vfs_Create\n");
+
+	error = vfs_create(path.dentry->d_inode, dentry, mode, true, lbl);
+	
+
+	dput(dentry);
+//out_unlock:
+	inode_lock(inode);
+
+	*/
+out:
+	putname(fname);
+	inode_unlock(inode);
+
+	return error;
+
+}
+
+
+
+
+SYSCALL_DEFINE4(create_labeled, const char __user *, pathname, int, flags, umode_t, mode, const char __user *, label)
+{
+
+	return do_create_labeled(pathname, flags,mode,label);
 }
 
 #ifdef CONFIG_COMPAT

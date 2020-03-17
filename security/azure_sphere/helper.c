@@ -205,9 +205,9 @@ int security_set_labels(struct list_head *slabel,
 		list_add_tail_rcu(&new_tag->next, &new_slabel);
 	}
 	
-	if (tsp != NULL && tsp->confined)
+	if (tsp != NULL && tsp->type!=TAG_CONF)
 		ret = can_label_change(slabel, &new_slabel, &tsp->olabel);
-	else if (tsp != NULL && !tsp->confined)
+	else if (tsp != NULL && tsp->type==TAG_CONF)
 		ret = 0;
 	else
 		ret = can_label_change(slabel, &new_slabel, NULL);
@@ -240,9 +240,9 @@ int security_set_labels(struct list_head *slabel,
 		list_add_tail_rcu(&new_tag->next, &new_ilabel);
 	}
 
-	if (tsp != NULL && tsp->confined)
+	if (tsp != NULL && tsp->type!=TAG_CONF)
 		ret = can_label_change(ilabel, &new_ilabel, &tsp->olabel);
-	else if (tsp != NULL && !tsp->confined)
+	else if (tsp != NULL && tsp->type==TAG_CONF)
 		ret = 0;
 	else
 		ret = can_label_change(ilabel, &new_ilabel, NULL);
