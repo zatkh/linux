@@ -80,8 +80,6 @@
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-static struct kmem_cache *difc_obj_kcache;
-static struct kmem_cache *difc_caps_kcache;
 struct kmem_cache *tag_struct;
 
 
@@ -99,10 +97,11 @@ unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 #endif
 
 
-#define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
+//#define alloc_cap_segment() kmem_cache_zalloc(difc_caps_kcache, GFP_KERNEL)
+//#define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
+
 #define alloc_tag_struct() kmem_cache_zalloc(tag_struct, GFP_KERNEL)
 
-#define free_cap_segment(s) kmem_cache_free(difc_caps_kcache, s)
 
 
 
@@ -1447,21 +1446,7 @@ static int difc_inode_alloc_security(struct inode *inode) {
 		return -ENOMEM;
 
 	inode->i_security = isp;
-//	difc_lsm_debug("successfull inode alloc init\n");
 
-
-	/*
-		struct object_security_struct *isec;
-	isec = kmem_cache_zalloc(difc_obj_kcache, GFP_KERNEL);
-	if(!isec) {
-	  difc_lsm_debug("not enough memory\n");
-		return -ENOMEM;
-	}
-
-	init_rwsem(&isec->label_change_sem);
-	inode->i_security = isec;
-	return 0;
-	*/	
 	return 0;
 }
 
@@ -1472,12 +1457,13 @@ static void difc_inode_free_security(struct inode *inode) {
 		return;
 	inode->i_security = NULL;
 
-/*	difc_free_label(&isp->ilabel);
-	list_del(&isp->ilabel);
+	if(isp->type!=TAG_CONF)
+	{	difc_free_label(&isp->ilabel);
+	  	list_del(&isp->ilabel);
 
-	difc_free_label(&isp->slabel);
-	list_del(&isp->slabel);
-*/
+		difc_free_label(&isp->slabel);
+		list_del(&isp->slabel);
+	}
 	kfree(isp);
 	
 
@@ -1675,9 +1661,8 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		return rc;
 
 	if (tsp->type==TAG_CONF && isp->type==TAG_CONF)
-	//if (isp->type==TAG_CONF)
 		return rc;
-/*
+
 	switch (sbp->s_magic) {
 		case PIPEFS_MAGIC:
 		case SOCKFS_MAGIC:
@@ -1693,12 +1678,9 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			// For now, only check on the rest cases 
 			break;
 	}
-	*/
+
+
 	if (mask & (MAY_READ | MAY_EXEC)) {
-
-				difc_lsm_debug("MAY_READ | MAY_EXEC\n");
-
-
 		/*
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 65535 and secrecy label contains 0, the inode is globally readable
@@ -1732,7 +1714,6 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 			/*
 			*  Secrecy: Sq <= Sp + Op
 			*/
-					difc_lsm_debug("before checking\n");
 
 			rc = is_label_subset(&isp->slabel, &tsp->olabel, &tsp->slabel);
 			if (rc < 0 && down != 0) {
@@ -1748,7 +1729,6 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 		* Check for special tag: 65535 and 0
 		* If integrity label contains 0 and secrecy label contains 65535, the inode is globally writable
 		*/
-		difc_lsm_debug("MAY_WRITE | MAY_APPEND\n");
 
 		top = -1;
 		down = -1;
@@ -1830,14 +1810,13 @@ static int difc_file_permission(struct file *file, int mask)
 //	    goto out;
 //	}
 
-	getFilePath(file,&path);
+/*	getFilePath(file,&path);
 	if(path==NULL){
 	    goto out;
 	}
 	
 		//The check.
 	if( (mask & MAY_READ) || (mask & MAY_EXEC) ){
-						difc_lsm_debug("before check: MAY_READ\n");
 
 		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
 		if (rc < 0) {
@@ -1847,7 +1826,6 @@ static int difc_file_permission(struct file *file, int mask)
 		}
 	}
 	if( (mask & MAY_WRITE) || (mask & MAY_APPEND) ){
-						difc_lsm_debug("before check: MAY_WRITE\n");
 
 		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
 		if (rc < 0) {
@@ -1856,10 +1834,12 @@ static int difc_file_permission(struct file *file, int mask)
 			goto out;
 		}
 	}
+	*/
 out:
 //	if(fseclabel!=NULL) kfree(fseclabel);
+	rc = 0;
 	return rc;
-}
+	}
 
 static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
 	struct inode_difc *isp;
@@ -2448,17 +2428,6 @@ static void azure_sphere_cred_init_security(void)
 				  0, SLAB_PANIC, NULL);	
 	//KMEM_CACHE(tag, SLAB_PANIC);
 
-/*
-	difc_caps_kcache = 
-		kmem_cache_create("difc_cap_segment",
-				  sizeof(struct cap_segment),
-				  0, SLAB_PANIC, NULL);			  
-
-	difc_obj_kcache = 
-		kmem_cache_create("difc_object_struct",
-				  sizeof(struct object_security_struct),
-				  0, SLAB_PANIC, NULL);
-*/
 	atomic_set(&max_caps_num, CAPS_INIT);
 
 	alloc_hash();
