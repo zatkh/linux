@@ -1663,6 +1663,18 @@ static int difc_inode_permission(struct inode *inode, int mask) {
 	if (tsp->type==TAG_CONF && isp->type==TAG_CONF)
 		return rc;
 
+	if (tsp->type==TAG_CONF && isp->type==TAG_EXP)
+		{	
+			difc_lsm_debug("unlabled task want to access exlictly taged file with mask %d, inode %lu\n", mask, inode->i_ino);
+			return 0;
+		}
+
+	if (tsp->type==TAG_CONF && isp->type==TAG_FLO)
+		{	
+			difc_lsm_debug("unlabled task want to access floating tagged file with mask %d, inode %lu\n", mask, inode->i_ino);
+			return 0;
+		}
+
 	switch (sbp->s_magic) {
 		case PIPEFS_MAGIC:
 		case SOCKFS_MAGIC:
@@ -1806,11 +1818,23 @@ static int difc_file_permission(struct file *file, int mask)
 	if (tsec->type==TAG_CONF && isp->type==TAG_CONF)
 		return rc;
 
+	if (tsec->type==TAG_CONF && isp->type==TAG_EXP)
+		{	
+			difc_lsm_debug("unlabled task want to access exlictly taged file with mask %d, inode %lu\n", mask, inode->i_ino);
+			return 0;
+		}
+
+	if (tsec->type==TAG_CONF && isp->type==TAG_FLO)
+		{	
+			difc_lsm_debug("unlabled task want to access floating tagged file with mask %d, inode %lu\n", mask, inode->i_ino);
+			return 0;
+		}
+
 //	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
 //	    goto out;
 //	}
 
-/*	getFilePath(file,&path);
+	getFilePath(file,&path);
 	if(path==NULL){
 	    goto out;
 	}
@@ -1834,7 +1858,7 @@ static int difc_file_permission(struct file *file, int mask)
 			goto out;
 		}
 	}
-	*/
+	
 out:
 //	if(fseclabel!=NULL) kfree(fseclabel);
 	rc = 0;
@@ -2689,21 +2713,25 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_alloc_security,difc_inode_alloc_security),
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
+	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
+
+	/*
+		LSM_HOOK_INIT(inode_permission, difc_inode_permission),
+
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 	LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),
 	LSM_HOOK_INIT(inode_getsecurity, difc_inode_getsecurity),
 	LSM_HOOK_INIT(inode_setsecurity, difc_inode_setsecurity),
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
-	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
 	LSM_HOOK_INIT(file_permission,difc_file_permission),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
+	*/
 	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
 	LSM_HOOK_INIT(sk_alloc_security, difc_sk_alloc_security),
 	LSM_HOOK_INIT(sk_free_security, difc_sk_free_security),
 	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
-	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
 
 	
 
