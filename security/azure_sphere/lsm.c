@@ -1355,7 +1355,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 	sec_num= (user_label->sList[0] );
 	integ_num=(user_label->iList[0]);
 
-//	difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld, sec %d, integ %d\n", user_label->sList[0],user_label->sList[1],sec_num,integ_num);
+	//difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld, sec %d, integ %d\n", user_label->sList[0],user_label->sList[1],sec_num,integ_num);
 
 
 	if ( sec_num || integ_num) {
@@ -1791,78 +1791,10 @@ out:
 
 static int difc_file_permission(struct file *file, int mask)
 {
-	struct task_security_struct *tsec = current_security();
 	struct inode *inode = file->f_path.dentry->d_inode;
-	struct inode_difc *isp = inode->i_security;
-	struct super_block *sbp = inode->i_sb;
-	int pid=current->pid;
-/*	int uid = inode->i_uid;
-	int euid = current->cred->euid;
-	int gid=inode->i_gid;
-	int inode_no = inode->i_ino;*/
-	char *path=NULL;
-	int rc=0;
-	int i =0 ;
-	struct tag *t;
-	int top, down;
 
-	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
-	if (mask == 0 ) 
-		return rc;
+	return difc_inode_permission(inode,mask);
 
-	if(!tsec){
-	    difc_lsm_debug(" file_permission. tsec NULL for pid %d \n",pid);
-	    goto out;
-	} 
-
-	if (tsec->type==TAG_CONF && isp->type==TAG_CONF)
-		return rc;
-
-	if (tsec->type==TAG_CONF && isp->type==TAG_EXP)
-		{	
-			difc_lsm_debug("unlabled task want to access exlictly taged file with mask %d, inode %lu\n", mask, inode->i_ino);
-			return 0;
-		}
-
-	if (tsec->type==TAG_CONF && isp->type==TAG_FLO)
-		{	
-			difc_lsm_debug("unlabled task want to access floating tagged file with mask %d, inode %lu\n", mask, inode->i_ino);
-			return 0;
-		}
-
-//	if((exempt(uid) || exempt(euid)) || sdcard(gid) || exempt_system_apps(euid) || exempt_system_apps(uid)){//do nothing
-//	    goto out;
-//	}
-
-	getFilePath(file,&path);
-	if(path==NULL){
-	    goto out;
-	}
-	
-		//The check.
-	if( (mask & MAY_READ) || (mask & MAY_EXEC) ){
-
-		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
-		if (rc < 0) {
-			difc_lsm_debug("secrecy cannot read (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
-			rc = -EACCES;
-			goto out;
-		}
-	}
-	if( (mask & MAY_WRITE) || (mask & MAY_APPEND) ){
-
-		rc = is_label_subset(&tsec->slabel, &tsec->olabel, &isp->slabel);
-		if (rc < 0) {
-			difc_lsm_debug("secrecy cannot write (0x%08x: %ld)\n", sbp->s_magic, inode->i_ino);
-			rc = -EACCES;
-			goto out;
-		}
-	}
-	
-out:
-//	if(fseclabel!=NULL) kfree(fseclabel);
-	rc = 0;
-	return rc;
 	}
 
 static void difc_d_instantiate(struct dentry *opt_dentry, struct inode *inode) {
@@ -2714,10 +2646,11 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_free_security,difc_inode_free_security),
 	LSM_HOOK_INIT(inode_init_security,difc_inode_init_security),
 	LSM_HOOK_INIT(inode_set_security,difc_inode_set_security),
+	LSM_HOOK_INIT(inode_permission, difc_inode_permission),
+	LSM_HOOK_INIT(file_permission,difc_file_permission),
 
 	/*
-		LSM_HOOK_INIT(inode_permission, difc_inode_permission),
-	LSM_HOOK_INIT(file_permission,difc_file_permission),
+	
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
 	LSM_HOOK_INIT(inode_post_setxattr, difc_inode_post_setxattr),

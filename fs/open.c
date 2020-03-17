@@ -1132,6 +1132,7 @@ long do_create_labeled(const char __user *pathname, int flags, int mode, const c
 		error = PTR_ERR(inode);
 		goto out;
 	}
+	//printk(KERN_INFO "[sys_create_labeled] before setting inode labels\n");
 
 	inode_lock(inode);
 
