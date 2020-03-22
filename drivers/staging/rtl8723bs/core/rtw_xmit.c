@@ -1,7 +1,15 @@
-// SPDX-License-Identifier: GPL-2.0
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2012 Realtek Corporation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
  *
  ******************************************************************************/
 #define _RTW_XMIT_C_
@@ -36,17 +44,20 @@ void _rtw_init_sta_xmit_priv(struct sta_xmit_priv *psta_xmitpriv)
 	INIT_LIST_HEAD(&psta_xmitpriv->apsd);
 }
 
-s32 _rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
+s32	_rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 {
 	int i;
 	struct xmit_buf *pxmitbuf;
 	struct xmit_frame *pxframe;
 	sint	res = _SUCCESS;
 
+	/*  We don't need to memset padapter->XXX to zero, because adapter is allocated by vzalloc(). */
+	/* memset((unsigned char *)pxmitpriv, 0, sizeof(struct xmit_priv)); */
+
 	spin_lock_init(&pxmitpriv->lock);
 	spin_lock_init(&pxmitpriv->lock_sctx);
-	init_completion(&pxmitpriv->xmit_comp);
-	init_completion(&pxmitpriv->terminate_xmitthread_comp);
+	sema_init(&pxmitpriv->xmit_sema, 0);
+	sema_init(&pxmitpriv->terminate_xmitthread_sema, 0);
 
 	/*
 	Please insert all the queue initializaiton using _rtw_init_queue below
@@ -260,9 +271,7 @@ s32 _rtw_init_xmit_priv(struct xmit_priv *pxmitpriv, struct adapter *padapter)
 		}
 	}
 
-	res = rtw_alloc_hwxmits(padapter);
-	if (res == _FAIL)
-		goto exit;
+	rtw_alloc_hwxmits(padapter);
 	rtw_init_hwxmits(pxmitpriv->hwxmits, pxmitpriv->hwxmit_entry);
 
 	for (i = 0; i < 4; i++) {
@@ -387,7 +396,7 @@ static void update_attrib_vcs_info(struct adapter *padapter, struct xmit_frame *
 	if (pmlmeext->cur_wireless_mode < WIRELESS_11_24N  || padapter->registrypriv.wifi_spec) {
 		if (sz > padapter->registrypriv.rts_thresh)
 			pattrib->vcs_mode = RTS_CTS;
-		else {
+		else{
 			if (pattrib->rtsen)
 				pattrib->vcs_mode = RTS_CTS;
 			else if (pattrib->cts2self)
@@ -395,7 +404,7 @@ static void update_attrib_vcs_info(struct adapter *padapter, struct xmit_frame *
 			else
 				pattrib->vcs_mode = NONE_VCS;
 		}
-	} else {
+	} else{
 		while (true) {
 			/* IOT action */
 			if ((pmlmeinfo->assoc_AP_vendor == HT_IOT_PEER_ATHEROS) && (pattrib->ampdu_en == true) &&
@@ -525,7 +534,7 @@ static s32 update_attrib_sec_info(struct adapter *padapter, struct pkt_attrib *p
 			res = _FAIL;
 			goto exit;
 		}
-	} else {
+	} else{
 		GET_ENCRY_ALGO(psecuritypriv, psta, pattrib->encrypt, bmcast);
 
 		switch (psecuritypriv->dot11AuthAlgrthm) {
@@ -835,7 +844,7 @@ static s32 update_attrib(struct adapter *padapter, _pkt *pkt, struct pkt_attrib 
 	if (check_fwstate(pmlmepriv, WIFI_AP_STATE|WIFI_ADHOC_STATE|WIFI_ADHOC_MASTER_STATE)) {
 		if (pattrib->qos_en)
 			set_qos(&pktfile, pattrib);
-	} else {
+	} else{
 		if (pqospriv->qos_option) {
 			set_qos(&pktfile, pattrib);
 
@@ -846,6 +855,8 @@ static s32 update_attrib(struct adapter *padapter, _pkt *pkt, struct pkt_attrib 
 	}
 
 	/* pattrib->priority = 5; force to used VI queue, for testing */
+
+	rtw_set_tx_chksum_offload(pkt, pattrib);
 
 exit:
 	return res;
@@ -951,7 +962,7 @@ static s32 xmitframe_addmic(struct adapter *padapter, struct xmit_frame *pxmitfr
 					length = pattrib->last_txcmdsz-pattrib->hdrlen-pattrib->iv_len-((pattrib->bswenc) ? pattrib->icv_len : 0);
 					rtw_secmicappend(&micdata, payload, length);
 					payload = payload+length;
-				} else {
+				} else{
 					length = pxmitpriv->frag_len-pattrib->hdrlen-pattrib->iv_len-((pattrib->bswenc) ? pattrib->icv_len : 0);
 					rtw_secmicappend(&micdata, payload, length);
 					payload = payload+length+pattrib->icv_len;
@@ -1136,7 +1147,7 @@ s32 rtw_make_wlanhdr(struct adapter *padapter, u8 *hdr, struct pkt_attrib *pattr
 						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] = (tx_seq+1)&0xfff;
 
 						pattrib->ampdu_en = true;/* AGG EN */
-					} else {
+					} else{
 						/* DBG_871X("tx ampdu over run\n"); */
 						psta->BA_starting_seqctrl[pattrib->priority & 0x0f] = (pattrib->seqnum+1)&0xfff;
 						pattrib->ampdu_en = true;/* AGG EN */
@@ -1146,7 +1157,7 @@ s32 rtw_make_wlanhdr(struct adapter *padapter, u8 *hdr, struct pkt_attrib *pattr
 			}
 		}
 
-	} else {
+	} else{
 
 	}
 
@@ -1572,7 +1583,7 @@ void rtw_update_protection(struct adapter *padapter, u8 *ie, uint ie_len)
 		perp = rtw_get_ie(ie, _ERPINFO_IE_, &erp_len, ie_len);
 		if (perp == NULL)
 			pxmitpriv->vcs = NONE_VCS;
-		else {
+		else{
 			protection = (*(perp + 2)) & BIT(1);
 			if (protection) {
 				if (pregistrypriv->vcs_type == RTS_CTS)
@@ -1812,7 +1823,7 @@ s32 rtw_free_xmitbuf(struct xmit_priv *pxmitpriv, struct xmit_buf *pxmitbuf)
 	if (pxmitbuf->buf_tag == XMITBUF_CMD) {
 	} else if (pxmitbuf->buf_tag == XMITBUF_MGNT) {
 		rtw_free_xmitbuf_ext(pxmitpriv, pxmitbuf);
-	} else {
+	} else{
 		spin_lock_irqsave(&pfree_xmitbuf_queue->lock, irqL);
 
 		list_del_init(&pxmitbuf->list);
@@ -2146,7 +2157,7 @@ exit:
 	return res;
 }
 
-s32 rtw_alloc_hwxmits(struct adapter *padapter)
+void rtw_alloc_hwxmits(struct adapter *padapter)
 {
 	struct hw_xmit *hwxmits;
 	struct xmit_priv *pxmitpriv = &padapter->xmitpriv;
@@ -2155,10 +2166,12 @@ s32 rtw_alloc_hwxmits(struct adapter *padapter)
 
 	pxmitpriv->hwxmits = NULL;
 
-	pxmitpriv->hwxmits = rtw_zmalloc(sizeof(struct hw_xmit) * pxmitpriv->hwxmit_entry);
+	pxmitpriv->hwxmits = (struct hw_xmit *)rtw_zmalloc(sizeof(struct hw_xmit) * pxmitpriv->hwxmit_entry);
 
-	if (!pxmitpriv->hwxmits)
-		return _FAIL;
+	if (pxmitpriv->hwxmits == NULL) {
+		DBG_871X("alloc hwxmits fail!...\n");
+		return;
+	}
 
 	hwxmits = pxmitpriv->hwxmits;
 
@@ -2204,7 +2217,7 @@ s32 rtw_alloc_hwxmits(struct adapter *padapter)
 
 	}
 
-	return _SUCCESS;
+
 }
 
 void rtw_free_hwxmits(struct adapter *padapter)
@@ -2389,7 +2402,7 @@ sint xmitframe_enqueue_for_sleeping_sta(struct adapter *padapter, struct xmit_fr
 
 	if (check_fwstate(pmlmepriv, WIFI_AP_STATE) == false) {
 		DBG_COUNTER(padapter->tx_logs.core_tx_ap_enqueue_warn_fwstate);
-		return ret;
+	    return ret;
 	}
 /*
 	if (pattrib->psta)
@@ -2684,7 +2697,7 @@ void wakeup_sta_to_xmit(struct adapter *padapter, struct sta_info *psta)
 			if (psta->sleepq_ac_len > 0) {
 				pxmitframe->attrib.mdata = 1;
 				pxmitframe->attrib.eosp = 0;
-			} else {
+			} else{
 				pxmitframe->attrib.mdata = 0;
 				pxmitframe->attrib.eosp = 1;
 			}
@@ -2839,7 +2852,7 @@ void xmit_delivery_enabled_frames(struct adapter *padapter, struct sta_info *pst
 		if (psta->sleepq_ac_len > 0) {
 			pxmitframe->attrib.mdata = 1;
 			pxmitframe->attrib.eosp = 0;
-		} else {
+		} else{
 			pxmitframe->attrib.mdata = 0;
 			pxmitframe->attrib.eosp = 1;
 		}
@@ -2879,7 +2892,7 @@ void enqueue_pending_xmitbuf(
 	list_add_tail(&pxmitbuf->list, get_list_head(pqueue));
 	spin_unlock_bh(&pqueue->lock);
 
-	complete(&(pri_adapter->xmitpriv.xmit_comp));
+	up(&(pri_adapter->xmitpriv.xmit_sema));
 }
 
 void enqueue_pending_xmitbuf_to_head(
@@ -2998,7 +3011,7 @@ int rtw_xmit_thread(void *context)
 		flush_signals_thread();
 	} while (_SUCCESS == err);
 
-	complete(&padapter->xmitpriv.terminate_xmitthread_comp);
+	up(&padapter->xmitpriv.terminate_xmitthread_sema);
 
 	thread_exit();
 }
@@ -3033,7 +3046,7 @@ int rtw_sctx_wait(struct submit_ctx *sctx, const char *msg)
 	return ret;
 }
 
-static bool rtw_sctx_chk_warning_status(int status)
+static bool rtw_sctx_chk_waring_status(int status)
 {
 	switch (status) {
 	case RTW_SCTX_DONE_UNKNOWN:
@@ -3051,7 +3064,7 @@ static bool rtw_sctx_chk_warning_status(int status)
 void rtw_sctx_done_err(struct submit_ctx **sctx, int status)
 {
 	if (*sctx) {
-		if (rtw_sctx_chk_warning_status(status))
+		if (rtw_sctx_chk_waring_status(status))
 			DBG_871X("%s status:%d\n", __func__, status);
 		(*sctx)->status = status;
 		complete(&((*sctx)->done));

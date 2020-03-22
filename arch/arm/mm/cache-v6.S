@@ -201,7 +201,7 @@ ENTRY(v6_flush_kern_dcache_area)
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
  */
-v6_dma_inv_range:
+ENTRY(v6_dma_inv_range)
 #ifdef CONFIG_DMA_CACHE_RWFO
 	ldrb	r2, [r0]			@ read for ownership
 	strb	r2, [r0]			@ write for ownership
@@ -215,8 +215,8 @@ v6_dma_inv_range:
 #endif
 	tst	r1, #D_CACHE_LINE_SIZE - 1
 #ifdef CONFIG_DMA_CACHE_RWFO
-	ldrbne	r2, [r1, #-1]			@ read for ownership
-	strbne	r2, [r1, #-1]			@ write for ownership
+	ldrneb	r2, [r1, #-1]			@ read for ownership
+	strneb	r2, [r1, #-1]			@ write for ownership
 #endif
 	bic	r1, r1, #D_CACHE_LINE_SIZE - 1
 #ifdef HARVARD_CACHE
@@ -246,7 +246,7 @@ v6_dma_inv_range:
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
  */
-v6_dma_clean_range:
+ENTRY(v6_dma_clean_range)
 	bic	r0, r0, #D_CACHE_LINE_SIZE - 1
 1:
 #ifdef CONFIG_DMA_CACHE_RWFO
@@ -284,8 +284,8 @@ ENTRY(v6_dma_flush_range)
 	add	r0, r0, #D_CACHE_LINE_SIZE
 	cmp	r0, r1
 #ifdef CONFIG_DMA_CACHE_RWFO
-	ldrblo	r2, [r0]			@ read for ownership
-	strblo	r2, [r0]			@ write for ownership
+	ldrlob	r2, [r0]			@ read for ownership
+	strlob	r2, [r0]			@ write for ownership
 #endif
 	blo	1b
 	mov	r0, #0

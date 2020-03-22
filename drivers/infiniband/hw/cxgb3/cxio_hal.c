@@ -279,7 +279,7 @@ int cxio_create_qp(struct cxio_rdev *rdev_p, u32 kernel_domain,
 	if (!wq->qpid)
 		return -ENOMEM;
 
-	wq->rq = kcalloc(depth, sizeof(struct t3_swrq), GFP_KERNEL);
+	wq->rq = kzalloc(depth * sizeof(struct t3_swrq), GFP_KERNEL);
 	if (!wq->rq)
 		goto err1;
 
@@ -287,16 +287,17 @@ int cxio_create_qp(struct cxio_rdev *rdev_p, u32 kernel_domain,
 	if (!wq->rq_addr)
 		goto err2;
 
-	wq->sq = kcalloc(depth, sizeof(struct t3_swsq), GFP_KERNEL);
+	wq->sq = kzalloc(depth * sizeof(struct t3_swsq), GFP_KERNEL);
 	if (!wq->sq)
 		goto err3;
 
 	wq->queue = dma_alloc_coherent(&(rdev_p->rnic_info.pdev->dev),
-				       depth * sizeof(union t3_wr),
-				       &(wq->dma_addr), GFP_KERNEL);
+					     depth * sizeof(union t3_wr),
+					     &(wq->dma_addr), GFP_KERNEL);
 	if (!wq->queue)
 		goto err4;
 
+	memset(wq->queue, 0, depth * sizeof(union t3_wr));
 	dma_unmap_addr_set(wq, mapping, wq->dma_addr);
 	wq->doorbell = (void __iomem *)rdev_p->rnic_info.kdb_addr;
 	if (!kernel_domain)
@@ -403,10 +404,12 @@ static void insert_sq_cqe(struct t3_wq *wq, struct t3_cq *cq,
 
 int cxio_flush_sq(struct t3_wq *wq, struct t3_cq *cq, int count)
 {
-	__u32 ptr = wq->sq_rptr + count;
+	__u32 ptr;
 	int flushed = 0;
-	struct t3_swsq *sqp = wq->sq + Q_PTR2IDX(ptr, wq->sq_size_log2);
+	struct t3_swsq *sqp = wq->sq + Q_PTR2IDX(wq->sq_rptr, wq->sq_size_log2);
 
+	ptr = wq->sq_rptr + count;
+	sqp = wq->sq + Q_PTR2IDX(ptr, wq->sq_size_log2);
 	while (ptr != wq->sq_wptr) {
 		sqp->signaled = 0;
 		insert_sq_cqe(wq, cq, sqp);

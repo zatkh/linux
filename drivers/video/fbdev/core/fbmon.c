@@ -620,7 +620,7 @@ static struct fb_videomode *fb_create_modedb(unsigned char *edid, int *dbsize,
 	int num = 0, i, first = 1;
 	int ver, rev;
 
-	mode = kcalloc(50, sizeof(struct fb_videomode), GFP_KERNEL);
+	mode = kzalloc(50 * sizeof(struct fb_videomode), GFP_KERNEL);
 	if (mode == NULL)
 		return NULL;
 
@@ -671,7 +671,7 @@ static struct fb_videomode *fb_create_modedb(unsigned char *edid, int *dbsize,
 	}
 
 	*dbsize = num;
-	m = kmalloc_array(num, sizeof(struct fb_videomode), GFP_KERNEL);
+	m = kmalloc(num * sizeof(struct fb_videomode), GFP_KERNEL);
 	if (!m)
 		return mode;
 	memmove(m, mode, num * sizeof(struct fb_videomode));
@@ -978,8 +978,6 @@ void fb_edid_to_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	get_monspecs(edid, specs);
 
 	specs->modedb = fb_create_modedb(edid, &specs->modedb_len, specs);
-	if (!specs->modedb)
-		return;
 
 	/*
 	 * Workaround for buggy EDIDs that sets that the first
@@ -1057,9 +1055,8 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	if (!(num + svd_n))
 		return;
 
-	m = kcalloc(specs->modedb_len + num + svd_n,
-		    sizeof(struct fb_videomode),
-		    GFP_KERNEL);
+	m = kzalloc((specs->modedb_len + num + svd_n) *
+		       sizeof(struct fb_videomode), GFP_KERNEL);
 
 	if (!m)
 		return;
@@ -1482,8 +1479,8 @@ int of_get_fb_videomode(struct device_node *np, struct fb_videomode *fb,
 	if (ret)
 		return ret;
 
-	pr_debug("%pOF: got %dx%d display mode\n",
-		np, vm.hactive, vm.vactive);
+	pr_debug("%pOF: got %dx%d display mode from %s\n",
+		np, vm.hactive, vm.vactive, np->name);
 	dump_fb_videomode(fb);
 
 	return 0;

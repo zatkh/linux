@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * qdio queue initialization
  *
@@ -27,6 +26,7 @@ struct qaob *qdio_allocate_aob(void)
 {
 	return kmem_cache_zalloc(qdio_aob_cache, GFP_ATOMIC);
 }
+EXPORT_SYMBOL_GPL(qdio_allocate_aob);
 
 void qdio_release_aob(struct qaob *aob)
 {
@@ -181,7 +181,7 @@ static void setup_queues_misc(struct qdio_q *q, struct qdio_irq *irq_ptr,
 }
 
 static void setup_storage_lists(struct qdio_q *q, struct qdio_irq *irq_ptr,
-				struct qdio_buffer **sbals_array, int i)
+				void **sbals_array, int i)
 {
 	struct qdio_q *prev;
 	int j;
@@ -212,8 +212,8 @@ static void setup_queues(struct qdio_irq *irq_ptr,
 			 struct qdio_initialize *qdio_init)
 {
 	struct qdio_q *q;
-	struct qdio_buffer **input_sbal_array = qdio_init->input_sbal_addr_array;
-	struct qdio_buffer **output_sbal_array = qdio_init->output_sbal_addr_array;
+	void **input_sbal_array = qdio_init->input_sbal_addr_array;
+	void **output_sbal_array = qdio_init->output_sbal_addr_array;
 	struct qdio_outbuf_state *output_sbal_state_array =
 				  qdio_init->output_sbal_state_array;
 	int i;
@@ -252,7 +252,8 @@ static void setup_queues(struct qdio_irq *irq_ptr,
 
 		tasklet_init(&q->tasklet, qdio_outbound_processing,
 			     (unsigned long) q);
-		timer_setup(&q->u.out.timer, qdio_outbound_timer, 0);
+		setup_timer(&q->u.out.timer, (void(*)(unsigned long))
+			    &qdio_outbound_timer, (unsigned long)q);
 	}
 }
 
@@ -503,10 +504,8 @@ int qdio_setup_irq(struct qdio_initialize *init_data)
 	irq_ptr->aqueue = *ciw;
 
 	/* set new interrupt handler */
-	spin_lock_irq(get_ccwdev_lock(irq_ptr->cdev));
 	irq_ptr->orig_handler = init_data->cdev->handler;
 	init_data->cdev->handler = qdio_int_handler;
-	spin_unlock_irq(get_ccwdev_lock(irq_ptr->cdev));
 	return 0;
 }
 
@@ -535,7 +534,7 @@ void qdio_print_subchannel_info(struct qdio_irq *irq_ptr,
 
 int qdio_enable_async_operation(struct qdio_output_q *outq)
 {
-	outq->aobs = kcalloc(QDIO_MAX_BUFFERS_PER_Q, sizeof(struct qaob *),
+	outq->aobs = kzalloc(sizeof(struct qaob *) * QDIO_MAX_BUFFERS_PER_Q,
 			     GFP_ATOMIC);
 	if (!outq->aobs) {
 		outq->use_cq = 0;

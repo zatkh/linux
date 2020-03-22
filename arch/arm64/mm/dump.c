@@ -36,8 +36,8 @@ static const struct addr_marker address_markers[] = {
 #endif
 	{ MODULES_VADDR,		"Modules start" },
 	{ MODULES_END,			"Modules end" },
-	{ VMALLOC_START,		"vmalloc() area" },
-	{ VMALLOC_END,			"vmalloc() end" },
+	{ VMALLOC_START,		"vmalloc() Area" },
+	{ VMALLOC_END,			"vmalloc() End" },
 	{ FIXADDR_START,		"Fixmap start" },
 	{ FIXADDR_TOP,			"Fixmap end" },
 	{ PCI_IO_START,			"PCI I/O start" },
@@ -46,7 +46,7 @@ static const struct addr_marker address_markers[] = {
 	{ VMEMMAP_START,		"vmemmap start" },
 	{ VMEMMAP_START + VMEMMAP_SIZE,	"vmemmap end" },
 #endif
-	{ PAGE_OFFSET,			"Linear mapping" },
+	{ PAGE_OFFSET,			"Linear Mapping" },
 	{ -1,				NULL },
 };
 
@@ -286,73 +286,68 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level,
 
 }
 
-static void walk_pte(struct pg_state *st, pmd_t *pmdp, unsigned long start,
-		     unsigned long end)
+static void walk_pte(struct pg_state *st, pmd_t *pmd, unsigned long start)
 {
-	unsigned long addr = start;
-	pte_t *ptep = pte_offset_kernel(pmdp, start);
+	pte_t *pte = pte_offset_kernel(pmd, 0UL);
+	unsigned long addr;
+	unsigned i;
 
-	do {
-		note_page(st, addr, 4, READ_ONCE(pte_val(*ptep)));
-	} while (ptep++, addr += PAGE_SIZE, addr != end);
+	for (i = 0; i < PTRS_PER_PTE; i++, pte++) {
+		addr = start + i * PAGE_SIZE;
+		note_page(st, addr, 4, pte_val(*pte));
+	}
 }
 
-static void walk_pmd(struct pg_state *st, pud_t *pudp, unsigned long start,
-		     unsigned long end)
+static void walk_pmd(struct pg_state *st, pud_t *pud, unsigned long start)
 {
-	unsigned long next, addr = start;
-	pmd_t *pmdp = pmd_offset(pudp, start);
+	pmd_t *pmd = pmd_offset(pud, 0UL);
+	unsigned long addr;
+	unsigned i;
 
-	do {
-		pmd_t pmd = READ_ONCE(*pmdp);
-		next = pmd_addr_end(addr, end);
-
-		if (pmd_none(pmd) || pmd_sect(pmd)) {
-			note_page(st, addr, 3, pmd_val(pmd));
+	for (i = 0; i < PTRS_PER_PMD; i++, pmd++) {
+		addr = start + i * PMD_SIZE;
+		if (pmd_none(*pmd) || pmd_sect(*pmd)) {
+			note_page(st, addr, 3, pmd_val(*pmd));
 		} else {
-			BUG_ON(pmd_bad(pmd));
-			walk_pte(st, pmdp, addr, next);
+			BUG_ON(pmd_bad(*pmd));
+			walk_pte(st, pmd, addr);
 		}
-	} while (pmdp++, addr = next, addr != end);
+	}
 }
 
-static void walk_pud(struct pg_state *st, pgd_t *pgdp, unsigned long start,
-		     unsigned long end)
+static void walk_pud(struct pg_state *st, pgd_t *pgd, unsigned long start)
 {
-	unsigned long next, addr = start;
-	pud_t *pudp = pud_offset(pgdp, start);
+	pud_t *pud = pud_offset(pgd, 0UL);
+	unsigned long addr;
+	unsigned i;
 
-	do {
-		pud_t pud = READ_ONCE(*pudp);
-		next = pud_addr_end(addr, end);
-
-		if (pud_none(pud) || pud_sect(pud)) {
-			note_page(st, addr, 2, pud_val(pud));
+	for (i = 0; i < PTRS_PER_PUD; i++, pud++) {
+		addr = start + i * PUD_SIZE;
+		if (pud_none(*pud) || pud_sect(*pud)) {
+			note_page(st, addr, 2, pud_val(*pud));
 		} else {
-			BUG_ON(pud_bad(pud));
-			walk_pmd(st, pudp, addr, next);
+			BUG_ON(pud_bad(*pud));
+			walk_pmd(st, pud, addr);
 		}
-	} while (pudp++, addr = next, addr != end);
+	}
 }
 
 static void walk_pgd(struct pg_state *st, struct mm_struct *mm,
 		     unsigned long start)
 {
-	unsigned long end = (start < TASK_SIZE_64) ? TASK_SIZE_64 : 0;
-	unsigned long next, addr = start;
-	pgd_t *pgdp = pgd_offset(mm, start);
+	pgd_t *pgd = pgd_offset(mm, 0UL);
+	unsigned i;
+	unsigned long addr;
 
-	do {
-		pgd_t pgd = READ_ONCE(*pgdp);
-		next = pgd_addr_end(addr, end);
-
-		if (pgd_none(pgd)) {
-			note_page(st, addr, 1, pgd_val(pgd));
+	for (i = 0; i < PTRS_PER_PGD; i++, pgd++) {
+		addr = start + i * PGDIR_SIZE;
+		if (pgd_none(*pgd)) {
+			note_page(st, addr, 1, pgd_val(*pgd));
 		} else {
-			BUG_ON(pgd_bad(pgd));
-			walk_pud(st, pgdp, addr, next);
+			BUG_ON(pgd_bad(*pgd));
+			walk_pud(st, pgd, addr);
 		}
-	} while (pgdp++, addr = next, addr != end);
+	}
 }
 
 void ptdump_walk_pgd(struct seq_file *m, struct ptdump_info *info)
@@ -406,7 +401,7 @@ void ptdump_check_wx(void)
 static int ptdump_init(void)
 {
 	ptdump_initialize();
-	ptdump_debugfs_register(&kernel_ptdump_info, "kernel_page_tables");
-	return 0;
+	return ptdump_debugfs_register(&kernel_ptdump_info,
+					"kernel_page_tables");
 }
 device_initcall(ptdump_init);

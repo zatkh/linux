@@ -21,6 +21,7 @@
 #include <linux/compiler.h>
 #include <linux/kvm_host.h>
 #include <asm/cp15.h>
+#include <asm/kvm_mmu.h>
 #include <asm/vfp.h>
 
 #define __hyp_text __section(.hyp.text) notrace
@@ -40,7 +41,6 @@
 #define TTBR1		__ACCESS_CP15_64(1, c2)
 #define VTTBR		__ACCESS_CP15_64(6, c2)
 #define PAR		__ACCESS_CP15_64(0, c7)
-#define CNTP_CVAL	__ACCESS_CP15_64(2, c14)
 #define CNTV_CVAL	__ACCESS_CP15_64(3, c14)
 #define CNTVOFF		__ACCESS_CP15_64(4, c14)
 
@@ -69,8 +69,6 @@
 #define HIFAR		__ACCESS_CP15(c6, 4, c0, 2)
 #define HPFAR		__ACCESS_CP15(c6, 4, c0, 4)
 #define ICIALLUIS	__ACCESS_CP15(c7, 0, c1, 0)
-#define BPIALLIS	__ACCESS_CP15(c7, 0, c1, 6)
-#define ICIMVAU		__ACCESS_CP15(c7, 0, c5, 1)
 #define ATS1CPR		__ACCESS_CP15(c7, 0, c8, 0)
 #define TLBIALLIS	__ACCESS_CP15(c8, 0, c3, 0)
 #define TLBIALL		__ACCESS_CP15(c8, 0, c7, 0)
@@ -86,7 +84,6 @@
 #define TID_PRIV	__ACCESS_CP15(c13, 0, c0, 4)
 #define HTPIDR		__ACCESS_CP15(c13, 4, c0, 2)
 #define CNTKCTL		__ACCESS_CP15(c14, 0, c1, 0)
-#define CNTP_CTL	__ACCESS_CP15(c14, 0, c2, 1)
 #define CNTV_CTL	__ACCESS_CP15(c14, 0, c3, 1)
 #define CNTHCTL		__ACCESS_CP15(c14, 4, c1, 0)
 
@@ -96,15 +93,13 @@
 #define read_sysreg_el0(r)		read_sysreg(r##_el0)
 #define write_sysreg_el0(v, r)		write_sysreg(v, r##_el0)
 
-#define cntp_ctl_el0			CNTP_CTL
-#define cntp_cval_el0			CNTP_CVAL
 #define cntv_ctl_el0			CNTV_CTL
 #define cntv_cval_el0			CNTV_CVAL
 #define cntvoff_el2			CNTVOFF
 #define cnthctl_el2			CNTHCTL
 
-void __timer_enable_traps(struct kvm_vcpu *vcpu);
-void __timer_disable_traps(struct kvm_vcpu *vcpu);
+void __timer_save_state(struct kvm_vcpu *vcpu);
+void __timer_restore_state(struct kvm_vcpu *vcpu);
 
 void __vgic_v2_save_state(struct kvm_vcpu *vcpu);
 void __vgic_v2_restore_state(struct kvm_vcpu *vcpu);
@@ -114,10 +109,6 @@ void __sysreg_restore_state(struct kvm_cpu_context *ctxt);
 
 void __vgic_v3_save_state(struct kvm_vcpu *vcpu);
 void __vgic_v3_restore_state(struct kvm_vcpu *vcpu);
-void __vgic_v3_activate_traps(struct kvm_vcpu *vcpu);
-void __vgic_v3_deactivate_traps(struct kvm_vcpu *vcpu);
-void __vgic_v3_save_aprs(struct kvm_vcpu *vcpu);
-void __vgic_v3_restore_aprs(struct kvm_vcpu *vcpu);
 
 asmlinkage void __vfp_save_state(struct vfp_hard_struct *vfp);
 asmlinkage void __vfp_restore_state(struct vfp_hard_struct *vfp);

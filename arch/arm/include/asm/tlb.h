@@ -64,9 +64,6 @@ extern void tlb_remove_table(struct mmu_gather *tlb, void *table);
  */
 struct mmu_gather {
 	struct mm_struct	*mm;
-	#ifdef CONFIG_SW_UDOM
-	    int smv_id;
-#endif
 #ifdef CONFIG_HAVE_RCU_TABLE_FREE
 	struct mmu_table_batch	*batch;
 	unsigned int		need_flush;
@@ -155,9 +152,6 @@ arch_tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm,
 			unsigned long start, unsigned long end)
 {
 	tlb->mm = mm;
-#ifdef CONFIG_SW_UDOM
-	tlb->smv_id = current->smv_id;
-#endif
 	tlb->fullmm = !(start | (end+1));
 	tlb->start = start;
 	tlb->end = end;
@@ -295,14 +289,6 @@ tlb_remove_pmd_tlb_entry(struct mmu_gather *tlb, pmd_t *pmdp, unsigned long addr
 #define tlb_remove_check_page_size_change tlb_remove_check_page_size_change
 static inline void tlb_remove_check_page_size_change(struct mmu_gather *tlb,
 						     unsigned int page_size)
-{
-}
-
-static inline void tlb_flush_remove_tables(struct mm_struct *mm)
-{
-}
-
-static inline void tlb_flush_remove_tables_local(void *arg)
 {
 }
 

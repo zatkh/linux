@@ -458,7 +458,6 @@ static void cpcap_usb_detect(struct work_struct *work)
 			goto out_err;
 	}
 
-	power_supply_changed(ddata->usb);
 	return;
 
 out_err:
@@ -485,7 +484,7 @@ static int cpcap_usb_init_irq(struct platform_device *pdev,
 	int irq, error;
 
 	irq = platform_get_irq_byname(pdev, name);
-	if (irq < 0)
+	if (!irq)
 		return -ENODEV;
 
 	error = devm_request_threaded_irq(ddata->dev, irq, NULL,
@@ -545,7 +544,7 @@ static void cpcap_charger_init_optional_gpios(struct cpcap_charger_ddata *ddata)
 		if (IS_ERR(ddata->gpio[i])) {
 			dev_info(ddata->dev, "no mode change GPIO%i: %li\n",
 				 i, PTR_ERR(ddata->gpio[i]));
-			ddata->gpio[i] = NULL;
+				 ddata->gpio[i] = NULL;
 		}
 	}
 }

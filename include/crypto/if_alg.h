@@ -41,6 +41,11 @@ struct alg_sock {
 	void *private;
 };
 
+struct af_alg_completion {
+	struct completion completion;
+	int err;
+};
+
 struct af_alg_control {
 	struct af_alg_iv *iv;
 	int op;
@@ -148,7 +153,7 @@ struct af_alg_ctx {
 	void *iv;
 	size_t aead_assoclen;
 
-	struct crypto_wait wait;
+	struct af_alg_completion completion;
 
 	size_t used;
 	atomic_t rcvused;
@@ -169,10 +174,21 @@ int af_alg_accept(struct sock *sk, struct socket *newsock, bool kern);
 
 int af_alg_make_sg(struct af_alg_sgl *sgl, struct iov_iter *iter, int len);
 void af_alg_free_sg(struct af_alg_sgl *sgl);
+void af_alg_link_sg(struct af_alg_sgl *sgl_prev, struct af_alg_sgl *sgl_new);
+
+int af_alg_cmsg_send(struct msghdr *msg, struct af_alg_control *con);
+
+int af_alg_wait_for_completion(int err, struct af_alg_completion *completion);
+void af_alg_complete(struct crypto_async_request *req, int err);
 
 static inline struct alg_sock *alg_sk(struct sock *sk)
 {
 	return (struct alg_sock *)sk;
+}
+
+static inline void af_alg_init_completion(struct af_alg_completion *completion)
+{
+	init_completion(&completion->completion);
 }
 
 /**
@@ -227,18 +243,22 @@ static inline bool af_alg_readable(struct sock *sk)
 	return PAGE_SIZE <= af_alg_rcvbuf(sk);
 }
 
+int af_alg_alloc_tsgl(struct sock *sk);
 unsigned int af_alg_count_tsgl(struct sock *sk, size_t bytes, size_t offset);
 void af_alg_pull_tsgl(struct sock *sk, size_t used, struct scatterlist *dst,
 		      size_t dst_offset);
+void af_alg_free_areq_sgls(struct af_alg_async_req *areq);
+int af_alg_wait_for_wmem(struct sock *sk, unsigned int flags);
 void af_alg_wmem_wakeup(struct sock *sk);
 int af_alg_wait_for_data(struct sock *sk, unsigned flags);
+void af_alg_data_wakeup(struct sock *sk);
 int af_alg_sendmsg(struct socket *sock, struct msghdr *msg, size_t size,
 		   unsigned int ivsize);
 ssize_t af_alg_sendpage(struct socket *sock, struct page *page,
 			int offset, size_t size, int flags);
 void af_alg_free_resources(struct af_alg_async_req *areq);
 void af_alg_async_cb(struct crypto_async_request *_req, int err);
-__poll_t af_alg_poll(struct file *file, struct socket *sock,
+unsigned int af_alg_poll(struct file *file, struct socket *sock,
 			 poll_table *wait);
 struct af_alg_async_req *af_alg_alloc_areq(struct sock *sk,
 					   unsigned int areqlen);

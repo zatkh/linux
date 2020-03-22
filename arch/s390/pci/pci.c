@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright IBM Corp. 2012
  *
@@ -285,7 +284,7 @@ void __iomem *pci_iomap_range(struct pci_dev *pdev,
 	struct zpci_dev *zdev =	to_zpci(pdev);
 	int idx;
 
-	if (!pci_resource_len(pdev, bar) || bar >= PCI_BAR_COUNT)
+	if (!pci_resource_len(pdev, bar))
 		return NULL;
 
 	idx = zdev->bars[bar].map_idx;
@@ -420,8 +419,7 @@ int arch_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 	/* Request MSI interrupts */
 	hwirq = 0;
 	for_each_pci_msi_entry(msi, pdev) {
-		if (hwirq >= msi_vecs)
-			break;
+		rc = -EIO;
 		irq = irq_alloc_desc(0);	/* Alloc irq on node 0 */
 		if (irq < 0)
 			return -ENOMEM;
@@ -484,15 +482,6 @@ void arch_teardown_msi_irqs(struct pci_dev *pdev)
 	}
 }
 
-#ifdef CONFIG_PCI_IOV
-static struct resource iov_res = {
-	.name	= "PCI IOV res",
-	.start	= 0,
-	.end	= -1,
-	.flags	= IORESOURCE_MEM,
-};
-#endif
-
 static void zpci_map_resources(struct pci_dev *pdev)
 {
 	resource_size_t len;
@@ -506,17 +495,6 @@ static void zpci_map_resources(struct pci_dev *pdev)
 			(resource_size_t __force) pci_iomap(pdev, i, 0);
 		pdev->resource[i].end = pdev->resource[i].start + len - 1;
 	}
-
-#ifdef CONFIG_PCI_IOV
-	i = PCI_IOV_RESOURCES;
-
-	for (; i < PCI_SRIOV_NUM_BARS + PCI_IOV_RESOURCES; i++) {
-		len = pci_resource_len(pdev, i);
-		if (!len)
-			continue;
-		pdev->resource[i].parent = &iov_res;
-	}
-#endif
 }
 
 static void zpci_unmap_resources(struct pci_dev *pdev)
@@ -670,9 +648,6 @@ int pcibios_add_device(struct pci_dev *pdev)
 {
 	struct resource *res;
 	int i;
-
-	if (pdev->is_physfn)
-		pdev->no_vf_scan = 1;
 
 	pdev->dev.groups = zpci_attr_groups;
 	pdev->dev.dma_ops = &s390_pci_dma_ops;

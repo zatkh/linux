@@ -17,14 +17,14 @@
 #include <linux/mutex.h>
 #include <media/rc-core.h>
 
-#include <media/dvb_frontend.h>
-#include <media/dvb_demux.h>
-#include <media/dvb_net.h>
-#include <media/dmxdev.h>
+#include "dvb_frontend.h"
+#include "dvb_demux.h"
+#include "dvb_net.h"
+#include "dmxdev.h"
 
 #include "dvb-pll.h"
 
-#include <media/dvb-usb-ids.h>
+#include "dvb-usb-ids.h"
 
 /* debug */
 #ifdef CONFIG_DVB_USB_DEBUG
@@ -208,7 +208,6 @@ struct dvb_rc {
 	int (*rc_query) (struct dvb_usb_device *d);
 	int rc_interval;
 	bool bulk_mode;				/* uses bulk mode */
-	u32 scancode_mask;
 };
 
 /**
@@ -336,7 +335,7 @@ struct usb_data_stream {
  * struct dvb_usb_adapter - a DVB adapter on a USB device
  * @id: index of this adapter (starting with 0).
  *
- * @feedcount: number of requested feeds (used for streaming-activation)
+ * @feedcount: number of reqested feeds (used for streaming-activation)
  * @pid_filtering: is hardware pid_filtering used or not.
  *
  * @pll_addr: I2C address of the tuner for programming

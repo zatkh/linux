@@ -43,7 +43,6 @@
 #ifdef CONFIG_IP_VS_IPV6
 #include <net/ipv6.h>
 #include <net/ip6_route.h>
-#include <net/netfilter/ipv6/nf_defrag_ipv6.h>
 #endif
 #include <net/route.h>
 #include <net/sock.h>
@@ -135,7 +134,7 @@ static void update_defense_level(struct netns_ipvs *ipvs)
 		} else {
 			atomic_set(&ipvs->dropentry, 0);
 			ipvs->sysctl_drop_entry = 1;
-		}
+		};
 		break;
 	case 3:
 		atomic_set(&ipvs->dropentry, 1);
@@ -301,7 +300,7 @@ static int ip_vs_svc_hash(struct ip_vs_service *svc)
 	unsigned int hash;
 
 	if (svc->flags & IP_VS_SVC_F_HASHED) {
-		pr_err("%s(): request for already hashed, called from %pS\n",
+		pr_err("%s(): request for already hashed, called from %pF\n",
 		       __func__, __builtin_return_address(0));
 		return 0;
 	}
@@ -335,7 +334,7 @@ static int ip_vs_svc_hash(struct ip_vs_service *svc)
 static int ip_vs_svc_unhash(struct ip_vs_service *svc)
 {
 	if (!(svc->flags & IP_VS_SVC_F_HASHED)) {
-		pr_err("%s(): request for unhash flagged, called from %pS\n",
+		pr_err("%s(): request for unhash flagged, called from %pF\n",
 		       __func__, __builtin_return_address(0));
 		return 0;
 	}
@@ -822,10 +821,6 @@ __ip_vs_update_dest(struct ip_vs_service *svc, struct ip_vs_dest *dest,
 	if (add && udest->af != svc->af)
 		ipvs->mixed_address_family_dests++;
 
-	/* keep the last_weight with latest non-0 weight */
-	if (add || udest->weight != 0)
-		atomic_set(&dest->last_weight, udest->weight);
-
 	/* set the weight and the flags */
 	atomic_set(&dest->weight, udest->weight);
 	conn_flags = udest->conn_flags & IP_VS_CONN_F_DEST_MASK;
@@ -840,9 +835,6 @@ __ip_vs_update_dest(struct ip_vs_service *svc, struct ip_vs_dest *dest,
 		 *    For now only for NAT!
 		 */
 		ip_vs_rs_hash(ipvs, dest);
-		/* FTP-NAT requires conntrack for mangling */
-		if (svc->port == FTPPORT)
-			ip_vs_register_conntrack(svc);
 	}
 	atomic_set(&dest->conn_flags, conn_flags);
 
@@ -901,17 +893,11 @@ ip_vs_new_dest(struct ip_vs_service *svc, struct ip_vs_dest_user_kern *udest,
 
 #ifdef CONFIG_IP_VS_IPV6
 	if (udest->af == AF_INET6) {
-		int ret;
-
 		atype = ipv6_addr_type(&udest->addr.in6);
 		if ((!(atype & IPV6_ADDR_UNICAST) ||
 			atype & IPV6_ADDR_LINKLOCAL) &&
 			!__ip_vs_addr_is_local_v6(svc->ipvs->net, &udest->addr.in6))
 			return -EINVAL;
-
-		ret = nf_defrag_ipv6_enable(svc->ipvs->net);
-		if (ret)
-			return ret;
 	} else
 #endif
 	{
@@ -1160,9 +1146,9 @@ ip_vs_del_dest(struct ip_vs_service *svc, struct ip_vs_dest_user_kern *udest)
 	return 0;
 }
 
-static void ip_vs_dest_trash_expire(struct timer_list *t)
+static void ip_vs_dest_trash_expire(unsigned long data)
 {
-	struct netns_ipvs *ipvs = from_timer(ipvs, t, dest_trash_timer);
+	struct netns_ipvs *ipvs = (struct netns_ipvs *)data;
 	struct ip_vs_dest *dest, *next;
 	unsigned long now = jiffies;
 
@@ -1235,10 +1221,6 @@ ip_vs_add_service(struct netns_ipvs *ipvs, struct ip_vs_service_user_kern *u,
 			ret = -EINVAL;
 			goto out_err;
 		}
-
-		ret = nf_defrag_ipv6_enable(ipvs->net);
-		if (ret)
-			goto out_err;
 	}
 #endif
 
@@ -1476,7 +1458,6 @@ static void __ip_vs_del_service(struct ip_vs_service *svc, bool cleanup)
  */
 static void ip_vs_unlink_service(struct ip_vs_service *svc, bool cleanup)
 {
-	ip_vs_unregister_conntrack(svc);
 	/* Hold svc to avoid double release from dest_trash */
 	atomic_inc(&svc->refcnt);
 	/*
@@ -2128,6 +2109,20 @@ static const struct seq_operations ip_vs_info_seq_ops = {
 	.show  = ip_vs_info_seq_show,
 };
 
+static int ip_vs_info_open(struct inode *inode, struct file *file)
+{
+	return seq_open_net(inode, file, &ip_vs_info_seq_ops,
+			sizeof(struct ip_vs_iter));
+}
+
+static const struct file_operations ip_vs_info_fops = {
+	.owner	 = THIS_MODULE,
+	.open    = ip_vs_info_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = seq_release_net,
+};
+
 static int ip_vs_stats_show(struct seq_file *seq, void *v)
 {
 	struct net *net = seq_file_single_net(seq);
@@ -2159,6 +2154,19 @@ static int ip_vs_stats_show(struct seq_file *seq, void *v)
 
 	return 0;
 }
+
+static int ip_vs_stats_seq_open(struct inode *inode, struct file *file)
+{
+	return single_open_net(inode, file, ip_vs_stats_show);
+}
+
+static const struct file_operations ip_vs_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = ip_vs_stats_seq_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release_net,
+};
 
 static int ip_vs_stats_percpu_show(struct seq_file *seq, void *v)
 {
@@ -2215,6 +2223,19 @@ static int ip_vs_stats_percpu_show(struct seq_file *seq, void *v)
 
 	return 0;
 }
+
+static int ip_vs_stats_percpu_seq_open(struct inode *inode, struct file *file)
+{
+	return single_open_net(inode, file, ip_vs_stats_percpu_show);
+}
+
+static const struct file_operations ip_vs_stats_percpu_fops = {
+	.owner = THIS_MODULE,
+	.open = ip_vs_stats_percpu_seq_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release_net,
+};
 #endif
 
 /*
@@ -2230,18 +2251,6 @@ static int ip_vs_set_timeout(struct netns_ipvs *ipvs, struct ip_vs_timeout_user 
 		  u->tcp_timeout,
 		  u->tcp_fin_timeout,
 		  u->udp_timeout);
-
-#ifdef CONFIG_IP_VS_PROTO_TCP
-	if (u->tcp_timeout < 0 || u->tcp_timeout > (INT_MAX / HZ) ||
-	    u->tcp_fin_timeout < 0 || u->tcp_fin_timeout > (INT_MAX / HZ)) {
-		return -EINVAL;
-	}
-#endif
-
-#ifdef CONFIG_IP_VS_PROTO_UDP
-	if (u->udp_timeout < 0 || u->udp_timeout > (INT_MAX / HZ))
-		return -EINVAL;
-#endif
 
 #ifdef CONFIG_IP_VS_PROTO_TCP
 	if (u->tcp_timeout) {
@@ -2745,7 +2754,8 @@ do_ip_vs_get_ctl(struct sock *sk, int cmd, void __user *user, int *len)
 		int size;
 
 		get = (struct ip_vs_get_services *)arg;
-		size = struct_size(get, entrytable, get->num_services);
+		size = sizeof(*get) +
+			sizeof(struct ip_vs_service_entry) * get->num_services;
 		if (*len != size) {
 			pr_err("length: %u != %u\n", *len, size);
 			ret = -EINVAL;
@@ -2786,7 +2796,8 @@ do_ip_vs_get_ctl(struct sock *sk, int cmd, void __user *user, int *len)
 		int size;
 
 		get = (struct ip_vs_get_dests *)arg;
-		size = struct_size(get, entrytable, get->num_dests);
+		size = sizeof(*get) +
+			sizeof(struct ip_vs_dest_entry) * get->num_dests;
 		if (*len != size) {
 			pr_err("length: %u != %u\n", *len, size);
 			ret = -EINVAL;
@@ -3086,7 +3097,7 @@ static bool ip_vs_is_af_valid(int af)
 
 static int ip_vs_genl_parse_service(struct netns_ipvs *ipvs,
 				    struct ip_vs_service_user_kern *usvc,
-				    struct nlattr *nla, bool full_entry,
+				    struct nlattr *nla, int full_entry,
 				    struct ip_vs_service **ret_svc)
 {
 	struct nlattr *attrs[IPVS_SVC_ATTR_MAX + 1];
@@ -3173,7 +3184,7 @@ static struct ip_vs_service *ip_vs_genl_find_service(struct netns_ipvs *ipvs,
 	struct ip_vs_service *svc;
 	int ret;
 
-	ret = ip_vs_genl_parse_service(ipvs, &usvc, nla, false, &svc);
+	ret = ip_vs_genl_parse_service(ipvs, &usvc, nla, 0, &svc);
 	return ret ? ERR_PTR(ret) : svc;
 }
 
@@ -3255,7 +3266,7 @@ static int ip_vs_genl_dump_dests(struct sk_buff *skb,
 
 	/* Try to find the service for which to dump destinations */
 	if (nlmsg_parse(cb->nlh, GENL_HDRLEN, attrs, IPVS_CMD_ATTR_MAX,
-			ip_vs_cmd_policy, cb->extack))
+			ip_vs_cmd_policy, NULL))
 		goto out_err;
 
 
@@ -3283,7 +3294,7 @@ out_err:
 }
 
 static int ip_vs_genl_parse_dest(struct ip_vs_dest_user_kern *udest,
-				 struct nlattr *nla, bool full_entry)
+				 struct nlattr *nla, int full_entry)
 {
 	struct nlattr *attrs[IPVS_DEST_ATTR_MAX + 1];
 	struct nlattr *nla_addr, *nla_port;
@@ -3545,11 +3556,11 @@ out:
 
 static int ip_vs_genl_set_cmd(struct sk_buff *skb, struct genl_info *info)
 {
-	bool need_full_svc = false, need_full_dest = false;
 	struct ip_vs_service *svc = NULL;
 	struct ip_vs_service_user_kern usvc;
 	struct ip_vs_dest_user_kern udest;
 	int ret = 0, cmd;
+	int need_full_svc = 0, need_full_dest = 0;
 	struct net *net = sock_net(skb->sk);
 	struct netns_ipvs *ipvs = net_ipvs(net);
 
@@ -3573,7 +3584,7 @@ static int ip_vs_genl_set_cmd(struct sk_buff *skb, struct genl_info *info)
 	 * received a valid one. We need a full service specification when
 	 * adding / editing a service. Only identifying members otherwise. */
 	if (cmd == IPVS_CMD_NEW_SERVICE || cmd == IPVS_CMD_SET_SERVICE)
-		need_full_svc = true;
+		need_full_svc = 1;
 
 	ret = ip_vs_genl_parse_service(ipvs, &usvc,
 				       info->attrs[IPVS_CMD_ATTR_SERVICE],
@@ -3593,7 +3604,7 @@ static int ip_vs_genl_set_cmd(struct sk_buff *skb, struct genl_info *info)
 	if (cmd == IPVS_CMD_NEW_DEST || cmd == IPVS_CMD_SET_DEST ||
 	    cmd == IPVS_CMD_DEL_DEST) {
 		if (cmd != IPVS_CMD_DEL_DEST)
-			need_full_dest = true;
+			need_full_dest = 1;
 
 		ret = ip_vs_genl_parse_dest(&udest,
 					    info->attrs[IPVS_CMD_ATTR_DEST],
@@ -4001,9 +4012,6 @@ static void __net_exit ip_vs_control_net_cleanup_sysctl(struct netns_ipvs *ipvs)
 
 static struct notifier_block ip_vs_dst_notifier = {
 	.notifier_call = ip_vs_dst_event,
-#ifdef CONFIG_IP_VS_IPV6
-	.priority = ADDRCONF_NOTIFY_PRIORITY + 5,
-#endif
 };
 
 int __net_init ip_vs_control_net_init(struct netns_ipvs *ipvs)
@@ -4016,7 +4024,8 @@ int __net_init ip_vs_control_net_init(struct netns_ipvs *ipvs)
 
 	INIT_LIST_HEAD(&ipvs->dest_trash);
 	spin_lock_init(&ipvs->dest_trash_lock);
-	timer_setup(&ipvs->dest_trash_timer, ip_vs_dest_trash_expire, 0);
+	setup_timer(&ipvs->dest_trash_timer, ip_vs_dest_trash_expire,
+		    (unsigned long) ipvs);
 	atomic_set(&ipvs->ftpsvc_counter, 0);
 	atomic_set(&ipvs->nullsvc_counter, 0);
 	atomic_set(&ipvs->conn_out_counter, 0);
@@ -4034,12 +4043,10 @@ int __net_init ip_vs_control_net_init(struct netns_ipvs *ipvs)
 
 	spin_lock_init(&ipvs->tot_stats.lock);
 
-	proc_create_net("ip_vs", 0, ipvs->net->proc_net, &ip_vs_info_seq_ops,
-			sizeof(struct ip_vs_iter));
-	proc_create_net_single("ip_vs_stats", 0, ipvs->net->proc_net,
-			ip_vs_stats_show, NULL);
-	proc_create_net_single("ip_vs_stats_percpu", 0, ipvs->net->proc_net,
-			ip_vs_stats_percpu_show, NULL);
+	proc_create("ip_vs", 0, ipvs->net->proc_net, &ip_vs_info_fops);
+	proc_create("ip_vs_stats", 0, ipvs->net->proc_net, &ip_vs_stats_fops);
+	proc_create("ip_vs_stats_percpu", 0, ipvs->net->proc_net,
+		    &ip_vs_stats_percpu_fops);
 
 	if (ip_vs_control_net_init_sysctl(ipvs))
 		goto err;

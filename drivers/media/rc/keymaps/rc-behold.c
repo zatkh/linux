@@ -1,9 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0+
-// behold.h - Keytable for behold Remote Controller
-//
-// keymap imported from ir-keymaps.c
-//
-// Copyright (c) 2010 by Mauro Carvalho Chehab
+/* behold.h - Keytable for behold Remote Controller
+ *
+ * keymap imported from ir-keymaps.c
+ *
+ * Copyright (c) 2010 by Mauro Carvalho Chehab
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
 #include <media/rc-map.h>
 #include <linux/module.h>
@@ -17,7 +22,7 @@
  * The "ascii-art picture" below (in comments, first row
  * is the keycode in hex, and subsequent row(s) shows
  * the button labels (several variants when appropriate)
- * helps to decide which keycodes to assign to the buttons.
+ * helps to descide which keycodes to assign to the buttons.
  */
 
 static struct rc_map_table behold[] = {
@@ -115,7 +120,7 @@ static struct rc_map_list behold_map = {
 	.map = {
 		.scan     = behold,
 		.size     = ARRAY_SIZE(behold),
-		.rc_proto = RC_PROTO_NECX,
+		.rc_proto = RC_PROTO_NEC,
 		.name     = RC_MAP_BEHOLD,
 	}
 };

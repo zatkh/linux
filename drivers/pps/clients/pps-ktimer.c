@@ -39,7 +39,7 @@ static struct timer_list ktimer;
  * The kernel timer
  */
 
-static void pps_ktimer_event(struct timer_list *unused)
+static void pps_ktimer_event(unsigned long ptr)
 {
 	struct pps_event_time ts;
 
@@ -80,12 +80,12 @@ static int __init pps_ktimer_init(void)
 {
 	pps = pps_register_source(&pps_ktimer_info,
 				PPS_CAPTUREASSERT | PPS_OFFSETASSERT);
-	if (IS_ERR(pps)) {
+	if (pps == NULL) {
 		pr_err("cannot register PPS source\n");
-		return PTR_ERR(pps);
+		return -ENOMEM;
 	}
 
-	timer_setup(&ktimer, pps_ktimer_event, 0);
+	setup_timer(&ktimer, pps_ktimer_event, 0);
 	mod_timer(&ktimer, jiffies + HZ);
 
 	dev_info(pps->dev, "ktimer PPS source registered\n");

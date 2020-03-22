@@ -223,6 +223,8 @@ struct dscc4_dev_priv {
 
 	u32 scc_regs[SCC_REGISTERS_MAX]; /* Cf errata DS5 p.4 */
 
+	struct timer_list timer;
+
         struct dscc4_pci_priv *pci_priv;
         spinlock_t lock;
 
@@ -367,6 +369,7 @@ static int dscc4_close(struct net_device *);
 static int dscc4_ioctl(struct net_device *dev, struct ifreq *rq, int cmd);
 static int dscc4_init_ring(struct net_device *);
 static void dscc4_release_ring(struct dscc4_dev_priv *);
+static void dscc4_timer(unsigned long);
 static void dscc4_tx_timeout(struct net_device *);
 static irqreturn_t dscc4_irq(int irq, void *dev_id);
 static int dscc4_hdlc_attach(struct net_device *, unsigned short, unsigned short);
@@ -456,16 +459,16 @@ static int state_check(u32 state, struct dscc4_dev_priv *dpriv,
 	int ret = 0;
 
 	if (debug > 1) {
-		if (SOURCE_ID(state) != dpriv->dev_id) {
-			printk(KERN_DEBUG "%s (%s): Source Id=%d, state=%08x\n",
-			       dev->name, msg, SOURCE_ID(state), state);
+	if (SOURCE_ID(state) != dpriv->dev_id) {
+		printk(KERN_DEBUG "%s (%s): Source Id=%d, state=%08x\n",
+		       dev->name, msg, SOURCE_ID(state), state );
 			ret = -1;
-		}
-		if (state & 0x0df80c00) {
-			printk(KERN_DEBUG "%s (%s): state=%08x (UFO alert)\n",
-			       dev->name, msg, state);
+	}
+	if (state & 0x0df80c00) {
+		printk(KERN_DEBUG "%s (%s): state=%08x (UFO alert)\n",
+		       dev->name, msg, state);
 			ret = -1;
-		}
+	}
 	}
 	return ret;
 }
@@ -980,6 +983,19 @@ err_out:
 	return ret;
 };
 
+/* FIXME: get rid of the unneeded code */
+static void dscc4_timer(unsigned long data)
+{
+	struct net_device *dev = (struct net_device *)data;
+	struct dscc4_dev_priv *dpriv = dscc4_priv(dev);
+//	struct dscc4_pci_priv *ppriv;
+
+	goto done;
+done:
+        dpriv->timer.expires = jiffies + TX_TIMEOUT;
+        add_timer(&dpriv->timer);
+}
+
 static void dscc4_tx_timeout(struct net_device *dev)
 {
 	/* FIXME: something is missing there */
@@ -1111,6 +1127,11 @@ static int dscc4_open(struct net_device *dev)
 done:
 	netif_start_queue(dev);
 
+        init_timer(&dpriv->timer);
+        dpriv->timer.expires = jiffies + 10*HZ;
+        dpriv->timer.data = (unsigned long)dev;
+	dpriv->timer.function = dscc4_timer;
+        add_timer(&dpriv->timer);
 	netif_carrier_on(dev);
 
 	return 0;
@@ -1178,6 +1199,7 @@ static int dscc4_close(struct net_device *dev)
 {
 	struct dscc4_dev_priv *dpriv = dscc4_priv(dev);
 
+	del_timer_sync(&dpriv->timer);
 	netif_stop_queue(dev);
 
 	scc_patchl(PowerUp | Vis, 0, dpriv, dev, CCR0);
@@ -1575,7 +1597,7 @@ try:
 					dev->stats.tx_packets++;
 					dev->stats.tx_bytes += skb->len;
 				}
-				dev_consume_skb_irq(skb);
+				dev_kfree_skb_irq(skb);
 				dpriv->tx_skbuff[cur] = NULL;
 				++dpriv->tx_dirty;
 			} else {
@@ -1760,25 +1782,25 @@ try:
 	} else { /* SccEvt */
 		if (debug > 1) {
 			//FIXME: verifier la presence de tous les evenements
-			static struct {
-				u32 mask;
-				const char *irq_name;
-			} evts[] = {
-				{ 0x00008000, "TIN"},
-				{ 0x00000020, "RSC"},
-				{ 0x00000010, "PCE"},
-				{ 0x00000008, "PLLA"},
-				{ 0, NULL}
-			}, *evt;
+		static struct {
+			u32 mask;
+			const char *irq_name;
+		} evts[] = {
+			{ 0x00008000, "TIN"},
+			{ 0x00000020, "RSC"},
+			{ 0x00000010, "PCE"},
+			{ 0x00000008, "PLLA"},
+			{ 0, NULL}
+		}, *evt;
 
-			for (evt = evts; evt->irq_name; evt++) {
-				if (state & evt->mask) {
+		for (evt = evts; evt->irq_name; evt++) {
+			if (state & evt->mask) {
 					printk(KERN_DEBUG "%s: %s\n",
-					       dev->name, evt->irq_name);
-					if (!(state &= ~evt->mask))
-						goto try;
-				}
+						dev->name, evt->irq_name);
+				if (!(state &= ~evt->mask))
+					goto try;
 			}
+		}
 		} else {
 			if (!(state &= ~0x0000c03c))
 				goto try;

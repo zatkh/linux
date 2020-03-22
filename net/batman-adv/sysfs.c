@@ -1,5 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
-/* Copyright (C) 2010-2019  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2010-2017  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner
  *
@@ -23,11 +22,10 @@
 #include <linux/compiler.h>
 #include <linux/device.h>
 #include <linux/errno.h>
-#include <linux/gfp.h>
+#include <linux/fs.h>
 #include <linux/if.h>
 #include <linux/if_vlan.h>
 #include <linux/kernel.h>
-#include <linux/kobject.h>
 #include <linux/kref.h>
 #include <linux/netdevice.h>
 #include <linux/printk.h>
@@ -39,8 +37,6 @@
 #include <linux/string.h>
 #include <linux/stringify.h>
 #include <linux/workqueue.h>
-#include <uapi/linux/batadv_packet.h>
-#include <uapi/linux/batman_adv.h>
 
 #include "bridge_loop_avoidance.h"
 #include "distributed-arp-table.h"
@@ -48,8 +44,8 @@
 #include "gateway_common.h"
 #include "hard-interface.h"
 #include "log.h"
-#include "netlink.h"
 #include "network-coding.h"
+#include "packet.h"
 #include "soft-interface.h"
 
 static struct net_device *batadv_kobj_to_netdev(struct kobject *obj)
@@ -67,7 +63,7 @@ static struct batadv_priv *batadv_kobj_to_batpriv(struct kobject *obj)
 }
 
 /**
- * batadv_vlan_kobj_to_batpriv() - convert a vlan kobj in the associated batpriv
+ * batadv_vlan_kobj_to_batpriv - convert a vlan kobj in the associated batpriv
  * @obj: kobject to covert
  *
  * Return: the associated batadv_priv struct.
@@ -87,7 +83,7 @@ static struct batadv_priv *batadv_vlan_kobj_to_batpriv(struct kobject *obj)
 }
 
 /**
- * batadv_kobj_to_vlan() - convert a kobj in the associated softif_vlan struct
+ * batadv_kobj_to_vlan - convert a kobj in the associated softif_vlan struct
  * @bat_priv: the bat priv with all the soft interface information
  * @obj: kobject to covert
  *
@@ -155,14 +151,9 @@ ssize_t batadv_store_##_name(struct kobject *kobj,			\
 {									\
 	struct net_device *net_dev = batadv_kobj_to_netdev(kobj);	\
 	struct batadv_priv *bat_priv = netdev_priv(net_dev);		\
-	ssize_t length;							\
 									\
-	length = __batadv_store_bool_attr(buff, count, _post_func, attr,\
-					  &bat_priv->_name, net_dev);	\
-									\
-	batadv_netlink_notify_mesh(bat_priv);				\
-									\
-	return length;							\
+	return __batadv_store_bool_attr(buff, count, _post_func, attr,	\
+					&bat_priv->_name, net_dev);	\
 }
 
 #define BATADV_ATTR_SIF_SHOW_BOOL(_name)				\
@@ -192,16 +183,10 @@ ssize_t batadv_store_##_name(struct kobject *kobj,			\
 {									\
 	struct net_device *net_dev = batadv_kobj_to_netdev(kobj);	\
 	struct batadv_priv *bat_priv = netdev_priv(net_dev);		\
-	ssize_t length;							\
 									\
-	length = __batadv_store_uint_attr(buff, count, _min, _max,	\
-					  _post_func, attr,		\
-					  &bat_priv->_var, net_dev,	\
-					  NULL);			\
-									\
-	batadv_netlink_notify_mesh(bat_priv);				\
-									\
-	return length;							\
+	return __batadv_store_uint_attr(buff, count, _min, _max,	\
+					_post_func, attr,		\
+					&bat_priv->_var, net_dev);	\
 }
 
 #define BATADV_ATTR_SIF_SHOW_UINT(_name, _var)				\
@@ -233,11 +218,6 @@ ssize_t batadv_store_vlan_##_name(struct kobject *kobj,			\
 	size_t res = __batadv_store_bool_attr(buff, count, _post_func,	\
 					      attr, &vlan->_name,	\
 					      bat_priv->soft_iface);	\
-									\
-	if (vlan->vid)							\
-		batadv_netlink_notify_vlan(bat_priv, vlan);		\
-	else								\
-		batadv_netlink_notify_mesh(bat_priv);			\
 									\
 	batadv_softif_vlan_put(vlan);					\
 	return res;							\
@@ -272,7 +252,6 @@ ssize_t batadv_store_##_name(struct kobject *kobj,			\
 {									\
 	struct net_device *net_dev = batadv_kobj_to_netdev(kobj);	\
 	struct batadv_hard_iface *hard_iface;				\
-	struct batadv_priv *bat_priv;					\
 	ssize_t length;							\
 									\
 	hard_iface = batadv_hardif_get_by_netdev(net_dev);		\
@@ -281,14 +260,7 @@ ssize_t batadv_store_##_name(struct kobject *kobj,			\
 									\
 	length = __batadv_store_uint_attr(buff, count, _min, _max,	\
 					  _post_func, attr,		\
-					  &hard_iface->_var,		\
-					  hard_iface->soft_iface,	\
-					  net_dev);			\
-									\
-	if (hard_iface->soft_iface) {					\
-		bat_priv = netdev_priv(hard_iface->soft_iface);		\
-		batadv_netlink_notify_hardif(bat_priv, hard_iface);	\
-	}								\
+					  &hard_iface->_var, net_dev);	\
 									\
 	batadv_hardif_put(hard_iface);				\
 	return length;							\
@@ -382,12 +354,10 @@ __batadv_store_bool_attr(char *buff, size_t count,
 
 static int batadv_store_uint_attr(const char *buff, size_t count,
 				  struct net_device *net_dev,
-				  struct net_device *slave_dev,
 				  const char *attr_name,
 				  unsigned int min, unsigned int max,
 				  atomic_t *attr)
 {
-	char ifname[IFNAMSIZ + 3] = "";
 	unsigned long uint_val;
 	int ret;
 
@@ -413,11 +383,8 @@ static int batadv_store_uint_attr(const char *buff, size_t count,
 	if (atomic_read(attr) == uint_val)
 		return count;
 
-	if (slave_dev)
-		snprintf(ifname, sizeof(ifname), "%s: ", slave_dev->name);
-
-	batadv_info(net_dev, "%s: %sChanging from: %i to: %lu\n",
-		    attr_name, ifname, atomic_read(attr), uint_val);
+	batadv_info(net_dev, "%s: Changing from: %i to: %lu\n",
+		    attr_name, atomic_read(attr), uint_val);
 
 	atomic_set(attr, uint_val);
 	return count;
@@ -428,13 +395,12 @@ static ssize_t __batadv_store_uint_attr(const char *buff, size_t count,
 					void (*post_func)(struct net_device *),
 					const struct attribute *attr,
 					atomic_t *attr_store,
-					struct net_device *net_dev,
-					struct net_device *slave_dev)
+					struct net_device *net_dev)
 {
 	int ret;
 
-	ret = batadv_store_uint_attr(buff, count, net_dev, slave_dev,
-				     attr->name, min, max, attr_store);
+	ret = batadv_store_uint_attr(buff, count, net_dev, attr->name, min, max,
+				     attr_store);
 	if (post_func && ret)
 		post_func(net_dev);
 
@@ -559,9 +525,6 @@ static ssize_t batadv_store_gw_mode(struct kobject *kobj,
 	batadv_gw_check_client_stop(bat_priv);
 	atomic_set(&bat_priv->gw.mode, (unsigned int)gw_mode_tmp);
 	batadv_gw_tvlv_container_update(bat_priv);
-
-	batadv_netlink_notify_mesh(bat_priv);
-
 	return count;
 }
 
@@ -588,7 +551,6 @@ static ssize_t batadv_store_gw_sel_class(struct kobject *kobj,
 					 size_t count)
 {
 	struct batadv_priv *bat_priv = batadv_kobj_to_batpriv(kobj);
-	ssize_t length;
 
 	/* setting the GW selection class is allowed only if the routing
 	 * algorithm in use implements the GW API
@@ -604,14 +566,10 @@ static ssize_t batadv_store_gw_sel_class(struct kobject *kobj,
 		return bat_priv->algo_ops->gw.store_sel_class(bat_priv, buff,
 							      count);
 
-	length = __batadv_store_uint_attr(buff, count, 1, BATADV_TQ_MAX_VALUE,
-					  batadv_post_gw_reselect, attr,
-					  &bat_priv->gw.sel_class,
-					  bat_priv->soft_iface, NULL);
-
-	batadv_netlink_notify_mesh(bat_priv);
-
-	return length;
+	return __batadv_store_uint_attr(buff, count, 1, BATADV_TQ_MAX_VALUE,
+					batadv_post_gw_reselect, attr,
+					&bat_priv->gw.sel_class,
+					bat_priv->soft_iface);
 }
 
 static ssize_t batadv_show_gw_bwidth(struct kobject *kobj,
@@ -631,22 +589,16 @@ static ssize_t batadv_store_gw_bwidth(struct kobject *kobj,
 				      struct attribute *attr, char *buff,
 				      size_t count)
 {
-	struct batadv_priv *bat_priv = batadv_kobj_to_batpriv(kobj);
 	struct net_device *net_dev = batadv_kobj_to_netdev(kobj);
-	ssize_t length;
 
 	if (buff[count - 1] == '\n')
 		buff[count - 1] = '\0';
 
-	length = batadv_gw_bandwidth_set(net_dev, buff, count);
-
-	batadv_netlink_notify_mesh(bat_priv);
-
-	return length;
+	return batadv_gw_bandwidth_set(net_dev, buff, count);
 }
 
 /**
- * batadv_show_isolation_mark() - print the current isolation mark/mask
+ * batadv_show_isolation_mark - print the current isolation mark/mask
  * @kobj: kobject representing the private mesh sysfs directory
  * @attr: the batman-adv attribute the user is interacting with
  * @buff: the buffer that will contain the data to send back to the user
@@ -664,8 +616,8 @@ static ssize_t batadv_show_isolation_mark(struct kobject *kobj,
 }
 
 /**
- * batadv_store_isolation_mark() - parse and store the isolation mark/mask
- *  entered by the user
+ * batadv_store_isolation_mark - parse and store the isolation mark/mask entered
+ *  by the user
  * @kobj: kobject representing the private mesh sysfs directory
  * @attr: the batman-adv attribute the user is interacting with
  * @buff: the buffer containing the user data
@@ -709,8 +661,6 @@ static ssize_t batadv_store_isolation_mark(struct kobject *kobj,
 	batadv_info(net_dev,
 		    "New skb mark for extended isolation: %#.8x/%#.8x\n",
 		    bat_priv->isolation_mark, bat_priv->isolation_mark_mask);
-
-	batadv_netlink_notify_mesh(bat_priv);
 
 	return count;
 }
@@ -783,12 +733,6 @@ static struct batadv_attribute *batadv_vlan_attrs[] = {
 	NULL,
 };
 
-/**
- * batadv_sysfs_add_meshif() - Add soft interface specific sysfs entries
- * @dev: netdev struct of the soft interface
- *
- * Return: 0 on success or negative error number in case of failure
- */
 int batadv_sysfs_add_meshif(struct net_device *dev)
 {
 	struct kobject *batif_kobject = &dev->dev.kobj;
@@ -829,10 +773,6 @@ out:
 	return -ENOMEM;
 }
 
-/**
- * batadv_sysfs_del_meshif() - Remove soft interface specific sysfs entries
- * @dev: netdev struct of the soft interface
- */
 void batadv_sysfs_del_meshif(struct net_device *dev)
 {
 	struct batadv_priv *bat_priv = netdev_priv(dev);
@@ -848,7 +788,7 @@ void batadv_sysfs_del_meshif(struct net_device *dev)
 }
 
 /**
- * batadv_sysfs_add_vlan() - add all the needed sysfs objects for the new vlan
+ * batadv_sysfs_add_vlan - add all the needed sysfs objects for the new vlan
  * @dev: netdev of the mesh interface
  * @vlan: private data of the newly added VLAN interface
  *
@@ -909,7 +849,7 @@ out:
 }
 
 /**
- * batadv_sysfs_del_vlan() - remove all the sysfs objects for a given VLAN
+ * batadv_sysfs_del_vlan - remove all the sysfs objects for a given VLAN
  * @bat_priv: the bat priv with all the soft interface information
  * @vlan: the private data of the VLAN to destroy
  */
@@ -954,7 +894,7 @@ static ssize_t batadv_show_mesh_iface(struct kobject *kobj,
 }
 
 /**
- * batadv_store_mesh_iface_finish() - store new hardif mesh_iface state
+ * batadv_store_mesh_iface_finish - store new hardif mesh_iface state
  * @net_dev: netdevice to add/remove to/from batman-adv soft-interface
  * @ifname: name of soft-interface to modify
  *
@@ -985,8 +925,8 @@ static int batadv_store_mesh_iface_finish(struct net_device *net_dev,
 	if (hard_iface->if_status == status_tmp)
 		goto out;
 
-	if (hard_iface->soft_iface &&
-	    strncmp(hard_iface->soft_iface->name, ifname, IFNAMSIZ) == 0)
+	if ((hard_iface->soft_iface) &&
+	    (strncmp(hard_iface->soft_iface->name, ifname, IFNAMSIZ) == 0))
 		goto out;
 
 	if (status_tmp == BATADV_IF_NOT_IN_USE) {
@@ -1007,7 +947,7 @@ out:
 }
 
 /**
- * batadv_store_mesh_iface_work() - store new hardif mesh_iface state
+ * batadv_store_mesh_iface_work - store new hardif mesh_iface state
  * @work: work queue item
  *
  * Changes the parts of the hard+soft interface which can not be modified under
@@ -1103,7 +1043,7 @@ static ssize_t batadv_show_iface_status(struct kobject *kobj,
 #ifdef CONFIG_BATMAN_ADV_BATMAN_V
 
 /**
- * batadv_store_throughput_override() - parse and store throughput override
+ * batadv_store_throughput_override - parse and store throughput override
  *  entered by the user
  * @kobj: kobject representing the private mesh sysfs directory
  * @attr: the batman-adv attribute the user is interacting with
@@ -1118,7 +1058,6 @@ static ssize_t batadv_store_throughput_override(struct kobject *kobj,
 {
 	struct net_device *net_dev = batadv_kobj_to_netdev(kobj);
 	struct batadv_hard_iface *hard_iface;
-	struct batadv_priv *bat_priv;
 	u32 tp_override;
 	u32 old_tp_override;
 	bool ret;
@@ -1139,18 +1078,12 @@ static ssize_t batadv_store_throughput_override(struct kobject *kobj,
 	if (old_tp_override == tp_override)
 		goto out;
 
-	batadv_info(hard_iface->soft_iface,
-		    "%s: %s: Changing from: %u.%u MBit to: %u.%u MBit\n",
-		    "throughput_override", net_dev->name,
+	batadv_info(net_dev, "%s: Changing from: %u.%u MBit to: %u.%u MBit\n",
+		    "throughput_override",
 		    old_tp_override / 10, old_tp_override % 10,
 		    tp_override / 10, tp_override % 10);
 
 	atomic_set(&hard_iface->bat_v.throughput_override, tp_override);
-
-	if (hard_iface->soft_iface) {
-		bat_priv = netdev_priv(hard_iface->soft_iface);
-		batadv_netlink_notify_hardif(bat_priv, hard_iface);
-	}
 
 out:
 	batadv_hardif_put(hard_iface);
@@ -1197,13 +1130,6 @@ static struct batadv_attribute *batadv_batman_attrs[] = {
 	NULL,
 };
 
-/**
- * batadv_sysfs_add_hardif() - Add hard interface specific sysfs entries
- * @hardif_obj: address where to store the pointer to new sysfs folder
- * @dev: netdev struct of the hard interface
- *
- * Return: 0 on success or negative error number in case of failure
- */
 int batadv_sysfs_add_hardif(struct kobject **hardif_obj, struct net_device *dev)
 {
 	struct kobject *hardif_kobject = &dev->dev.kobj;
@@ -1238,11 +1164,6 @@ out:
 	return -ENOMEM;
 }
 
-/**
- * batadv_sysfs_del_hardif() - Remove hard interface specific sysfs entries
- * @hardif_obj: address to the pointer to which stores batman-adv sysfs folder
- *  of the hard interface
- */
 void batadv_sysfs_del_hardif(struct kobject **hardif_obj)
 {
 	kobject_uevent(*hardif_obj, KOBJ_REMOVE);
@@ -1251,16 +1172,6 @@ void batadv_sysfs_del_hardif(struct kobject **hardif_obj)
 	*hardif_obj = NULL;
 }
 
-/**
- * batadv_throw_uevent() - Send an uevent with batman-adv specific env data
- * @bat_priv: the bat priv with all the soft interface information
- * @type: subsystem type of event. Stored in uevent's BATTYPE
- * @action: action type of event. Stored in uevent's BATACTION
- * @data: string with additional information to the event (ignored for
- *  BATADV_UEV_DEL). Stored in uevent's BATDATA
- *
- * Return: 0 on success or negative error number in case of failure
- */
 int batadv_throw_uevent(struct batadv_priv *bat_priv, enum batadv_uev_type type,
 			enum batadv_uev_action action, const char *data)
 {

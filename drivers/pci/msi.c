@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
- * PCI Message Signaled Interrupt (MSI)
+ * File:	msi.c
+ * Purpose:	PCI Message Signaled Interrupt (MSI)
  *
  * Copyright (C) 2003-2004 Intel
  * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
@@ -474,7 +474,7 @@ static int populate_msi_sysfs(struct pci_dev *pdev)
 		return 0;
 
 	/* Dynamically create the MSI attributes for the PCI device */
-	msi_attrs = kcalloc(num_msi + 1, sizeof(void *), GFP_KERNEL);
+	msi_attrs = kzalloc(sizeof(void *) * (num_msi + 1), GFP_KERNEL);
 	if (!msi_attrs)
 		return -ENOMEM;
 	for_each_pci_msi_entry(entry, pdev) {
@@ -501,7 +501,7 @@ static int populate_msi_sysfs(struct pci_dev *pdev)
 	msi_irq_group->name = "msi_irqs";
 	msi_irq_group->attrs = msi_attrs;
 
-	msi_irq_groups = kcalloc(2, sizeof(void *), GFP_KERNEL);
+	msi_irq_groups = kzalloc(sizeof(void *) * 2, GFP_KERNEL);
 	if (!msi_irq_groups)
 		goto error_irq_group;
 	msi_irq_groups[0] = msi_irq_group;
@@ -532,14 +532,15 @@ error_attrs:
 }
 
 static struct msi_desc *
-msi_setup_entry(struct pci_dev *dev, int nvec, struct irq_affinity *affd)
+msi_setup_entry(struct pci_dev *dev, int nvec, const struct irq_affinity *affd)
 {
-	struct irq_affinity_desc *masks = NULL;
+	struct cpumask *masks = NULL;
 	struct msi_desc *entry;
 	u16 control;
 
 	if (affd)
 		masks = irq_create_affinity_masks(nvec, affd);
+
 
 	/* MSI Entry Initialization */
 	entry = alloc_msi_entry(&dev->dev, nvec, masks);
@@ -577,7 +578,7 @@ static int msi_verify_entries(struct pci_dev *dev)
 	for_each_pci_msi_entry(entry, dev) {
 		if (!dev->no_64bit_msi || !entry->msg.address_hi)
 			continue;
-		pci_err(dev, "Device has broken 64-bit MSI but arch"
+		dev_err(&dev->dev, "Device has broken 64-bit MSI but arch"
 			" tried to assign one above 4G\n");
 		return -EIO;
 	}
@@ -597,7 +598,7 @@ static int msi_verify_entries(struct pci_dev *dev)
  * which could have been allocated.
  */
 static int msi_capability_init(struct pci_dev *dev, int nvec,
-			       struct irq_affinity *affd)
+			       const struct irq_affinity *affd)
 {
 	struct msi_desc *entry;
 	int ret;
@@ -669,9 +670,9 @@ static void __iomem *msix_map_region(struct pci_dev *dev, unsigned nr_entries)
 
 static int msix_setup_entries(struct pci_dev *dev, void __iomem *base,
 			      struct msix_entry *entries, int nvec,
-			      struct irq_affinity *affd)
+			      const struct irq_affinity *affd)
 {
-	struct irq_affinity_desc *curmsk, *masks = NULL;
+	struct cpumask *curmsk, *masks = NULL;
 	struct msi_desc *entry;
 	int ret, i;
 
@@ -736,7 +737,7 @@ static void msix_program_entries(struct pci_dev *dev,
  * requested MSI-X entries with allocated irqs or non-zero for otherwise.
  **/
 static int msix_capability_init(struct pci_dev *dev, struct msix_entry *entries,
-				int nvec, struct irq_affinity *affd)
+				int nvec, const struct irq_affinity *affd)
 {
 	int ret;
 	u16 control;
@@ -932,7 +933,7 @@ int pci_msix_vec_count(struct pci_dev *dev)
 EXPORT_SYMBOL(pci_msix_vec_count);
 
 static int __pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries,
-			     int nvec, struct irq_affinity *affd)
+			     int nvec, const struct irq_affinity *affd)
 {
 	int nr_entries;
 	int i, j;
@@ -957,10 +958,11 @@ static int __pci_enable_msix(struct pci_dev *dev, struct msix_entry *entries,
 			}
 		}
 	}
+	WARN_ON(!!dev->msix_enabled);
 
 	/* Check whether driver already requested for MSI irq */
 	if (dev->msi_enabled) {
-		pci_info(dev, "can't enable MSI-X (MSI IRQ already assigned)\n");
+		dev_info(&dev->dev, "can't enable MSI-X (MSI IRQ already assigned)\n");
 		return -EINVAL;
 	}
 	return msix_capability_init(dev, entries, nvec, affd);
@@ -1018,7 +1020,7 @@ int pci_msi_enabled(void)
 EXPORT_SYMBOL(pci_msi_enabled);
 
 static int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
-				  struct irq_affinity *affd)
+				  const struct irq_affinity *affd)
 {
 	int nvec;
 	int rc;
@@ -1026,17 +1028,17 @@ static int __pci_enable_msi_range(struct pci_dev *dev, int minvec, int maxvec,
 	if (!pci_msi_supported(dev, minvec))
 		return -EINVAL;
 
+	WARN_ON(!!dev->msi_enabled);
+
 	/* Check whether driver already requested MSI-X irqs */
 	if (dev->msix_enabled) {
-		pci_info(dev, "can't enable MSI (MSI-X already enabled)\n");
+		dev_info(&dev->dev,
+			 "can't enable MSI (MSI-X already enabled)\n");
 		return -EINVAL;
 	}
 
 	if (maxvec < minvec)
 		return -ERANGE;
-
-	if (WARN_ON_ONCE(dev->msi_enabled))
-		return -EINVAL;
 
 	nvec = pci_msi_vec_count(dev);
 	if (nvec < 0)
@@ -1079,15 +1081,12 @@ EXPORT_SYMBOL(pci_enable_msi);
 
 static int __pci_enable_msix_range(struct pci_dev *dev,
 				   struct msix_entry *entries, int minvec,
-				   int maxvec, struct irq_affinity *affd)
+				   int maxvec, const struct irq_affinity *affd)
 {
 	int rc, nvec = maxvec;
 
 	if (maxvec < minvec)
 		return -ERANGE;
-
-	if (WARN_ON_ONCE(dev->msix_enabled))
-		return -EINVAL;
 
 	for (;;) {
 		if (affd) {
@@ -1151,11 +1150,10 @@ EXPORT_SYMBOL(pci_enable_msix_range);
  */
 int pci_alloc_irq_vectors_affinity(struct pci_dev *dev, unsigned int min_vecs,
 				   unsigned int max_vecs, unsigned int flags,
-				   struct irq_affinity *affd)
+				   const struct irq_affinity *affd)
 {
-	struct irq_affinity msi_default_affd = {0};
-	int msix_vecs = -ENOSPC;
-	int msi_vecs = -ENOSPC;
+	static const struct irq_affinity msi_default_affd;
+	int vecs = -ENOSPC;
 
 	if (flags & PCI_IRQ_AFFINITY) {
 		if (!affd)
@@ -1166,37 +1164,27 @@ int pci_alloc_irq_vectors_affinity(struct pci_dev *dev, unsigned int min_vecs,
 	}
 
 	if (flags & PCI_IRQ_MSIX) {
-		msix_vecs = __pci_enable_msix_range(dev, NULL, min_vecs,
-						    max_vecs, affd);
-		if (msix_vecs > 0)
-			return msix_vecs;
+		vecs = __pci_enable_msix_range(dev, NULL, min_vecs, max_vecs,
+				affd);
+		if (vecs > 0)
+			return vecs;
 	}
 
 	if (flags & PCI_IRQ_MSI) {
-		msi_vecs = __pci_enable_msi_range(dev, min_vecs, max_vecs,
-						  affd);
-		if (msi_vecs > 0)
-			return msi_vecs;
+		vecs = __pci_enable_msi_range(dev, min_vecs, max_vecs, affd);
+		if (vecs > 0)
+			return vecs;
 	}
 
 	/* use legacy irq if allowed */
 	if (flags & PCI_IRQ_LEGACY) {
 		if (min_vecs == 1 && dev->irq) {
-			/*
-			 * Invoke the affinity spreading logic to ensure that
-			 * the device driver can adjust queue configuration
-			 * for the single interrupt case.
-			 */
-			if (affd)
-				irq_create_affinity_masks(1, affd);
 			pci_intx(dev, 1);
 			return 1;
 		}
 	}
 
-	if (msix_vecs == -ENOSPC)
-		return -ENOSPC;
-	return msi_vecs;
+	return vecs;
 }
 EXPORT_SYMBOL(pci_alloc_irq_vectors_affinity);
 
@@ -1260,7 +1248,7 @@ const struct cpumask *pci_irq_get_affinity(struct pci_dev *dev, int nr)
 
 		for_each_pci_msi_entry(entry, dev) {
 			if (i == nr)
-				return &entry->affinity->mask;
+				return entry->affinity;
 			i++;
 		}
 		WARN_ON_ONCE(1);
@@ -1272,7 +1260,7 @@ const struct cpumask *pci_irq_get_affinity(struct pci_dev *dev, int nr)
 				 nr >= entry->nvec_used))
 			return NULL;
 
-		return &entry->affinity[nr].mask;
+		return &entry->affinity[nr];
 	} else {
 		return cpu_possible_mask;
 	}
@@ -1447,20 +1435,12 @@ struct irq_domain *pci_msi_create_irq_domain(struct fwnode_handle *fwnode,
 {
 	struct irq_domain *domain;
 
-	if (WARN_ON(info->flags & MSI_FLAG_LEVEL_CAPABLE))
-		info->flags &= ~MSI_FLAG_LEVEL_CAPABLE;
-
 	if (info->flags & MSI_FLAG_USE_DEF_DOM_OPS)
 		pci_msi_domain_update_dom_ops(info);
 	if (info->flags & MSI_FLAG_USE_DEF_CHIP_OPS)
 		pci_msi_domain_update_chip_ops(info);
 
 	info->flags |= MSI_FLAG_ACTIVATE_EARLY;
-	if (IS_ENABLED(CONFIG_GENERIC_IRQ_RESERVATION_MODE))
-		info->flags |= MSI_FLAG_MUST_REACTIVATE;
-
-	/* PCI-MSI is oneshot-safe */
-	info->chip->flags |= IRQCHIP_ONESHOT_SAFE;
 
 	domain = msi_create_irq_domain(fwnode, info, parent);
 	if (!domain)

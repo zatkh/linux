@@ -48,6 +48,7 @@ static const struct of_device_id whitelist[] __initconst = {
 
 	{ .compatible = "samsung,exynos3250", },
 	{ .compatible = "samsung,exynos4210", },
+	{ .compatible = "samsung,exynos4212", },
 	{ .compatible = "samsung,exynos5250", },
 #ifndef CONFIG_BL_SWITCHER
 	{ .compatible = "samsung,exynos5800", },
@@ -58,7 +59,6 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "renesas,r8a73a4", },
 	{ .compatible = "renesas,r8a7740", },
 	{ .compatible = "renesas,r8a7743", },
-	{ .compatible = "renesas,r8a7744", },
 	{ .compatible = "renesas,r8a7745", },
 	{ .compatible = "renesas,r8a7778", },
 	{ .compatible = "renesas,r8a7779", },
@@ -67,6 +67,8 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "renesas,r8a7792", },
 	{ .compatible = "renesas,r8a7793", },
 	{ .compatible = "renesas,r8a7794", },
+	{ .compatible = "renesas,r8a7795", },
+	{ .compatible = "renesas,r8a7796", },
 	{ .compatible = "renesas,sh73a0", },
 
 	{ .compatible = "rockchip,rk2928", },
@@ -79,10 +81,9 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "rockchip,rk3328", },
 	{ .compatible = "rockchip,rk3366", },
 	{ .compatible = "rockchip,rk3368", },
-	{ .compatible = "rockchip,rk3399",
-	  .data = &(struct cpufreq_dt_platform_data)
-		{ .have_governor_per_policy = true, },
-	},
+	{ .compatible = "rockchip,rk3399", },
+
+	{ .compatible = "socionext,uniphier-ld6b", },
 
 	{ .compatible = "st-ericsson,u8500", },
 	{ .compatible = "st-ericsson,u8540", },
@@ -119,10 +120,6 @@ static const struct of_device_id blacklist[] __initconst = {
 	{ .compatible = "mediatek,mt8176", },
 
 	{ .compatible = "nvidia,tegra124", },
-	{ .compatible = "nvidia,tegra210", },
-
-	{ .compatible = "qcom,apq8096", },
-	{ .compatible = "qcom,msm8996", },
 
 	{ .compatible = "st,stih407", },
 	{ .compatible = "st,stih410", },

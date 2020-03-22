@@ -10,8 +10,6 @@
  *
  */
 
-#define pr_fmt(fmt) "PM: " fmt
-
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/mm.h>
@@ -23,7 +21,7 @@
 #include <linux/pm.h>
 #include <linux/device.h>
 #include <linux/init.h>
-#include <linux/memblock.h>
+#include <linux/bootmem.h>
 #include <linux/nmi.h>
 #include <linux/syscalls.h>
 #include <linux/console.h>
@@ -105,7 +103,7 @@ unsigned long image_size;
 
 void __init hibernate_image_size_init(void)
 {
-	image_size = ((totalram_pages() * 2) / 5) * PAGE_SIZE;
+	image_size = ((totalram_pages * 2) / 5) * PAGE_SIZE;
 }
 
 /*
@@ -963,17 +961,13 @@ void __init __register_nosave_region(unsigned long start_pfn,
 		BUG_ON(!region);
 	} else {
 		/* This allocation cannot fail */
-		region = memblock_alloc(sizeof(struct nosave_region),
-					SMP_CACHE_BYTES);
-		if (!region)
-			panic("%s: Failed to allocate %zu bytes\n", __func__,
-			      sizeof(struct nosave_region));
+		region = memblock_virt_alloc(sizeof(struct nosave_region), 0);
 	}
 	region->start_pfn = start_pfn;
 	region->end_pfn = end_pfn;
 	list_add_tail(&region->list, &nosave_regions);
  Report:
-	pr_info("Registered nosave memory: [mem %#010llx-%#010llx]\n",
+	printk(KERN_INFO "PM: Registered nosave memory: [mem %#010llx-%#010llx]\n",
 		(unsigned long long) start_pfn << PAGE_SHIFT,
 		((unsigned long long) end_pfn << PAGE_SHIFT) - 1);
 }
@@ -1045,7 +1039,7 @@ static void mark_nosave_pages(struct memory_bitmap *bm)
 	list_for_each_entry(region, &nosave_regions, list) {
 		unsigned long pfn;
 
-		pr_debug("Marking nosave pages: [mem %#010llx-%#010llx]\n",
+		pr_debug("PM: Marking nosave pages: [mem %#010llx-%#010llx]\n",
 			 (unsigned long long) region->start_pfn << PAGE_SHIFT,
 			 ((unsigned long long) region->end_pfn << PAGE_SHIFT)
 				- 1);
@@ -1101,7 +1095,7 @@ int create_basic_memory_bitmaps(void)
 	free_pages_map = bm2;
 	mark_nosave_pages(forbidden_pages_map);
 
-	pr_debug("Basic memory bitmaps created\n");
+	pr_debug("PM: Basic memory bitmaps created\n");
 
 	return 0;
 
@@ -1137,7 +1131,7 @@ void free_basic_memory_bitmaps(void)
 	memory_bm_free(bm2, PG_UNSAFE_CLEAR);
 	kfree(bm2);
 
-	pr_debug("Basic memory bitmaps freed\n");
+	pr_debug("PM: Basic memory bitmaps freed\n");
 }
 
 void clear_free_pages(void)
@@ -1158,7 +1152,7 @@ void clear_free_pages(void)
 		pfn = memory_bm_next_pfn(bm);
 	}
 	memory_bm_position_reset(bm);
-	pr_info("free pages cleared after restore\n");
+	pr_info("PM: free pages cleared after restore\n");
 #endif /* PAGE_POISONING_ZERO */
 }
 
@@ -1218,16 +1212,14 @@ static struct page *saveable_highmem_page(struct zone *zone, unsigned long pfn)
 	if (!pfn_valid(pfn))
 		return NULL;
 
-	page = pfn_to_online_page(pfn);
-	if (!page || page_zone(page) != zone)
+	page = pfn_to_page(pfn);
+	if (page_zone(page) != zone)
 		return NULL;
 
 	BUG_ON(!PageHighMem(page));
 
-	if (swsusp_page_is_forbidden(page) ||  swsusp_page_is_free(page))
-		return NULL;
-
-	if (PageReserved(page) || PageOffline(page))
+	if (swsusp_page_is_forbidden(page) ||  swsusp_page_is_free(page) ||
+	    PageReserved(page))
 		return NULL;
 
 	if (page_is_guard(page))
@@ -1282,16 +1274,13 @@ static struct page *saveable_page(struct zone *zone, unsigned long pfn)
 	if (!pfn_valid(pfn))
 		return NULL;
 
-	page = pfn_to_online_page(pfn);
-	if (!page || page_zone(page) != zone)
+	page = pfn_to_page(pfn);
+	if (page_zone(page) != zone)
 		return NULL;
 
 	BUG_ON(PageHighMem(page));
 
 	if (swsusp_page_is_forbidden(page) || swsusp_page_is_free(page))
-		return NULL;
-
-	if (PageOffline(page))
 		return NULL;
 
 	if (PageReserved(page)
@@ -1654,7 +1643,8 @@ static unsigned long free_unnecessary_pages(void)
  * [number of saveable pages] - [number of pages that can be freed in theory]
  *
  * where the second term is the sum of (1) reclaimable slab pages, (2) active
- * and (3) inactive anonymous pages, (4) active and (5) inactive file pages.
+ * and (3) inactive anonymous pages, (4) active and (5) inactive file pages,
+ * minus mapped file pages.
  */
 static unsigned long minimum_image_size(unsigned long saveable)
 {
@@ -1664,7 +1654,8 @@ static unsigned long minimum_image_size(unsigned long saveable)
 		+ global_node_page_state(NR_ACTIVE_ANON)
 		+ global_node_page_state(NR_INACTIVE_ANON)
 		+ global_node_page_state(NR_ACTIVE_FILE)
-		+ global_node_page_state(NR_INACTIVE_FILE);
+		+ global_node_page_state(NR_INACTIVE_FILE)
+		- global_node_page_state(NR_FILE_MAPPED);
 
 	return saveable <= size ? 0 : saveable - size;
 }
@@ -1699,7 +1690,7 @@ int hibernate_preallocate_memory(void)
 	ktime_t start, stop;
 	int error;
 
-	pr_info("Preallocating image memory... ");
+	printk(KERN_INFO "PM: Preallocating image memory... ");
 	start = ktime_get();
 
 	error = memory_bm_create(&orig_bm, GFP_IMAGE, PG_ANY);
@@ -1830,13 +1821,13 @@ int hibernate_preallocate_memory(void)
 
  out:
 	stop = ktime_get();
-	pr_cont("done (allocated %lu pages)\n", pages);
+	printk(KERN_CONT "done (allocated %lu pages)\n", pages);
 	swsusp_show_speed(start, stop, pages, "Allocated");
 
 	return 0;
 
  err_out:
-	pr_cont("\n");
+	printk(KERN_CONT "\n");
 	swsusp_free();
 	return -ENOMEM;
 }
@@ -1876,8 +1867,8 @@ static int enough_free_mem(unsigned int nr_pages, unsigned int nr_highmem)
 			free += zone_page_state(zone, NR_FREE_PAGES);
 
 	nr_pages += count_pages_for_highmem(nr_highmem);
-	pr_debug("Normal pages needed: %u + %u, available pages: %u\n",
-		 nr_pages, PAGES_FOR_IO, free);
+	pr_debug("PM: Normal pages needed: %u + %u, available pages: %u\n",
+		nr_pages, PAGES_FOR_IO, free);
 
 	return free > nr_pages + PAGES_FOR_IO;
 }
@@ -1891,7 +1882,7 @@ static int enough_free_mem(unsigned int nr_pages, unsigned int nr_highmem)
  */
 static inline int get_highmem_buffer(int safe_needed)
 {
-	buffer = get_image_page(GFP_ATOMIC, safe_needed);
+	buffer = get_image_page(GFP_ATOMIC | __GFP_COLD, safe_needed);
 	return buffer ? 0 : -ENOMEM;
 }
 
@@ -1952,7 +1943,7 @@ static int swsusp_alloc(struct memory_bitmap *copy_bm,
 		while (nr_pages-- > 0) {
 			struct page *page;
 
-			page = alloc_image_page(GFP_ATOMIC);
+			page = alloc_image_page(GFP_ATOMIC | __GFP_COLD);
 			if (!page)
 				goto err_out;
 			memory_bm_set_bit(copy_bm, page_to_pfn(page));
@@ -1970,20 +1961,20 @@ asmlinkage __visible int swsusp_save(void)
 {
 	unsigned int nr_pages, nr_highmem;
 
-	pr_info("Creating hibernation image:\n");
+	printk(KERN_INFO "PM: Creating hibernation image:\n");
 
 	drain_local_pages(NULL);
 	nr_pages = count_data_pages();
 	nr_highmem = count_highmem_pages();
-	pr_info("Need to copy %u pages\n", nr_pages + nr_highmem);
+	printk(KERN_INFO "PM: Need to copy %u pages\n", nr_pages + nr_highmem);
 
 	if (!enough_free_mem(nr_pages, nr_highmem)) {
-		pr_err("Not enough free memory\n");
+		printk(KERN_ERR "PM: Not enough free memory\n");
 		return -ENOMEM;
 	}
 
 	if (swsusp_alloc(&copy_bm, nr_pages, nr_highmem)) {
-		pr_err("Memory allocation failed\n");
+		printk(KERN_ERR "PM: Memory allocation failed\n");
 		return -ENOMEM;
 	}
 
@@ -2004,7 +1995,8 @@ asmlinkage __visible int swsusp_save(void)
 	nr_copy_pages = nr_pages;
 	nr_meta_pages = DIV_ROUND_UP(nr_pages * sizeof(long), PAGE_SIZE);
 
-	pr_info("Hibernation image created (%d pages copied)\n", nr_pages);
+	printk(KERN_INFO "PM: Hibernation image created (%d pages copied)\n",
+		nr_pages);
 
 	return 0;
 }
@@ -2178,7 +2170,7 @@ static int check_header(struct swsusp_info *info)
 	if (!reason && info->num_physpages != get_num_physpages())
 		reason = "memory size";
 	if (reason) {
-		pr_err("Image mismatch: %s\n", reason);
+		printk(KERN_ERR "PM: Image mismatch: %s\n", reason);
 		return -EPERM;
 	}
 	return 0;

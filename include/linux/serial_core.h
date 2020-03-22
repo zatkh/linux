@@ -22,7 +22,6 @@
 
 #include <linux/bitops.h>
 #include <linux/compiler.h>
-#include <linux/console.h>
 #include <linux/interrupt.h>
 #include <linux/circ_buf.h>
 #include <linux/spinlock.h>
@@ -128,13 +127,6 @@ struct uart_port {
 					     struct ktermios *);
 	unsigned int		(*get_mctrl)(struct uart_port *);
 	void			(*set_mctrl)(struct uart_port *, unsigned int);
-	unsigned int		(*get_divisor)(struct uart_port *,
-					       unsigned int baud,
-					       unsigned int *frac);
-	void			(*set_divisor)(struct uart_port *,
-					       unsigned int baud,
-					       unsigned int quot,
-					       unsigned int quot_frac);
 	int			(*startup)(struct uart_port *port);
 	void			(*shutdown)(struct uart_port *port);
 	void			(*throttle)(struct uart_port *port);
@@ -145,8 +137,6 @@ struct uart_port {
 	void			(*handle_break)(struct uart_port *);
 	int			(*rs485_config)(struct uart_port *,
 						struct serial_rs485 *rs485);
-	int			(*iso7816_config)(struct uart_port *,
-						  struct serial_iso7816 *iso7816);
 	unsigned int		irq;			/* irq number */
 	unsigned long		irqflags;		/* irq flags  */
 	unsigned int		uartclk;		/* base uart clock */
@@ -176,7 +166,6 @@ struct uart_port {
 	struct console		*cons;			/* struct console, if any */
 #if defined(CONFIG_SERIAL_CORE_CONSOLE) || defined(SUPPORT_SYSRQ)
 	unsigned long		sysrq;			/* sysrq timeout */
-	unsigned int		sysrq_ch;		/* char for sysrq */
 #endif
 
 	/* flags must be updated while holding port mutex */
@@ -244,7 +233,6 @@ struct uart_port {
 #define UPSTAT_AUTORTS		((__force upstat_t) (1 << 2))
 #define UPSTAT_AUTOCTS		((__force upstat_t) (1 << 3))
 #define UPSTAT_AUTOXOFF		((__force upstat_t) (1 << 4))
-#define UPSTAT_SYNC_FIFO	((__force upstat_t) (1 << 5))
 
 	int			hw_stopped;		/* sw-assisted CTS flow state */
 	unsigned int		mctrl;			/* current modem ctrl settings */
@@ -264,7 +252,6 @@ struct uart_port {
 	struct attribute_group	*attr_group;		/* port specific attributes */
 	const struct attribute_group **tty_groups;	/* all attributes (serial core use only) */
 	struct serial_rs485     rs485;
-	struct serial_iso7816   iso7816;
 	void			*private_data;		/* generic platform data pointer */
 };
 
@@ -361,8 +348,7 @@ struct earlycon_device {
 };
 
 struct earlycon_id {
-	char	name[15];
-	char	name_term;	/* In case compiler didn't '\0' term name */
+	char	name[16];
 	char	compatible[128];
 	int	(*setup)(struct earlycon_device *, const char *options);
 };
@@ -397,10 +383,10 @@ extern int of_setup_earlycon(const struct earlycon_id *match,
 			     const char *options);
 
 #ifdef CONFIG_SERIAL_EARLYCON
-extern bool earlycon_acpi_spcr_enable __initdata;
+extern bool earlycon_init_is_deferred __initdata;
 int setup_earlycon(char *buf);
 #else
-static const bool earlycon_acpi_spcr_enable EARLYCON_USED_OR_UNUSED;
+static const bool earlycon_init_is_deferred;
 static inline int setup_earlycon(char *buf) { return 0; }
 #endif
 
@@ -408,7 +394,7 @@ struct uart_port *uart_get_console(struct uart_port *ports, int nr,
 				   struct console *c);
 int uart_parse_earlycon(char *p, unsigned char *iotype, resource_size_t *addr,
 			char **options);
-void uart_parse_options(const char *options, int *baud, int *parity, int *bits,
+void uart_parse_options(char *options, int *baud, int *parity, int *bits,
 			int *flow);
 int uart_set_options(struct uart_port *port, struct console *co, int baud,
 		     int parity, int bits, int flow);
@@ -487,42 +473,8 @@ uart_handle_sysrq_char(struct uart_port *port, unsigned int ch)
 	}
 	return 0;
 }
-static inline int
-uart_prepare_sysrq_char(struct uart_port *port, unsigned int ch)
-{
-	if (port->sysrq) {
-		if (ch && time_before(jiffies, port->sysrq)) {
-			port->sysrq_ch = ch;
-			port->sysrq = 0;
-			return 1;
-		}
-		port->sysrq = 0;
-	}
-	return 0;
-}
-static inline void
-uart_unlock_and_check_sysrq(struct uart_port *port, unsigned long irqflags)
-{
-	int sysrq_ch;
-
-	sysrq_ch = port->sysrq_ch;
-	port->sysrq_ch = 0;
-
-	spin_unlock_irqrestore(&port->lock, irqflags);
-
-	if (sysrq_ch)
-		handle_sysrq(sysrq_ch);
-}
 #else
-static inline int
-uart_handle_sysrq_char(struct uart_port *port, unsigned int ch) { return 0; }
-static inline int
-uart_prepare_sysrq_char(struct uart_port *port, unsigned int ch) { return 0; }
-static inline void
-uart_unlock_and_check_sysrq(struct uart_port *port, unsigned long irqflags)
-{
-	spin_unlock_irqrestore(&port->lock, irqflags);
-}
+#define uart_handle_sysrq_char(port,ch) ({ (void)port; 0; })
 #endif
 
 /*
@@ -556,5 +508,4 @@ static inline int uart_handle_break(struct uart_port *port)
 					 (cflag) & CRTSCTS || \
 					 !((cflag) & CLOCAL))
 
-void uart_get_rs485_mode(struct device *dev, struct serial_rs485 *rs485conf);
 #endif /* LINUX_SERIAL_CORE_H */

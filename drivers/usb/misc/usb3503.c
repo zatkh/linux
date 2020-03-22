@@ -1,8 +1,21 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Driver for SMSC USB3503 USB 2.0 hub controller driver
  *
  * Copyright (c) 2012-2013 Dongjin Kim (tobetter@gmail.com)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
 #include <linux/clk.h>
@@ -355,8 +368,11 @@ static int usb3503_platform_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM_SLEEP
-static int usb3503_suspend(struct usb3503 *hub)
+static int usb3503_i2c_suspend(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct usb3503 *hub = i2c_get_clientdata(client);
+
 	usb3503_switch_mode(hub, USB3503_MODE_STANDBY);
 
 	if (hub->clk)
@@ -365,8 +381,11 @@ static int usb3503_suspend(struct usb3503 *hub)
 	return 0;
 }
 
-static int usb3503_resume(struct usb3503 *hub)
+static int usb3503_i2c_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct usb3503 *hub = i2c_get_clientdata(client);
+
 	if (hub->clk)
 		clk_prepare_enable(hub->clk);
 
@@ -374,37 +393,10 @@ static int usb3503_resume(struct usb3503 *hub)
 
 	return 0;
 }
-
-static int usb3503_i2c_suspend(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-
-	return usb3503_suspend(i2c_get_clientdata(client));
-}
-
-static int usb3503_i2c_resume(struct device *dev)
-{
-	struct i2c_client *client = to_i2c_client(dev);
-
-	return usb3503_resume(i2c_get_clientdata(client));
-}
-
-static int usb3503_platform_suspend(struct device *dev)
-{
-	return usb3503_suspend(dev_get_drvdata(dev));
-}
-
-static int usb3503_platform_resume(struct device *dev)
-{
-	return usb3503_resume(dev_get_drvdata(dev));
-}
 #endif
 
 static SIMPLE_DEV_PM_OPS(usb3503_i2c_pm_ops, usb3503_i2c_suspend,
 		usb3503_i2c_resume);
-
-static SIMPLE_DEV_PM_OPS(usb3503_platform_pm_ops, usb3503_platform_suspend,
-		usb3503_platform_resume);
 
 static const struct i2c_device_id usb3503_id[] = {
 	{ USB3503_I2C_NAME, 0 },
@@ -436,7 +428,6 @@ static struct platform_driver usb3503_platform_driver = {
 	.driver = {
 		.name = USB3503_I2C_NAME,
 		.of_match_table = of_match_ptr(usb3503_of_match),
-		.pm = &usb3503_platform_pm_ops,
 	},
 	.probe		= usb3503_platform_probe,
 	.remove		= usb3503_platform_remove,

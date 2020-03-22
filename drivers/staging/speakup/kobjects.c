@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Speakup kobject implementation
  *
@@ -154,7 +153,6 @@ static ssize_t chars_chartab_store(struct kobject *kobj,
 			continue;
 		}
 
-		/* Do not replace with kstrtoul: here we need temp to be updated */
 		index = simple_strtoul(cp, &temp, 10);
 		if (index > 255) {
 			rejected++;
@@ -389,7 +387,7 @@ static ssize_t synth_store(struct kobject *kobj, struct kobj_attribute *attr,
 	len = strlen(buf);
 	if (len < 2 || len > 9)
 		return -EINVAL;
-	memcpy(new_synth_name, buf, len);
+	strncpy(new_synth_name, buf, len);
 	if (new_synth_name[len - 1] == '\n')
 		len--;
 	new_synth_name[len] = '\0';
@@ -520,7 +518,7 @@ static ssize_t punc_store(struct kobject *kobj, struct kobj_attribute *attr,
 		return -EINVAL;
 	}
 
-	memcpy(punc_buf, buf, x);
+	strncpy(punc_buf, buf, x);
 
 	while (x && punc_buf[x - 1] == '\n')
 		x--;
@@ -546,7 +544,7 @@ ssize_t spk_var_show(struct kobject *kobj, struct kobj_attribute *attr,
 	int rv = 0;
 	struct st_var_header *param;
 	struct var_t *var;
-	char *cp1;
+		char *cp1;
 	char *cp;
 	char ch;
 	unsigned long flags;
@@ -788,7 +786,6 @@ static ssize_t message_store_helper(const char *buf, size_t count,
 			continue;
 		}
 
-		/* Do not replace with kstrtoul: here we need temp to be updated */
 		index = simple_strtoul(cp, &temp, 10);
 
 		while ((temp < linefeed) && (*temp == ' ' || *temp == '\t'))

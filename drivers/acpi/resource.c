@@ -381,7 +381,6 @@ unsigned int acpi_dev_get_irq_type(int triggering, int polarity)
 	case ACPI_ACTIVE_BOTH:
 		if (triggering == ACPI_EDGE_SENSITIVE)
 			return IRQ_TYPE_EDGE_BOTH;
-		/* fall through */
 	default:
 		return IRQ_TYPE_NONE;
 	}
@@ -476,7 +475,7 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 		}
 		acpi_dev_get_irqresource(res, irq->interrupts[index],
 					 irq->triggering, irq->polarity,
-					 irq->shareable, true);
+					 irq->sharable, true);
 		break;
 	case ACPI_RESOURCE_TYPE_EXTENDED_IRQ:
 		ext_irq = &ares->data.extended_irq;
@@ -487,7 +486,7 @@ bool acpi_dev_resource_interrupt(struct acpi_resource *ares, int index,
 		if (is_gsi(ext_irq))
 			acpi_dev_get_irqresource(res, ext_irq->interrupts[index],
 					 ext_irq->triggering, ext_irq->polarity,
-					 ext_irq->shareable, false);
+					 ext_irq->sharable, false);
 		else
 			acpi_dev_irqresource_disabled(res, 0);
 		break;

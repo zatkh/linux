@@ -1,5 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright (C) 2011-2019  B.A.T.M.A.N. contributors:
+/* Copyright (C) 2011-2017  B.A.T.M.A.N. contributors:
  *
  * Antonio Quartulli
  *
@@ -24,11 +23,10 @@
 #include <linux/compiler.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
-#include <uapi/linux/batadv_packet.h>
 
 #include "originator.h"
+#include "packet.h"
 
-struct netlink_callback;
 struct seq_file;
 struct sk_buff;
 
@@ -46,17 +44,11 @@ void batadv_dat_snoop_outgoing_arp_reply(struct batadv_priv *bat_priv,
 					 struct sk_buff *skb);
 bool batadv_dat_snoop_incoming_arp_reply(struct batadv_priv *bat_priv,
 					 struct sk_buff *skb, int hdr_size);
-void batadv_dat_snoop_outgoing_dhcp_ack(struct batadv_priv *bat_priv,
-					struct sk_buff *skb,
-					__be16 proto,
-					unsigned short vid);
-void batadv_dat_snoop_incoming_dhcp_ack(struct batadv_priv *bat_priv,
-					struct sk_buff *skb, int hdr_size);
 bool batadv_dat_drop_broadcast_packet(struct batadv_priv *bat_priv,
 				      struct batadv_forw_packet *forw_packet);
 
 /**
- * batadv_dat_init_orig_node_addr() - assign a DAT address to the orig_node
+ * batadv_dat_init_orig_node_addr - assign a DAT address to the orig_node
  * @orig_node: the node to assign the DAT address to
  */
 static inline void
@@ -69,7 +61,7 @@ batadv_dat_init_orig_node_addr(struct batadv_orig_node *orig_node)
 }
 
 /**
- * batadv_dat_init_own_addr() - assign a DAT address to the node itself
+ * batadv_dat_init_own_addr - assign a DAT address to the node itself
  * @bat_priv: the bat priv with all the soft interface information
  * @primary_if: a pointer to the primary interface
  */
@@ -88,10 +80,9 @@ batadv_dat_init_own_addr(struct batadv_priv *bat_priv,
 int batadv_dat_init(struct batadv_priv *bat_priv);
 void batadv_dat_free(struct batadv_priv *bat_priv);
 int batadv_dat_cache_seq_print_text(struct seq_file *seq, void *offset);
-int batadv_dat_cache_dump(struct sk_buff *msg, struct netlink_callback *cb);
 
 /**
- * batadv_dat_inc_counter() - increment the correct DAT packet counter
+ * batadv_dat_inc_counter - increment the correct DAT packet counter
  * @bat_priv: the bat priv with all the soft interface information
  * @subtype: the 4addr subtype of the packet to be counted
  *
@@ -146,19 +137,6 @@ batadv_dat_snoop_incoming_arp_reply(struct batadv_priv *bat_priv,
 	return false;
 }
 
-static inline void
-batadv_dat_snoop_outgoing_dhcp_ack(struct batadv_priv *bat_priv,
-				   struct sk_buff *skb, __be16 proto,
-				   unsigned short vid)
-{
-}
-
-static inline void
-batadv_dat_snoop_incoming_dhcp_ack(struct batadv_priv *bat_priv,
-				   struct sk_buff *skb, int hdr_size)
-{
-}
-
 static inline bool
 batadv_dat_drop_broadcast_packet(struct batadv_priv *bat_priv,
 				 struct batadv_forw_packet *forw_packet)
@@ -188,12 +166,6 @@ static inline int batadv_dat_init(struct batadv_priv *bat_priv)
 
 static inline void batadv_dat_free(struct batadv_priv *bat_priv)
 {
-}
-
-static inline int
-batadv_dat_cache_dump(struct sk_buff *msg, struct netlink_callback *cb)
-{
-	return -EOPNOTSUPP;
 }
 
 static inline void batadv_dat_inc_counter(struct batadv_priv *bat_priv,

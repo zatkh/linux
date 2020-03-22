@@ -526,7 +526,6 @@ void ubi_free_internal_volumes(struct ubi_device *ubi)
 	for (i = ubi->vtbl_slots;
 	     i < ubi->vtbl_slots + UBI_INT_VOL_COUNT; i++) {
 		ubi_eba_replace_table(ubi->volumes[i], NULL);
-		ubi_fastmap_destroy_checkmap(ubi->volumes[i]);
 		kfree(ubi->volumes[i]);
 	}
 }
@@ -536,17 +535,8 @@ static int get_bad_peb_limit(const struct ubi_device *ubi, int max_beb_per1024)
 	int limit, device_pebs;
 	uint64_t device_size;
 
-	if (!max_beb_per1024) {
-		/*
-		 * Since max_beb_per1024 has not been set by the user in either
-		 * the cmdline or Kconfig, use mtd_max_bad_blocks to set the
-		 * limit if it is supported by the device.
-		 */
-		limit = mtd_max_bad_blocks(ubi->mtd, 0, ubi->mtd->size);
-		if (limit < 0)
-			return 0;
-		return limit;
-	}
+	if (!max_beb_per1024)
+		return 0;
 
 	/*
 	 * Here we are using size of the entire flash chip and
@@ -1101,10 +1091,10 @@ int ubi_detach_mtd_dev(int ubi_num, int anyway)
 	ubi_wl_close(ubi);
 	ubi_free_internal_volumes(ubi);
 	vfree(ubi->vtbl);
+	put_mtd_device(ubi->mtd);
 	vfree(ubi->peb_buf);
 	vfree(ubi->fm_buf);
 	ubi_msg(ubi, "mtd%d is detached", ubi->mtd->index);
-	put_mtd_device(ubi->mtd);
 	put_device(&ubi->dev);
 	return 0;
 }
@@ -1334,10 +1324,8 @@ static int bytes_str_to_int(const char *str)
 	switch (*endp) {
 	case 'G':
 		result *= 1024;
-		/* fall through */
 	case 'M':
 		result *= 1024;
-		/* fall through */
 	case 'K':
 		result *= 1024;
 		if (endp[1] == 'i' && endp[2] == 'B')
@@ -1360,7 +1348,7 @@ static int bytes_str_to_int(const char *str)
  * This function returns zero in case of success and a negative error code in
  * case of error.
  */
-static int ubi_mtd_param_parse(const char *val, const struct kernel_param *kp)
+static int ubi_mtd_param_parse(const char *val, struct kernel_param *kp)
 {
 	int i, len;
 	struct mtd_dev_param *p;

@@ -788,12 +788,13 @@ static int ccp5_init(struct ccp_device *ccp)
 	struct ccp_cmd_queue *cmd_q;
 	struct dma_pool *dma_pool;
 	char dma_pool_name[MAX_DMAPOOL_NAME_LEN];
-	unsigned int qmr, i;
+	unsigned int qmr, qim, i;
 	u64 status;
 	u32 status_lo, status_hi;
 	int ret;
 
 	/* Find available queues */
+	qim = 0;
 	qmr = ioread32(ccp->io_regs + Q_MASK_REG);
 	for (i = 0; i < MAX_HW_QUEUES; i++) {
 
@@ -822,9 +823,9 @@ static int ccp5_init(struct ccp_device *ccp)
 		/* Page alignment satisfies our needs for N <= 128 */
 		BUILD_BUG_ON(COMMANDS_PER_QUEUE > 128);
 		cmd_q->qsize = Q_SIZE(Q_DESC_SIZE);
-		cmd_q->qbase = dma_alloc_coherent(dev, cmd_q->qsize,
-						  &cmd_q->qbase_dma,
-						  GFP_KERNEL);
+		cmd_q->qbase = dma_zalloc_coherent(dev, cmd_q->qsize,
+						   &cmd_q->qbase_dma,
+						   GFP_KERNEL);
 		if (!cmd_q->qbase) {
 			dev_err(dev, "unable to allocate command queue\n");
 			ret = -ENOMEM;

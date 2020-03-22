@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Driver for the PLX NET2280 USB device controller.
  * Specs and errata are available from <http://www.plxtech.com>.
@@ -32,6 +31,11 @@
  *
  * Modified Ricardo Ribalda Qtechnology AS  to provide compatibility
  *	with usb 338x chip. Based on PLX driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
  */
 
 #include <linux/module.h>
@@ -516,8 +520,8 @@ static int net2280_disable(struct usb_ep *_ep)
 	unsigned long		flags;
 
 	ep = container_of(_ep, struct net2280_ep, ep);
-	if (!_ep || _ep->name == ep0name) {
-		pr_err("%s: Invalid ep=%p\n", __func__, _ep);
+	if (!_ep || !ep->desc || _ep->name == ep0name) {
+		pr_err("%s: Invalid ep=%p or ep->desc\n", __func__, _ep);
 		return -EINVAL;
 	}
 	spin_lock_irqsave(&ep->dev->lock, flags);
@@ -866,6 +870,9 @@ static void start_queue(struct net2280_ep *ep, u32 dmactl, u32 td_dma)
 	(void) readl(&ep->dev->pci->pcimstctl);
 
 	writel(BIT(DMA_START), &dma->dmastat);
+
+	if (!ep->is_in)
+		stop_out_naking(ep);
 }
 
 static void start_dma(struct net2280_ep *ep, struct net2280_request *req)
@@ -904,7 +911,6 @@ static void start_dma(struct net2280_ep *ep, struct net2280_request *req)
 			writel(BIT(DMA_START), &dma->dmastat);
 			return;
 		}
-		stop_out_naking(ep);
 	}
 
 	tmp = dmactl_default;
@@ -1273,9 +1279,9 @@ static int net2280_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 			break;
 	}
 	if (&req->req != _req) {
-		ep->stopped = stopped;
 		spin_unlock_irqrestore(&ep->dev->lock, flags);
-		ep_dbg(ep->dev, "%s: Request mismatch\n", __func__);
+		dev_err(&ep->dev->pdev->dev, "%s: Request mismatch\n",
+								__func__);
 		return -EINVAL;
 	}
 
@@ -1543,7 +1549,7 @@ static int net2280_pullup(struct usb_gadget *_gadget, int is_on)
 		writel(tmp | BIT(USB_DETECT_ENABLE), &dev->usb->usbctl);
 	} else {
 		writel(tmp & ~BIT(USB_DETECT_ENABLE), &dev->usb->usbctl);
-		stop_activity(dev, NULL);
+		stop_activity(dev, dev->driver);
 	}
 
 	spin_unlock_irqrestore(&dev->lock, flags);
@@ -2277,7 +2283,7 @@ static void usb_reinit_338x(struct net2280 *dev)
 	 * - It is safe to set for all connection speeds; all chip revisions.
 	 * - R-M-W to leave other bits undisturbed.
 	 * - Reference PLX TT-7372
-	 */
+	*/
 	val = readl(&dev->ll_chicken_reg->ll_tsn_chicken_bit);
 	val |= BIT(RECOVERY_IDLE_TO_RECOVER_FMW);
 	writel(val, &dev->ll_chicken_reg->ll_tsn_chicken_bit);
@@ -2464,11 +2470,8 @@ static void stop_activity(struct net2280 *dev, struct usb_gadget_driver *driver)
 		nuke(&dev->ep[i]);
 
 	/* report disconnect; the driver is already quiesced */
-	if (driver) {
-		spin_unlock(&dev->lock);
+	if (driver)
 		driver->disconnect(&dev->gadget);
-		spin_lock(&dev->lock);
-	}
 
 	usb_reinit(dev);
 }
@@ -3342,8 +3345,6 @@ next_endpoints:
 		BIT(PCI_RETRY_ABORT_INTERRUPT))
 
 static void handle_stat1_irqs(struct net2280 *dev, u32 stat)
-__releases(dev->lock)
-__acquires(dev->lock)
 {
 	struct net2280_ep	*ep;
 	u32			tmp, num, mask, scratch;
@@ -3384,14 +3385,12 @@ __acquires(dev->lock)
 			if (disconnect || reset) {
 				stop_activity(dev, dev->driver);
 				ep0_start(dev);
-				spin_unlock(&dev->lock);
 				if (reset)
 					usb_gadget_udc_reset
 						(&dev->gadget, dev->driver);
 				else
 					(dev->driver->disconnect)
 						(&dev->gadget);
-				spin_lock(&dev->lock);
 				return;
 			}
 		}
@@ -3410,7 +3409,6 @@ __acquires(dev->lock)
 	tmp = BIT(SUSPEND_REQUEST_CHANGE_INTERRUPT);
 	if (stat & tmp) {
 		writel(tmp, &dev->regs->irqstat1);
-		spin_unlock(&dev->lock);
 		if (stat & BIT(SUSPEND_REQUEST_INTERRUPT)) {
 			if (dev->driver->suspend)
 				dev->driver->suspend(&dev->gadget);
@@ -3421,7 +3419,6 @@ __acquires(dev->lock)
 				dev->driver->resume(&dev->gadget);
 			/* at high speed, note erratum 0133 */
 		}
-		spin_lock(&dev->lock);
 		stat &= ~tmp;
 	}
 

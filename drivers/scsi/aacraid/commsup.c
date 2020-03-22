@@ -33,7 +33,6 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <linux/crash_dump.h>
 #include <linux/types.h>
 #include <linux/sched.h>
 #include <linux/pci.h>
@@ -44,6 +43,7 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/interrupt.h>
+#include <linux/semaphore.h>
 #include <linux/bcd.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
@@ -188,7 +188,7 @@ int aac_fib_setup(struct aac_dev * dev)
 		fibptr->hw_fib_va = hw_fib;
 		fibptr->data = (void *) fibptr->hw_fib_va->data;
 		fibptr->next = fibptr+1;	/* Forward chain the fibs */
-		init_completion(&fibptr->event_wait);
+		sema_init(&fibptr->event_wait, 0);
 		spin_lock_init(&fibptr->event_lock);
 		hw_fib->header.XferState = cpu_to_le32(0xffffffff);
 		hw_fib->header.SenderSize =
@@ -467,6 +467,35 @@ int aac_queue_get(struct aac_dev * dev, u32 * index, u32 qid, struct hw_fib * hw
 	return 0;
 }
 
+#ifdef CONFIG_EEH
+static inline int aac_check_eeh_failure(struct aac_dev *dev)
+{
+	/* Check for an EEH failure for the given
+	 * device node. Function eeh_dev_check_failure()
+	 * returns 0 if there has not been an EEH error
+	 * otherwise returns a non-zero value.
+	 *
+	 * Need to be called before any PCI operation,
+	 * i.e.,before aac_adapter_check_health()
+	 */
+	struct eeh_dev *edev = pci_dev_to_eeh_dev(dev->pdev);
+
+	if (eeh_dev_check_failure(edev)) {
+		/* The EEH mechanisms will handle this
+		 * error and reset the device if
+		 * necessary.
+		 */
+		return 1;
+	}
+	return 0;
+}
+#else
+static inline int aac_check_eeh_failure(struct aac_dev *dev)
+{
+	return 0;
+}
+#endif
+
 /*
  *	Define the highest level of host to adapter communication routines.
  *	These routines will support host to adapter FS commuication. These
@@ -513,7 +542,7 @@ int aac_fib_send(u16 command, struct fib *fibptr, unsigned long size,
 	 *	The only invalid cases are if the caller requests to wait and
 	 *	does not request a response and if the caller does not want a
 	 *	response and the Fib is not allocated from pool. If a response
-	 *	is not requested the Fib will just be deallocaed by the DPC
+	 *	is not requesed the Fib will just be deallocaed by the DPC
 	 *	routine when the response comes back from the adapter. No
 	 *	further processing will be done besides deleting the Fib. We
 	 *	will have a debug mode where the adapter can notify the host
@@ -622,7 +651,7 @@ int aac_fib_send(u16 command, struct fib *fibptr, unsigned long size,
 		}
 		if (wait) {
 			fibptr->flags |= FIB_CONTEXT_FLAG_WAIT;
-			if (wait_for_completion_interruptible(&fibptr->event_wait)) {
+			if (down_interruptible(&fibptr->event_wait)) {
 				fibptr->flags &= ~FIB_CONTEXT_FLAG_WAIT;
 				return -EFAULT;
 			}
@@ -658,7 +687,7 @@ int aac_fib_send(u16 command, struct fib *fibptr, unsigned long size,
 			 * hardware failure has occurred.
 			 */
 			unsigned long timeout = jiffies + (180 * HZ); /* 3 minutes */
-			while (!try_wait_for_completion(&fibptr->event_wait)) {
+			while (down_trylock(&fibptr->event_wait)) {
 				int blink;
 				if (time_is_before_eq_jiffies(timeout)) {
 					struct aac_queue * q = &dev->queues->queue[AdapNormCmdQueue];
@@ -672,7 +701,7 @@ int aac_fib_send(u16 command, struct fib *fibptr, unsigned long size,
 					return -ETIMEDOUT;
 				}
 
-				if (unlikely(aac_pci_offline(dev)))
+				if (aac_check_eeh_failure(dev))
 					return -EFAULT;
 
 				if ((blink = aac_adapter_check_health(dev)) > 0) {
@@ -688,9 +717,9 @@ int aac_fib_send(u16 command, struct fib *fibptr, unsigned long size,
 				 */
 				schedule();
 			}
-		} else if (wait_for_completion_interruptible(&fibptr->event_wait)) {
+		} else if (down_interruptible(&fibptr->event_wait)) {
 			/* Do nothing ... satisfy
-			 * wait_for_completion_interruptible must_check */
+			 * down_interruptible must_check */
 		}
 
 		spin_lock_irqsave(&fibptr->event_lock, flags);
@@ -772,11 +801,11 @@ int aac_hba_send(u8 command, struct fib *fibptr, fib_callback callback,
 
 		spin_unlock_irqrestore(&fibptr->event_lock, flags);
 
-		if (unlikely(aac_pci_offline(dev)))
+		if (aac_check_eeh_failure(dev))
 			return -EFAULT;
 
 		fibptr->flags |= FIB_CONTEXT_FLAG_WAIT;
-		if (wait_for_completion_interruptible(&fibptr->event_wait))
+		if (down_interruptible(&fibptr->event_wait))
 			fibptr->done = 2;
 		fibptr->flags &= ~(FIB_CONTEXT_FLAG_WAIT);
 
@@ -1303,9 +1332,8 @@ static void aac_handle_aif(struct aac_dev * dev, struct fib * fibptr)
 				  ADD : DELETE;
 				break;
 			}
-			break;
-		case AifBuManagerEvent:
-			aac_handle_aif_bu(dev, aifcmd);
+			case AifBuManagerEvent:
+				aac_handle_aif_bu(dev, aifcmd);
 			break;
 		}
 
@@ -1377,19 +1405,18 @@ static void aac_handle_aif(struct aac_dev * dev, struct fib * fibptr)
 
 	container = 0;
 retry_next:
-	if (device_config_needed == NOTHING) {
-		for (; container < dev->maximum_num_containers; ++container) {
-			if ((dev->fsa_dev[container].config_waiting_on == 0) &&
-			    (dev->fsa_dev[container].config_needed != NOTHING) &&
-			    time_before(jiffies, dev->fsa_dev[container].config_waiting_stamp + AIF_SNIFF_TIMEOUT)) {
-				device_config_needed =
-					dev->fsa_dev[container].config_needed;
-				dev->fsa_dev[container].config_needed = NOTHING;
-				channel = CONTAINER_TO_CHANNEL(container);
-				id = CONTAINER_TO_ID(container);
-				lun = CONTAINER_TO_LUN(container);
-				break;
-			}
+	if (device_config_needed == NOTHING)
+	for (; container < dev->maximum_num_containers; ++container) {
+		if ((dev->fsa_dev[container].config_waiting_on == 0) &&
+			(dev->fsa_dev[container].config_needed != NOTHING) &&
+			time_before(jiffies, dev->fsa_dev[container].config_waiting_stamp + AIF_SNIFF_TIMEOUT)) {
+			device_config_needed =
+				dev->fsa_dev[container].config_needed;
+			dev->fsa_dev[container].config_needed = NOTHING;
+			channel = CONTAINER_TO_CHANNEL(container);
+			id = CONTAINER_TO_ID(container);
+			lun = CONTAINER_TO_LUN(container);
+			break;
 		}
 	}
 	if (device_config_needed == NOTHING)
@@ -1539,7 +1566,7 @@ static int _aac_reset_adapter(struct aac_dev *aac, int forced, u8 reset_type)
 		  || fib->flags & FIB_CONTEXT_FLAG_WAIT) {
 			unsigned long flagv;
 			spin_lock_irqsave(&fib->event_lock, flagv);
-			complete(&fib->event_wait);
+			up(&fib->event_wait);
 			spin_unlock_irqrestore(&fib->event_lock, flagv);
 			schedule();
 			retval = 0;
@@ -1633,27 +1660,20 @@ static int _aac_reset_adapter(struct aac_dev *aac, int forced, u8 reset_type)
 		command->scsi_done(command);
 	}
 	/*
-	 * Any Device that was already marked offline needs to be marked
-	 * running
+	 * Any Device that was already marked offline needs to be cleaned up
 	 */
 	__shost_for_each_device(dev, host) {
-		if (!scsi_device_online(dev))
-			scsi_device_set_state(dev, SDEV_RUNNING);
+		if (!scsi_device_online(dev)) {
+			sdev_printk(KERN_INFO, dev, "Removing offline device\n");
+			scsi_remove_device(dev);
+			scsi_device_put(dev);
+		}
 	}
 	retval = 0;
 
 out:
 	aac->in_reset = 0;
 	scsi_unblock_requests(host);
-
-	/*
-	 * Issue bus rescan to catch any configuration that might have
-	 * occurred
-	 */
-	if (!retval && !is_kdump_kernel()) {
-		dev_info(&aac->pdev->dev, "Scheduling bus rescan\n");
-		aac_schedule_safw_scan_worker(aac);
-	}
 
 	if (jafo) {
 		spin_lock_irq(host->host_lock);
@@ -1685,6 +1705,31 @@ int aac_reset_adapter(struct aac_dev *aac, int forced, u8 reset_type)
 	 */
 	host = aac->scsi_host_ptr;
 	scsi_block_requests(host);
+	if (forced < 2) for (retval = 60; retval; --retval) {
+		struct scsi_device * dev;
+		struct scsi_cmnd * command;
+		int active = 0;
+
+		__shost_for_each_device(dev, host) {
+			spin_lock_irqsave(&dev->list_lock, flagv);
+			list_for_each_entry(command, &dev->cmd_list, list) {
+				if (command->SCp.phase == AAC_OWNER_FIRMWARE) {
+					active++;
+					break;
+				}
+			}
+			spin_unlock_irqrestore(&dev->list_lock, flagv);
+			if (active)
+				break;
+
+		}
+		/*
+		 * We can exit If all the commands are complete
+		 */
+		if (active == 0)
+			break;
+		ssleep(1);
+	}
 
 	/* Quiesce build, flush cache, write through mode */
 	if (forced < 2)
@@ -1829,7 +1874,7 @@ int aac_check_health(struct aac_dev * aac)
 			 * Set the event to wake up the
 			 * thread that will waiting.
 			 */
-			complete(&fibctx->completion);
+			up(&fibctx->wait_sem);
 		} else {
 			printk(KERN_WARNING "aifd: didn't allocate NewFib.\n");
 			kfree(fib);
@@ -1853,124 +1898,42 @@ out:
 	return BlinkLED;
 }
 
-static inline int is_safw_raid_volume(struct aac_dev *aac, int bus, int target)
+
+static void aac_resolve_luns(struct aac_dev *dev)
 {
-	return bus == CONTAINER_CHANNEL && target < aac->maximum_num_containers;
-}
-
-static struct scsi_device *aac_lookup_safw_scsi_device(struct aac_dev *dev,
-								int bus,
-								int target)
-{
-	if (bus != CONTAINER_CHANNEL)
-		bus = aac_phys_to_logical(bus);
-
-	return scsi_device_lookup(dev->scsi_host_ptr, bus, target, 0);
-}
-
-static int aac_add_safw_device(struct aac_dev *dev, int bus, int target)
-{
-	if (bus != CONTAINER_CHANNEL)
-		bus = aac_phys_to_logical(bus);
-
-	return scsi_add_device(dev->scsi_host_ptr, bus, target, 0);
-}
-
-static void aac_put_safw_scsi_device(struct scsi_device *sdev)
-{
-	if (sdev)
-		scsi_device_put(sdev);
-}
-
-static void aac_remove_safw_device(struct aac_dev *dev, int bus, int target)
-{
+	int bus, target, channel;
 	struct scsi_device *sdev;
+	u8 devtype;
+	u8 new_devtype;
 
-	sdev = aac_lookup_safw_scsi_device(dev, bus, target);
-	scsi_remove_device(sdev);
-	aac_put_safw_scsi_device(sdev);
-}
+	for (bus = 0; bus < AAC_MAX_BUSES; bus++) {
+		for (target = 0; target < AAC_MAX_TARGETS; target++) {
 
-static inline int aac_is_safw_scan_count_equal(struct aac_dev *dev,
-	int bus, int target)
-{
-	return dev->hba_map[bus][target].scan_counter == dev->scan_counter;
-}
+			if (bus == CONTAINER_CHANNEL)
+				channel = CONTAINER_CHANNEL;
+			else
+				channel = aac_phys_to_logical(bus);
 
-static int aac_is_safw_target_valid(struct aac_dev *dev, int bus, int target)
-{
-	if (is_safw_raid_volume(dev, bus, target))
-		return dev->fsa_dev[target].valid;
-	else
-		return aac_is_safw_scan_count_equal(dev, bus, target);
-}
+			devtype = dev->hba_map[bus][target].devtype;
+			new_devtype = dev->hba_map[bus][target].new_devtype;
 
-static int aac_is_safw_device_exposed(struct aac_dev *dev, int bus, int target)
-{
-	int is_exposed = 0;
-	struct scsi_device *sdev;
+			sdev = scsi_device_lookup(dev->scsi_host_ptr, channel,
+					target, 0);
 
-	sdev = aac_lookup_safw_scsi_device(dev, bus, target);
-	if (sdev)
-		is_exposed = 1;
-	aac_put_safw_scsi_device(sdev);
+			if (!sdev && new_devtype)
+				scsi_add_device(dev->scsi_host_ptr, channel,
+						target, 0);
+			else if (sdev && new_devtype != devtype)
+				scsi_remove_device(sdev);
+			else if (sdev && new_devtype == devtype)
+				scsi_rescan_device(&sdev->sdev_gendev);
 
-	return is_exposed;
-}
+			if (sdev)
+				scsi_device_put(sdev);
 
-static int aac_update_safw_host_devices(struct aac_dev *dev)
-{
-	int i;
-	int bus;
-	int target;
-	int is_exposed = 0;
-	int rcode = 0;
-
-	rcode = aac_setup_safw_adapter(dev);
-	if (unlikely(rcode < 0)) {
-		goto out;
+			dev->hba_map[bus][target].devtype = new_devtype;
+		}
 	}
-
-	for (i = 0; i < AAC_BUS_TARGET_LOOP; i++) {
-
-		bus = get_bus_number(i);
-		target = get_target_number(i);
-
-		is_exposed = aac_is_safw_device_exposed(dev, bus, target);
-
-		if (aac_is_safw_target_valid(dev, bus, target) && !is_exposed)
-			aac_add_safw_device(dev, bus, target);
-		else if (!aac_is_safw_target_valid(dev, bus, target) &&
-								is_exposed)
-			aac_remove_safw_device(dev, bus, target);
-	}
-out:
-	return rcode;
-}
-
-static int aac_scan_safw_host(struct aac_dev *dev)
-{
-	int rcode = 0;
-
-	rcode = aac_update_safw_host_devices(dev);
-	if (rcode)
-		aac_schedule_safw_scan_worker(dev);
-
-	return rcode;
-}
-
-int aac_scan_host(struct aac_dev *dev)
-{
-	int rcode = 0;
-
-	mutex_lock(&dev->scan_mutex);
-	if (dev->sa_firmware)
-		rcode = aac_scan_safw_host(dev);
-	else
-		scsi_scan_host(dev->scsi_host_ptr);
-	mutex_unlock(&dev->scan_mutex);
-
-	return rcode;
 }
 
 /**
@@ -1983,8 +1946,10 @@ int aac_scan_host(struct aac_dev *dev)
  */
 static void aac_handle_sa_aif(struct aac_dev *dev, struct fib *fibptr)
 {
-	int i;
+	int i, bus, target, container, rcode = 0;
 	u32 events = 0;
+	struct fib *fib;
+	struct scsi_device *sdev;
 
 	if (fibptr->hbacmd_size & SA_AIF_HOTPLUG)
 		events = SA_AIF_HOTPLUG;
@@ -2006,8 +1971,44 @@ static void aac_handle_sa_aif(struct aac_dev *dev, struct fib *fibptr)
 	case SA_AIF_LDEV_CHANGE:
 	case SA_AIF_BPCFG_CHANGE:
 
-		aac_scan_host(dev);
+		fib = aac_fib_alloc(dev);
+		if (!fib) {
+			pr_err("aac_handle_sa_aif: out of memory\n");
+			return;
+		}
+		for (bus = 0; bus < AAC_MAX_BUSES; bus++)
+			for (target = 0; target < AAC_MAX_TARGETS; target++)
+				dev->hba_map[bus][target].new_devtype = 0;
 
+		rcode = aac_report_phys_luns(dev, fib, AAC_RESCAN);
+
+		if (rcode != -ERESTARTSYS)
+			aac_fib_free(fib);
+
+		aac_resolve_luns(dev);
+
+		if (events == SA_AIF_LDEV_CHANGE ||
+		    events == SA_AIF_BPCFG_CHANGE) {
+			aac_get_containers(dev);
+			for (container = 0; container <
+			dev->maximum_num_containers; ++container) {
+				sdev = scsi_device_lookup(dev->scsi_host_ptr,
+						CONTAINER_CHANNEL,
+						container, 0);
+				if (dev->fsa_dev[container].valid && !sdev) {
+					scsi_add_device(dev->scsi_host_ptr,
+						CONTAINER_CHANNEL,
+						container, 0);
+				} else if (!dev->fsa_dev[container].valid &&
+					sdev) {
+					scsi_remove_device(sdev);
+					scsi_device_put(sdev);
+				} else if (sdev) {
+					scsi_rescan_device(&sdev->sdev_gendev);
+					scsi_device_put(sdev);
+				}
+			}
+		}
 		break;
 
 	case SA_AIF_BPSTAT_CHANGE:
@@ -2166,7 +2167,7 @@ static void wakeup_fibctx_threads(struct aac_dev *dev,
 		 * Set the event to wake up the
 		 * thread that is waiting.
 		 */
-		complete(&fibctx->completion);
+		up(&fibctx->wait_sem);
 
 		entry = entry->next;
 	}
@@ -2505,8 +2506,8 @@ int aac_command_thread(void *data)
 			/* Synchronize our watches */
 			if (((NSEC_PER_SEC - (NSEC_PER_SEC / HZ)) > now.tv_nsec)
 			 && (now.tv_nsec > (NSEC_PER_SEC / HZ)))
-				difference = HZ + HZ / 2 -
-					     now.tv_nsec / (NSEC_PER_SEC / HZ);
+				difference = (((NSEC_PER_SEC - now.tv_nsec) * HZ)
+				  + NSEC_PER_SEC / 2) / NSEC_PER_SEC;
 			else {
 				if (now.tv_nsec > NSEC_PER_SEC / 2)
 					++now.tv_sec;
@@ -2530,10 +2531,6 @@ int aac_command_thread(void *data)
 		if (kthread_should_stop())
 			break;
 
-		/*
-		 * we probably want usleep_range() here instead of the
-		 * jiffies computation
-		 */
 		schedule_timeout(difference);
 
 		if (kthread_should_stop())
@@ -2587,7 +2584,9 @@ int aac_acquire_irq(struct aac_dev *dev)
 void aac_free_irq(struct aac_dev *dev)
 {
 	int i;
+	int cpu;
 
+	cpu = cpumask_first(cpu_online_mask);
 	if (aac_is_src(dev)) {
 		if (dev->max_msix > 1) {
 			for (i = 0; i < dev->max_msix; i++)

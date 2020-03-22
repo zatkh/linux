@@ -1,6 +1,4 @@
 /*
- * DB8500 PRCM Unit driver
- *
  * Copyright (C) STMicroelectronics 2009
  * Copyright (C) ST-Ericsson SA 2010
  *
@@ -12,8 +10,7 @@
  * U8500 PRCM Unit interface driver
  *
  */
-#include <linux/init.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
@@ -2587,7 +2584,7 @@ static struct irq_chip prcmu_irq_chip = {
 	.irq_unmask	= prcmu_irq_unmask,
 };
 
-static char *fw_project_name(u32 project)
+static __init char *fw_project_name(u32 project)
 {
 	switch (project) {
 	case PRCMU_FW_PROJECT_U8500:
@@ -2735,7 +2732,7 @@ void __init db8500_prcmu_early_init(u32 phy_base, u32 size)
 	INIT_WORK(&mb0_transfer.mask_work, prcmu_mask_work);
 }
 
-static void init_prcm_registers(void)
+static void __init init_prcm_registers(void)
 {
 	u32 val;
 
@@ -3191,4 +3188,9 @@ static int __init db8500_prcmu_init(void)
 {
 	return platform_driver_register(&db8500_prcmu_driver);
 }
+
 core_initcall(db8500_prcmu_init);
+
+MODULE_AUTHOR("Mattias Nilsson <mattias.i.nilsson@stericsson.com>");
+MODULE_DESCRIPTION("DB8500 PRCM Unit driver");
+MODULE_LICENSE("GPL v2");

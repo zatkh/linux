@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
+ * linux/kernel/irq/spurious.c
+ *
  * Copyright (C) 1992, 1998-2004 Linus Torvalds, Ingo Molnar
  *
  * This file contains spurious interrupt handling.
@@ -8,6 +10,7 @@
 #include <linux/jiffies.h>
 #include <linux/irq.h>
 #include <linux/module.h>
+#include <linux/kallsyms.h>
 #include <linux/interrupt.h>
 #include <linux/moduleparam.h>
 #include <linux/timer.h>
@@ -17,8 +20,8 @@
 static int irqfixup __read_mostly;
 
 #define POLL_SPURIOUS_IRQ_INTERVAL (HZ/10)
-static void poll_spurious_irqs(struct timer_list *unused);
-static DEFINE_TIMER(poll_spurious_irq_timer, poll_spurious_irqs);
+static void poll_spurious_irqs(unsigned long dummy);
+static DEFINE_TIMER(poll_spurious_irq_timer, poll_spurious_irqs, 0, 0);
 static int irq_poll_cpu;
 static atomic_t irq_poll_active;
 
@@ -66,7 +69,7 @@ static int try_one_irq(struct irq_desc *desc, bool force)
 	raw_spin_lock(&desc->lock);
 
 	/*
-	 * PER_CPU, nested thread interrupts and interrupts explicitly
+	 * PER_CPU, nested thread interrupts and interrupts explicitely
 	 * marked polled are excluded from polling.
 	 */
 	if (irq_settings_is_per_cpu(desc) ||
@@ -76,7 +79,7 @@ static int try_one_irq(struct irq_desc *desc, bool force)
 
 	/*
 	 * Do not poll disabled interrupts unless the spurious
-	 * disabled poller asks explicitly.
+	 * disabled poller asks explicitely.
 	 */
 	if (irqd_irq_disabled(&desc->irq_data) && !force)
 		goto out;
@@ -140,7 +143,7 @@ out:
 	return ok;
 }
 
-static void poll_spurious_irqs(struct timer_list *unused)
+static void poll_spurious_irqs(unsigned long dummy)
 {
 	struct irq_desc *desc;
 	int i;
@@ -292,7 +295,7 @@ void note_interrupt(struct irq_desc *desc, irqreturn_t action_ret)
 	 * So in case a thread is woken, we just note the fact and
 	 * defer the analysis to the next hardware interrupt.
 	 *
-	 * The threaded handlers store whether they successfully
+	 * The threaded handlers store whether they sucessfully
 	 * handled an interrupt and we check whether that number
 	 * changed versus the last invocation.
 	 *

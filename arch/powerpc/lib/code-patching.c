@@ -23,24 +23,17 @@
 #include <asm/code-patching.h>
 #include <asm/setup.h>
 
-static int __patch_instruction(unsigned int *exec_addr, unsigned int instr,
-			       unsigned int *patch_addr)
+static int __patch_instruction(unsigned int *addr, unsigned int instr)
 {
 	int err;
 
-	__put_user_size(instr, patch_addr, 4, err);
+	__put_user_size(instr, addr, 4, err);
 	if (err)
 		return err;
 
-	asm ("dcbst 0, %0; sync; icbi 0,%1; sync; isync" :: "r" (patch_addr),
-							    "r" (exec_addr));
+	asm ("dcbst 0, %0; sync; icbi 0,%0; sync; isync" :: "r" (addr));
 
 	return 0;
-}
-
-int raw_patch_instruction(unsigned int *addr, unsigned int instr)
-{
-	return __patch_instruction(addr, instr, addr);
 }
 
 #ifdef CONFIG_STRICT_KERNEL_RWX
@@ -98,7 +91,8 @@ static int map_patch_area(void *addr, unsigned long text_poke_addr)
 	else
 		pfn = __pa_symbol(addr) >> PAGE_SHIFT;
 
-	err = map_kernel_page(text_poke_addr, (pfn << PAGE_SHIFT), PAGE_KERNEL);
+	err = map_kernel_page(text_poke_addr, (pfn << PAGE_SHIFT),
+				pgprot_val(PAGE_KERNEL));
 
 	pr_devel("Mapped addr %lx with pfn %lx:%d\n", text_poke_addr, pfn, err);
 	if (err)
@@ -141,10 +135,10 @@ static inline int unmap_patch_area(unsigned long addr)
 	return 0;
 }
 
-static int do_patch_instruction(unsigned int *addr, unsigned int instr)
+int patch_instruction(unsigned int *addr, unsigned int instr)
 {
 	int err;
-	unsigned int *patch_addr = NULL;
+	unsigned int *dest = NULL;
 	unsigned long flags;
 	unsigned long text_poke_addr;
 	unsigned long kaddr = (unsigned long)addr;
@@ -154,8 +148,8 @@ static int do_patch_instruction(unsigned int *addr, unsigned int instr)
 	 * when text_poke_area is not ready, but we still need
 	 * to allow patching. We just do the plain old patching
 	 */
-	if (!this_cpu_read(text_poke_area))
-		return raw_patch_instruction(addr, instr);
+	if (!this_cpu_read(*PTRRELOC(&text_poke_area)))
+		return __patch_instruction(addr, instr);
 
 	local_irq_save(flags);
 
@@ -165,10 +159,17 @@ static int do_patch_instruction(unsigned int *addr, unsigned int instr)
 		goto out;
 	}
 
-	patch_addr = (unsigned int *)(text_poke_addr) +
+	dest = (unsigned int *)(text_poke_addr) +
 			((kaddr & ~PAGE_MASK) / sizeof(unsigned int));
 
-	__patch_instruction(addr, instr, patch_addr);
+	/*
+	 * We use __put_user_size so that we can handle faults while
+	 * writing to dest and return err to handle faults gracefully
+	 */
+	__put_user_size(instr, dest, 4, err);
+	if (!err)
+		asm ("dcbst 0, %0; sync; icbi 0,%0; icbi 0,%1; sync; isync"
+			::"r" (dest), "r"(addr));
 
 	err = unmap_patch_area(text_poke_addr);
 	if (err)
@@ -181,22 +182,12 @@ out:
 }
 #else /* !CONFIG_STRICT_KERNEL_RWX */
 
-static int do_patch_instruction(unsigned int *addr, unsigned int instr)
+int patch_instruction(unsigned int *addr, unsigned int instr)
 {
-	return raw_patch_instruction(addr, instr);
+	return __patch_instruction(addr, instr);
 }
 
 #endif /* CONFIG_STRICT_KERNEL_RWX */
-
-int patch_instruction(unsigned int *addr, unsigned int instr)
-{
-	/* Make sure we aren't patching a freed init section */
-	if (init_mem_is_free && init_section_contains(addr, 4)) {
-		pr_debug("Skipping init section patching addr: 0x%px\n", addr);
-		return 0;
-	}
-	return do_patch_instruction(addr, instr);
-}
 NOKPROBE_SYMBOL(patch_instruction);
 
 int patch_branch(unsigned int *addr, unsigned long target, int flags)

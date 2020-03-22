@@ -24,7 +24,6 @@
 #include <linux/root_dev.h>
 #include <linux/screen_info.h>
 #include <linux/memblock.h>
-#include <uapi/linux/mount.h>
 
 #include <asm/setup.h>
 #include <asm/system_info.h>
@@ -197,8 +196,11 @@ setup_machine_tags(phys_addr_t __atags_pointer, unsigned int machine_nr)
 			break;
 		}
 
-	if (!mdesc)
-		return NULL;
+	if (!mdesc) {
+		early_print("\nError: unrecognized/unsupported machine ID"
+			    " (r1 = 0x%08x).\n\n", machine_nr);
+		dump_machine_table(); /* does not return */
+	}
 
 	if (__atags_pointer)
 		tags = phys_to_virt(__atags_pointer);

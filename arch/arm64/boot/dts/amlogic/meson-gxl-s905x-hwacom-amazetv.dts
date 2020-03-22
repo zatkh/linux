@@ -1,8 +1,9 @@
-// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
  * Copyright (c) 2017 Carlo Caione
  * Copyright (c) 2016 BayLibre, Inc.
  * Author: Neil Armstrong <narmstrong@kernel.org>
+ *
+ * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
  */
 
 /dts-v1/;
@@ -15,7 +16,6 @@
 
 	aliases {
 		serial0 = &uart_AO;
-		ethernet0 = &ethmac;
 	};
 
 	chosen {
@@ -131,7 +131,8 @@
 	max-frequency = <100000000>;
 	disable-wp;
 
-	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_LOW>;
+	cd-gpios = <&gpio CARD_6 GPIO_ACTIVE_HIGH>;
+	cd-inverted;
 
 	vmmc-supply = <&vddao_3v3>;
 	vqmmc-supply = <&vddio_card>;
@@ -140,7 +141,7 @@
 /* eMMC */
 &sd_emmc_c {
 	status = "okay";
-	pinctrl-0 = <&emmc_pins>, <&emmc_ds_pins>;
+	pinctrl-0 = <&emmc_pins>;
 	pinctrl-1 = <&emmc_clk_gate_pins>;
 	pinctrl-names = "default", "clk-gate";
 

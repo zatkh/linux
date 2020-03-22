@@ -221,11 +221,10 @@ static int cam_get_response16(struct gspca_dev *gspca_dev, u8 reg, int verbose)
 		return err_code;
 
 	if (verbose)
-		gspca_dbg(gspca_dev, D_PROBE, "Register: %02x reads %02x%02x%02x\n",
-			  reg,
-			  gspca_dev->usb_buf[0],
-			  gspca_dev->usb_buf[1],
-			  gspca_dev->usb_buf[2]);
+		PDEBUG(D_PROBE, "Register: %02x reads %02x%02x%02x", reg,
+		       gspca_dev->usb_buf[0],
+		       gspca_dev->usb_buf[1],
+		       gspca_dev->usb_buf[2]);
 
 	return 0;
 }
@@ -285,7 +284,7 @@ static int zero_the_pointer(struct gspca_dev *gspca_dev)
 			return err_code;
 	}
 	if (status != 0x0a)
-		gspca_err(gspca_dev, "status is %02x\n", status);
+		PERR("status is %02x", status);
 
 	tries = 0;
 	while (tries < 4) {
@@ -326,7 +325,7 @@ static void stream_stop(struct gspca_dev *gspca_dev)
 	gspca_dev->usb_buf[0] = 0x01;
 	gspca_dev->usb_buf[1] = 0x00;
 	if (mr_write(gspca_dev, 2) < 0)
-		gspca_err(gspca_dev, "Stream Stop failed\n");
+		PERR("Stream Stop failed");
 }
 
 static void lcd_stop(struct gspca_dev *gspca_dev)
@@ -334,7 +333,7 @@ static void lcd_stop(struct gspca_dev *gspca_dev)
 	gspca_dev->usb_buf[0] = 0x19;
 	gspca_dev->usb_buf[1] = 0x54;
 	if (mr_write(gspca_dev, 2) < 0)
-		gspca_err(gspca_dev, "LCD Stop failed\n");
+		PERR("LCD Stop failed");
 }
 
 static int isoc_enable(struct gspca_dev *gspca_dev)
@@ -414,8 +413,8 @@ static int sd_config(struct gspca_dev *gspca_dev,
 			       gspca_dev->usb_buf[1]);
 			return -ENODEV;
 		}
-		gspca_dbg(gspca_dev, D_PROBE, "MR97310A CIF camera detected, sensor: %d\n",
-			  sd->sensor_type);
+		PDEBUG(D_PROBE, "MR97310A CIF camera detected, sensor: %d",
+		       sd->sensor_type);
 	} else {
 		sd->cam_type = CAM_TYPE_VGA;
 
@@ -459,7 +458,7 @@ static int sd_config(struct gspca_dev *gspca_dev,
 			switch (gspca_dev->usb_buf[1]) {
 			case 0x50:
 				sd->sensor_type = 0;
-				gspca_dbg(gspca_dev, D_PROBE, "sensor_type corrected to 0\n");
+				PDEBUG(D_PROBE, "sensor_type corrected to 0");
 				break;
 			case 0x20:
 				/* Nothing to do here. */
@@ -471,16 +470,16 @@ static int sd_config(struct gspca_dev *gspca_dev,
 				pr_err("Please report this\n");
 			}
 		}
-		gspca_dbg(gspca_dev, D_PROBE, "MR97310A VGA camera detected, sensor: %d\n",
-			  sd->sensor_type);
+		PDEBUG(D_PROBE, "MR97310A VGA camera detected, sensor: %d",
+		       sd->sensor_type);
 	}
 	/* Stop streaming as we've started it only to probe the sensor type. */
 	sd_stopN(gspca_dev);
 
 	if (force_sensor_type != -1) {
 		sd->sensor_type = !!force_sensor_type;
-		gspca_dbg(gspca_dev, D_PROBE, "Forcing sensor type to: %d\n",
-			  sd->sensor_type);
+		PDEBUG(D_PROBE, "Forcing sensor type to: %d",
+		       sd->sensor_type);
 	}
 
 	return 0;
@@ -520,7 +519,7 @@ static int start_cif_cam(struct gspca_dev *gspca_dev)
 	switch (gspca_dev->pixfmt.width) {
 	case 160:
 		data[9] |= 0x04;  /* reg 8, 2:1 scale down from 320 */
-		/* fall through */
+		/* fall thru */
 	case 320:
 	default:
 		data[3] = 0x28;			   /* reg 2, H size/8 */
@@ -530,7 +529,7 @@ static int start_cif_cam(struct gspca_dev *gspca_dev)
 		break;
 	case 176:
 		data[9] |= 0x04;  /* reg 8, 2:1 scale down from 352 */
-		/* fall through */
+		/* fall thru */
 	case 352:
 		data[3] = 0x2c;			   /* reg 2, H size/8 */
 		data[4] = 0x48;			   /* reg 3, V size/4 */
@@ -617,10 +616,10 @@ static int start_vga_cam(struct gspca_dev *gspca_dev)
 	switch (gspca_dev->pixfmt.width) {
 	case 160:
 		data[9] |= 0x0c;  /* reg 8, 4:1 scale down */
-		/* fall through */
+		/* fall thru */
 	case 320:
 		data[9] |= 0x04;  /* reg 8, 2:1 scale down */
-		/* fall through */
+		/* fall thru */
 	case 640:
 	default:
 		data[3] = 0x50;  /* reg 2, H size/8 */
@@ -637,7 +636,7 @@ static int start_vga_cam(struct gspca_dev *gspca_dev)
 
 	case 176:
 		data[9] |= 0x04;  /* reg 8, 2:1 scale down */
-		/* fall through */
+		/* fall thru */
 	case 352:
 		data[3] = 0x2c;  /* reg 2, H size */
 		data[4] = 0x48;  /* reg 3, V size */

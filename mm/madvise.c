@@ -27,10 +27,6 @@
 
 #include <asm/tlb.h>
 
-#ifdef CONFIG_SW_UDOM
-#include <linux/smv_mm.h>
-#endif
-
 #include "internal.h"
 
 /*
@@ -100,7 +96,7 @@ static long madvise_behavior(struct vm_area_struct *vma,
 		new_flags |= VM_DONTDUMP;
 		break;
 	case MADV_DODUMP:
-		if (!is_vm_hugetlb_page(vma) && new_flags & VM_SPECIAL) {
+		if (new_flags & VM_SPECIAL) {
 			error = -EINVAL;
 			goto out;
 		}
@@ -255,7 +251,7 @@ static void force_shm_swapin_readahead(struct vm_area_struct *vma,
 		index = ((start - vma->vm_start) >> PAGE_SHIFT) + vma->vm_pgoff;
 
 		page = find_get_entry(mapping, index);
-		if (!xa_is_value(page)) {
+		if (!radix_tree_exceptional_entry(page)) {
 			if (page)
 				put_page(page);
 			continue;
@@ -462,30 +458,29 @@ static void madvise_free_page_range(struct mmu_gather *tlb,
 static int madvise_free_single_vma(struct vm_area_struct *vma,
 			unsigned long start_addr, unsigned long end_addr)
 {
+	unsigned long start, end;
 	struct mm_struct *mm = vma->vm_mm;
-	struct mmu_notifier_range range;
 	struct mmu_gather tlb;
 
 	/* MADV_FREE works for only anon vma at the moment */
 	if (!vma_is_anonymous(vma))
 		return -EINVAL;
 
-	range.start = max(vma->vm_start, start_addr);
-	if (range.start >= vma->vm_end)
+	start = max(vma->vm_start, start_addr);
+	if (start >= vma->vm_end)
 		return -EINVAL;
-	range.end = min(vma->vm_end, end_addr);
-	if (range.end <= vma->vm_start)
+	end = min(vma->vm_end, end_addr);
+	if (end <= vma->vm_start)
 		return -EINVAL;
-	mmu_notifier_range_init(&range, mm, range.start, range.end);
 
 	lru_add_drain();
-	tlb_gather_mmu(&tlb, mm, range.start, range.end);
+	tlb_gather_mmu(&tlb, mm, start, end);
 	update_hiwater_rss(mm);
 
-	mmu_notifier_invalidate_range_start(&range);
-	madvise_free_page_range(&tlb, vma, range.start, range.end);
-	mmu_notifier_invalidate_range_end(&range);
-	tlb_finish_mmu(&tlb, range.start, range.end);
+	mmu_notifier_invalidate_range_start(mm, start, end);
+	madvise_free_page_range(&tlb, vma, start, end);
+	mmu_notifier_invalidate_range_end(mm, start, end);
+	tlb_finish_mmu(&tlb, start, end);
 
 	return 0;
 }
@@ -512,34 +507,7 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 static long madvise_dontneed_single_vma(struct vm_area_struct *vma,
 					unsigned long start, unsigned long end)
 {
-	#ifdef CONFIG_SW_UDOM
-
-	struct zap_details zap;
-	struct mm_struct *mm = current->mm;
-
-
-
-	if ( mm->using_smv ) {	
-		memset(&zap, 0, sizeof(struct zap_details));
-		zap.smv_id = -1;
-		/* Call zap_page_range for all smvs */
-		do {
-			zap.smv_id = find_next_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE, (zap.smv_id+1));
-			if (zap.smv_id != SMV_ARRAY_SIZE) {
-				slog(KERN_INFO "[%s] smv %d [0x%16lx to 0x%16lx]\n", __func__, zap.smv_id, start, end);
-				zap_page_range(vma, start, end - start, &zap);
-			}
-		} while (zap.smv_id != SMV_ARRAY_SIZE);
-	} else {
-			zap_page_range(vma, start, end - start,NULL);
-
-	}
-
-	#else
-
 	zap_page_range(vma, start, end - start);
-
-	#endif	
 	return 0;
 }
 
@@ -663,13 +631,11 @@ static int madvise_inject_error(int behavior,
 
 
 	for (; start < end; start += PAGE_SIZE << order) {
-		unsigned long pfn;
 		int ret;
 
 		ret = get_user_pages_fast(start, 1, 0, &page);
 		if (ret != 1)
 			return ret;
-		pfn = page_to_pfn(page);
 
 		/*
 		 * When soft offlining hugepages, after migrating the page
@@ -685,25 +651,17 @@ static int madvise_inject_error(int behavior,
 
 		if (behavior == MADV_SOFT_OFFLINE) {
 			pr_info("Soft offlining pfn %#lx at process virtual address %#lx\n",
-					pfn, start);
+						page_to_pfn(page), start);
 
 			ret = soft_offline_page(page, MF_COUNT_INCREASED);
 			if (ret)
 				return ret;
 			continue;
 		}
-
 		pr_info("Injecting memory failure for pfn %#lx at process virtual address %#lx\n",
-				pfn, start);
+						page_to_pfn(page), start);
 
-		/*
-		 * Drop the page reference taken by get_user_pages_fast(). In
-		 * the absence of MF_COUNT_INCREASED the memory_failure()
-		 * routine is responsible for pinning the page to prevent it
-		 * from being released back to the page allocator.
-		 */
-		put_page(page);
-		ret = memory_failure(pfn, 0);
+		ret = memory_failure(page_to_pfn(page), 0, MF_COUNT_INCREASED);
 		if (ret)
 			return ret;
 	}

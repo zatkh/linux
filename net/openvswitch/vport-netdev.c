@@ -84,6 +84,7 @@ static struct net_device *get_dpdev(const struct datapath *dp)
 	struct vport *local;
 
 	local = ovs_vport_ovsl(dp, OVSP_LOCAL);
+	BUG_ON(!local);
 	return local->dev;
 }
 
@@ -107,8 +108,7 @@ struct vport *ovs_netdev_link(struct vport *vport, const char *name)
 
 	rtnl_lock();
 	err = netdev_master_upper_dev_link(vport->dev,
-					   get_dpdev(vport->dp),
-					   NULL, NULL, NULL);
+					   get_dpdev(vport->dp), NULL, NULL);
 	if (err)
 		goto error_unlock;
 

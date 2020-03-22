@@ -78,7 +78,7 @@ check_stack(unsigned long ip, unsigned long *stack)
 {
 	unsigned long this_size, flags; unsigned long *p, *top, *start;
 	static int tracer_frame;
-	int frame_size = READ_ONCE(tracer_frame);
+	int frame_size = ACCESS_ONCE(tracer_frame);
 	int i, x;
 
 	this_size = ((unsigned long)stack) & (THREAD_SIZE-1);
@@ -111,7 +111,7 @@ check_stack(unsigned long ip, unsigned long *stack)
 	stack_trace_max_size = this_size;
 
 	stack_trace_max.nr_entries = 0;
-	stack_trace_max.skip = 0;
+	stack_trace_max.skip = 3;
 
 	save_stack_trace(&stack_trace_max);
 
@@ -209,10 +209,6 @@ stack_trace_call(unsigned long ip, unsigned long parent_ip,
 	if (__this_cpu_read(disable_stack_tracer) != 1)
 		goto out;
 
-	/* If rcu is not watching, then save stack trace can fail */
-	if (!rcu_is_watching())
-		goto out;
-
 	ip += MCOUNT_INSN_SIZE;
 
 	check_stack(ip, &stack);
@@ -286,7 +282,7 @@ __next(struct seq_file *m, loff_t *pos)
 {
 	long n = *pos - 1;
 
-	if (n >= stack_trace_max.nr_entries || stack_dump_trace[n] == ULONG_MAX)
+	if (n > stack_trace_max.nr_entries || stack_dump_trace[n] == ULONG_MAX)
 		return NULL;
 
 	m->private = (void *)n;
@@ -448,10 +444,8 @@ static char stack_trace_filter_buf[COMMAND_LINE_SIZE+1] __initdata;
 
 static __init int enable_stacktrace(char *str)
 {
-	int len;
-
-	if ((len = str_has_prefix(str, "_filter=")))
-		strncpy(stack_trace_filter_buf, str + len, COMMAND_LINE_SIZE);
+	if (strncmp(str, "_filter=", 8) == 0)
+		strncpy(stack_trace_filter_buf, str+8, COMMAND_LINE_SIZE);
 
 	stack_tracer_enabled = 1;
 	last_stack_tracer_enabled = 1;
@@ -474,7 +468,7 @@ static __init int stack_trace_init(void)
 			NULL, &stack_trace_fops);
 
 #ifdef CONFIG_DYNAMIC_FTRACE
-	trace_create_file("stack_trace_filter", 0644, d_tracer,
+	trace_create_file("stack_trace_filter", 0444, d_tracer,
 			  &trace_ops, &stack_trace_filter_fops);
 #endif
 

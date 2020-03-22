@@ -9,7 +9,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/irqflags.h>
@@ -175,7 +174,6 @@ bool mcpm_is_available(void)
 {
 	return (platform_ops) ? true : false;
 }
-EXPORT_SYMBOL_GPL(mcpm_is_available);
 
 /*
  * We can't use regular spinlocks. In the switcher case, it is possible
@@ -381,7 +379,7 @@ static int __init nocache_trampoline(unsigned long _arg)
 	unsigned int cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 	phys_reset_t phys_reset;
 
-	mcpm_set_entry_vector(cpu, cluster, cpu_resume_no_hyp);
+	mcpm_set_entry_vector(cpu, cluster, cpu_resume);
 	setup_mm_for_reboot();
 
 	__mcpm_cpu_going_down(cpu, cluster);

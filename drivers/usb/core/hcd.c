@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright Linus Torvalds 1999
  * (C) Copyright Johannes Erdfelt 1999-2001
@@ -7,6 +6,20 @@
  * (C) Copyright Deti Fliegl 1999
  * (C) Copyright Randy Dunlap 2000
  * (C) Copyright David Brownell 2000-2002
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the
+ * Free Software Foundation; either version 2 of the License, or (at your
+ * option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #include <linux/bcd.h>
@@ -33,10 +46,10 @@
 #include <linux/phy/phy.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
+#include <linux/usb/phy.h>
 #include <linux/usb/otg.h>
 
 #include "usb.h"
-#include "phy.h"
 
 
 /*-------------------------------------------------------------------------*/
@@ -373,19 +386,13 @@ static const u8 ss_rh_config_descriptor[] = {
  * -1 is authorized for all devices except wireless (old behaviour)
  * 0 is unauthorized for all devices
  * 1 is authorized for all devices
- * 2 is authorized for internal devices
  */
-#define USB_AUTHORIZE_WIRED	-1
-#define USB_AUTHORIZE_NONE	0
-#define USB_AUTHORIZE_ALL	1
-#define USB_AUTHORIZE_INTERNAL	2
-
-static int authorized_default = USB_AUTHORIZE_WIRED;
+static int authorized_default = -1;
 module_param(authorized_default, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(authorized_default,
 		"Default USB device authorization: 0 is not authorized, 1 is "
-		"authorized, 2 is authorized for internal devices, -1 is "
-		"authorized except for wireless USB (default, old behaviour)");
+		"authorized, -1 is authorized except for wireless USB (default, "
+		"old behaviour");
 /*-------------------------------------------------------------------------*/
 
 /**
@@ -573,7 +580,6 @@ static int rh_call_control (struct usb_hcd *hcd, struct urb *urb)
 		switch (wValue & 0xff00) {
 		case USB_DT_DEVICE << 8:
 			switch (hcd->speed) {
-			case HCD_USB32:
 			case HCD_USB31:
 				bufp = usb31_rh_dev_descriptor;
 				break;
@@ -598,7 +604,6 @@ static int rh_call_control (struct usb_hcd *hcd, struct urb *urb)
 			break;
 		case USB_DT_CONFIG << 8:
 			switch (hcd->speed) {
-			case HCD_USB32:
 			case HCD_USB31:
 			case HCD_USB3:
 				bufp = ss_rh_config_descriptor;
@@ -796,11 +801,9 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 EXPORT_SYMBOL_GPL(usb_hcd_poll_rh_status);
 
 /* timer callback */
-static void rh_timer_func (struct timer_list *t)
+static void rh_timer_func (unsigned long _hcd)
 {
-	struct usb_hcd *_hcd = from_timer(_hcd, t, rh_timer);
-
-	usb_hcd_poll_rh_status(_hcd);
+	usb_hcd_poll_rh_status((struct usb_hcd *) _hcd);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -890,7 +893,7 @@ static ssize_t authorized_default_show(struct device *dev,
 	struct usb_hcd *hcd;
 
 	hcd = bus_to_hcd(usb_bus);
-	return snprintf(buf, PAGE_SIZE, "%u\n", hcd->dev_policy);
+	return snprintf(buf, PAGE_SIZE, "%u\n", !!HCD_DEV_AUTHORIZED(hcd));
 }
 
 static ssize_t authorized_default_store(struct device *dev,
@@ -906,8 +909,11 @@ static ssize_t authorized_default_store(struct device *dev,
 	hcd = bus_to_hcd(usb_bus);
 	result = sscanf(buf, "%u\n", &val);
 	if (result == 1) {
-		hcd->dev_policy = val <= USB_DEVICE_AUTHORIZE_INTERNAL ?
-			val : USB_DEVICE_AUTHORIZE_ALL;
+		if (val)
+			set_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
+		else
+			clear_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
+
 		result = size;
 	} else {
 		result = -EINVAL;
@@ -1077,6 +1083,8 @@ static int register_root_hub(struct usb_hcd *hcd)
 
 	usb_dev->devnum = devnum;
 	usb_dev->bus->devnum_next = devnum + 1;
+	memset (&usb_dev->bus->devmap.devicemap, 0,
+			sizeof usb_dev->bus->devmap.devicemap);
 	set_bit (devnum, usb_dev->bus->devmap.devicemap);
 	usb_set_device_state(usb_dev, USB_STATE_ADDRESS);
 
@@ -1739,6 +1747,7 @@ static void __usb_hcd_giveback_urb(struct urb *urb)
 	struct usb_hcd *hcd = bus_to_hcd(urb->dev->bus);
 	struct usb_anchor *anchor = urb->anchor;
 	int status = urb->unlinked;
+	unsigned long flags;
 
 	urb->hcpriv = NULL;
 	if (unlikely((urb->transfer_flags & URB_SHORT_NOT_OK) &&
@@ -1755,7 +1764,20 @@ static void __usb_hcd_giveback_urb(struct urb *urb)
 
 	/* pass ownership to the completion handler */
 	urb->status = status;
+
+	/*
+	 * We disable local IRQs here avoid possible deadlock because
+	 * drivers may call spin_lock() to hold lock which might be
+	 * acquired in one hard interrupt handler.
+	 *
+	 * The local_irq_save()/local_irq_restore() around complete()
+	 * will be removed if current USB drivers have been cleaned up
+	 * and no one may trigger the above deadlock situation when
+	 * running complete() in tasklet.
+	 */
+	local_irq_save(flags);
 	urb->complete(urb);
+	local_irq_restore(flags);
 
 	usb_anchor_resume_wakeups(anchor);
 	atomic_dec(&urb->use_count);
@@ -2249,10 +2271,6 @@ int hcd_bus_suspend(struct usb_device *rhdev, pm_message_t msg)
 		usb_set_device_state(rhdev, USB_STATE_SUSPENDED);
 		hcd->state = HC_STATE_SUSPENDED;
 
-		if (!PMSG_IS_AUTO(msg))
-			usb_phy_roothub_suspend(hcd->self.sysdev,
-						hcd->phy_roothub);
-
 		/* Did we race with a root-hub wakeup event? */
 		if (rhdev->do_remote_wakeup) {
 			char	buffer[6];
@@ -2289,14 +2307,6 @@ int hcd_bus_resume(struct usb_device *rhdev, pm_message_t msg)
 		dev_dbg(&rhdev->dev, "skipped %s of dead bus\n", "resume");
 		return 0;
 	}
-
-	if (!PMSG_IS_AUTO(msg)) {
-		status = usb_phy_roothub_resume(hcd->self.sysdev,
-						hcd->phy_roothub);
-		if (status)
-			return status;
-	}
-
 	if (!hcd->driver->bus_resume)
 		return -ENOENT;
 	if (HCD_RH_RUNNING(hcd))
@@ -2334,7 +2344,6 @@ int hcd_bus_resume(struct usb_device *rhdev, pm_message_t msg)
 		}
 	} else {
 		hcd->state = old_state;
-		usb_phy_roothub_suspend(hcd->self.sysdev, hcd->phy_roothub);
 		dev_dbg(&rhdev->dev, "bus %s fail, err %d\n",
 				"resume", status);
 		if (status != -ESHUTDOWN)
@@ -2550,7 +2559,9 @@ struct usb_hcd *__usb_create_hcd(const struct hc_driver *driver,
 	hcd->self.bus_name = bus_name;
 	hcd->self.uses_dma = (sysdev->dma_mask != NULL);
 
-	timer_setup(&hcd->rh_timer, rh_timer_func, 0);
+	init_timer(&hcd->rh_timer);
+	hcd->rh_timer.function = rh_timer_func;
+	hcd->rh_timer.data = (unsigned long) hcd;
 #ifdef CONFIG_PM
 	INIT_WORK(&hcd->wakeup_work, hcd_resume_work);
 #endif
@@ -2730,50 +2741,62 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	int retval;
 	struct usb_device *rhdev;
 
-	if (!hcd->skip_phy_initialization && usb_hcd_is_primary_hcd(hcd)) {
-		hcd->phy_roothub = usb_phy_roothub_alloc(hcd->self.sysdev);
-		if (IS_ERR(hcd->phy_roothub))
-			return PTR_ERR(hcd->phy_roothub);
+	if (IS_ENABLED(CONFIG_USB_PHY) && !hcd->usb_phy) {
+		struct usb_phy *phy = usb_get_phy_dev(hcd->self.sysdev, 0);
 
-		retval = usb_phy_roothub_init(hcd->phy_roothub);
-		if (retval)
-			return retval;
+		if (IS_ERR(phy)) {
+			retval = PTR_ERR(phy);
+			if (retval == -EPROBE_DEFER)
+				return retval;
+		} else {
+			retval = usb_phy_init(phy);
+			if (retval) {
+				usb_put_phy(phy);
+				return retval;
+			}
+			hcd->usb_phy = phy;
+			hcd->remove_phy = 1;
+		}
+	}
 
-		retval = usb_phy_roothub_set_mode(hcd->phy_roothub,
-						  PHY_MODE_USB_HOST_SS);
-		if (retval)
-			retval = usb_phy_roothub_set_mode(hcd->phy_roothub,
-							  PHY_MODE_USB_HOST);
-		if (retval)
-			goto err_usb_phy_roothub_power_on;
+	if (IS_ENABLED(CONFIG_GENERIC_PHY) && !hcd->phy) {
+		struct phy *phy = phy_get(hcd->self.sysdev, "usb");
 
-		retval = usb_phy_roothub_power_on(hcd->phy_roothub);
-		if (retval)
-			goto err_usb_phy_roothub_power_on;
+		if (IS_ERR(phy)) {
+			retval = PTR_ERR(phy);
+			if (retval == -EPROBE_DEFER)
+				goto err_phy;
+		} else {
+			retval = phy_init(phy);
+			if (retval) {
+				phy_put(phy);
+				goto err_phy;
+			}
+			retval = phy_power_on(phy);
+			if (retval) {
+				phy_exit(phy);
+				phy_put(phy);
+				goto err_phy;
+			}
+			hcd->phy = phy;
+			hcd->remove_phy = 1;
+		}
 	}
 
 	dev_info(hcd->self.controller, "%s\n", hcd->product_desc);
 
-	switch (authorized_default) {
-	case USB_AUTHORIZE_NONE:
-		hcd->dev_policy = USB_DEVICE_AUTHORIZE_NONE;
-		break;
-
-	case USB_AUTHORIZE_ALL:
-		hcd->dev_policy = USB_DEVICE_AUTHORIZE_ALL;
-		break;
-
-	case USB_AUTHORIZE_INTERNAL:
-		hcd->dev_policy = USB_DEVICE_AUTHORIZE_INTERNAL;
-		break;
-
-	case USB_AUTHORIZE_WIRED:
-	default:
-		hcd->dev_policy = hcd->wireless ?
-			USB_DEVICE_AUTHORIZE_NONE : USB_DEVICE_AUTHORIZE_ALL;
-		break;
+	/* Keep old behaviour if authorized_default is not in [0, 1]. */
+	if (authorized_default < 0 || authorized_default > 1) {
+		if (hcd->wireless)
+			clear_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
+		else
+			set_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
+	} else {
+		if (authorized_default)
+			set_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
+		else
+			clear_bit(HCD_FLAG_DEV_AUTHORIZED, &hcd->flags);
 	}
-
 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 
 	/* per default all interfaces are authorized */
@@ -2803,9 +2826,6 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	hcd->self.root_hub = rhdev;
 	mutex_unlock(&usb_port_peer_mutex);
 
-	rhdev->rx_lanes = 1;
-	rhdev->tx_lanes = 1;
-
 	switch (hcd->speed) {
 	case HCD_USB11:
 		rhdev->speed = USB_SPEED_FULL;
@@ -2819,10 +2839,6 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	case HCD_USB3:
 		rhdev->speed = USB_SPEED_SUPER;
 		break;
-	case HCD_USB32:
-		rhdev->rx_lanes = 2;
-		rhdev->tx_lanes = 2;
-		/* fall through */
 	case HCD_USB31:
 		rhdev->speed = USB_SPEED_SUPER_PLUS;
 		break;
@@ -2931,10 +2947,18 @@ err_allocate_root_hub:
 err_register_bus:
 	hcd_buffer_destroy(hcd);
 err_create_buf:
-	usb_phy_roothub_power_off(hcd->phy_roothub);
-err_usb_phy_roothub_power_on:
-	usb_phy_roothub_exit(hcd->phy_roothub);
-
+	if (IS_ENABLED(CONFIG_GENERIC_PHY) && hcd->remove_phy && hcd->phy) {
+		phy_power_off(hcd->phy);
+		phy_exit(hcd->phy);
+		phy_put(hcd->phy);
+		hcd->phy = NULL;
+	}
+err_phy:
+	if (hcd->remove_phy && hcd->usb_phy) {
+		usb_phy_shutdown(hcd->usb_phy);
+		usb_put_phy(hcd->usb_phy);
+		hcd->usb_phy = NULL;
+	}
 	return retval;
 }
 EXPORT_SYMBOL_GPL(usb_add_hcd);
@@ -3007,8 +3031,17 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 	usb_deregister_bus(&hcd->self);
 	hcd_buffer_destroy(hcd);
 
-	usb_phy_roothub_power_off(hcd->phy_roothub);
-	usb_phy_roothub_exit(hcd->phy_roothub);
+	if (IS_ENABLED(CONFIG_GENERIC_PHY) && hcd->remove_phy && hcd->phy) {
+		phy_power_off(hcd->phy);
+		phy_exit(hcd->phy);
+		phy_put(hcd->phy);
+		hcd->phy = NULL;
+	}
+	if (hcd->remove_phy && hcd->usb_phy) {
+		usb_phy_shutdown(hcd->usb_phy);
+		usb_put_phy(hcd->usb_phy);
+		hcd->usb_phy = NULL;
+	}
 
 	usb_put_invalidate_rhdev(hcd);
 	hcd->flags = 0;

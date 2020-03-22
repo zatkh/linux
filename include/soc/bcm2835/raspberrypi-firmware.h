@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  Copyright © 2015 Broadcom
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #ifndef __SOC_RASPBERRY_FIRMWARE_H__
@@ -8,6 +11,8 @@
 
 #include <linux/types.h>
 #include <linux/of_device.h>
+
+#define RPI_FIRMWARE_CHAN_FB		1
 
 struct rpi_firmware;
 
@@ -88,8 +93,6 @@ enum rpi_firmware_property_tag {
 	RPI_FIRMWARE_SET_GPIO_CONFIG =                        0x00038043,
 	RPI_FIRMWARE_GET_PERIPH_REG =                         0x00030045,
 	RPI_FIRMWARE_SET_PERIPH_REG =                         0x00038045,
-	RPI_FIRMWARE_GET_POE_HAT_VAL =                        0x00030049,
-	RPI_FIRMWARE_SET_POE_HAT_VAL =                        0x00030050,
 
 
 	/* Dispmanx TAGS */
@@ -159,5 +162,6 @@ static inline struct rpi_firmware *rpi_firmware_get(struct device_node *firmware
 	return NULL;
 }
 #endif
+int rpi_firmware_transaction(struct rpi_firmware *fw, u32 chan, u32 data);
 
 #endif /* __SOC_RASPBERRY_FIRMWARE_H__ */

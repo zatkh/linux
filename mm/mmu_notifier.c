@@ -35,6 +35,13 @@ void mmu_notifier_call_srcu(struct rcu_head *rcu,
 }
 EXPORT_SYMBOL_GPL(mmu_notifier_call_srcu);
 
+void mmu_notifier_synchronize(void)
+{
+	/* Wait for any running method to finish. */
+	srcu_barrier(&srcu);
+}
+EXPORT_SYMBOL_GPL(mmu_notifier_synchronize);
+
 /*
  * This function can't run concurrently against mmu_notifier_register
  * because mm->mm_users > 0 during mmu_notifier_register and exit_mmap
@@ -167,38 +174,29 @@ void __mmu_notifier_change_pte(struct mm_struct *mm, unsigned long address,
 	srcu_read_unlock(&srcu, id);
 }
 
-int __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+void __mmu_notifier_invalidate_range_start(struct mm_struct *mm,
+				  unsigned long start, unsigned long end)
 {
 	struct mmu_notifier *mn;
-	int ret = 0;
 	int id;
 
 	id = srcu_read_lock(&srcu);
-	hlist_for_each_entry_rcu(mn, &range->mm->mmu_notifier_mm->list, hlist) {
-		if (mn->ops->invalidate_range_start) {
-			int _ret = mn->ops->invalidate_range_start(mn, range);
-			if (_ret) {
-				pr_info("%pS callback failed with %d in %sblockable context.\n",
-					mn->ops->invalidate_range_start, _ret,
-					!range->blockable ? "non-" : "");
-				ret = _ret;
-			}
-		}
+	hlist_for_each_entry_rcu(mn, &mm->mmu_notifier_mm->list, hlist) {
+		if (mn->ops->invalidate_range_start)
+			mn->ops->invalidate_range_start(mn, mm, start, end);
 	}
 	srcu_read_unlock(&srcu, id);
-
-	return ret;
 }
 EXPORT_SYMBOL_GPL(__mmu_notifier_invalidate_range_start);
 
-void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
-					 bool only_end)
+void __mmu_notifier_invalidate_range_end(struct mm_struct *mm,
+				  unsigned long start, unsigned long end)
 {
 	struct mmu_notifier *mn;
 	int id;
 
 	id = srcu_read_lock(&srcu);
-	hlist_for_each_entry_rcu(mn, &range->mm->mmu_notifier_mm->list, hlist) {
+	hlist_for_each_entry_rcu(mn, &mm->mmu_notifier_mm->list, hlist) {
 		/*
 		 * Call invalidate_range here too to avoid the need for the
 		 * subsystem of having to register an invalidate_range_end
@@ -206,18 +204,11 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range,
 		 * subsystem registers either invalidate_range_start()/end() or
 		 * invalidate_range(), so this will be no additional overhead
 		 * (besides the pointer check).
-		 *
-		 * We skip call to invalidate_range() if we know it is safe ie
-		 * call site use mmu_notifier_invalidate_range_only_end() which
-		 * is safe to do when we know that a call to invalidate_range()
-		 * already happen under page table lock.
 		 */
-		if (!only_end && mn->ops->invalidate_range)
-			mn->ops->invalidate_range(mn, range->mm,
-						  range->start,
-						  range->end);
+		if (mn->ops->invalidate_range)
+			mn->ops->invalidate_range(mn, mm, start, end);
 		if (mn->ops->invalidate_range_end)
-			mn->ops->invalidate_range_end(mn, range);
+			mn->ops->invalidate_range_end(mn, mm, start, end);
 	}
 	srcu_read_unlock(&srcu, id);
 }

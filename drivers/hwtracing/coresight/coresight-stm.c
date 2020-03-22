@@ -1,8 +1,15 @@
-// SPDX-License-Identifier: GPL-2.0
-/*
- * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * Description: CoreSight System Trace Macrocell driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  *
  * Initial implementation by Pratik Patel
  * (C) 2014-2015 Pratik Patel <pratikp@codeaurora.org>
@@ -211,7 +218,7 @@ static int stm_enable(struct coresight_device *csdev,
 	stm_enable_hw(drvdata);
 	spin_unlock(&drvdata->spinlock);
 
-	dev_dbg(drvdata->dev, "STM tracing enabled\n");
+	dev_info(drvdata->dev, "STM tracing enabled\n");
 	return 0;
 }
 
@@ -274,7 +281,7 @@ static void stm_disable(struct coresight_device *csdev,
 		pm_runtime_put(drvdata->dev);
 
 		local_set(&drvdata->mode, CS_MODE_DISABLED);
-		dev_dbg(drvdata->dev, "STM tracing disabled\n");
+		dev_info(drvdata->dev, "STM tracing disabled\n");
 	}
 }
 
@@ -793,7 +800,7 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 	struct stm_drvdata *drvdata;
 	struct resource *res = &adev->res;
 	struct resource ch_res;
-	size_t bitmap_size;
+	size_t res_size, bitmap_size;
 	struct coresight_desc desc = { 0 };
 	struct device_node *np = adev->dev.of_node;
 
@@ -833,11 +840,15 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 
 	drvdata->write_bytes = stm_fundamental_data_size(drvdata);
 
-	if (boot_nr_channel)
+	if (boot_nr_channel) {
 		drvdata->numsp = boot_nr_channel;
-	else
+		res_size = min((resource_size_t)(boot_nr_channel *
+				  BYTES_PER_CHANNEL), resource_size(res));
+	} else {
 		drvdata->numsp = stm_num_stimulus_port(drvdata);
-
+		res_size = min((resource_size_t)(drvdata->numsp *
+				 BYTES_PER_CHANNEL), resource_size(res));
+	}
 	bitmap_size = BITS_TO_LONGS(drvdata->numsp) * sizeof(long);
 
 	guaranteed = devm_kzalloc(dev, bitmap_size, GFP_KERNEL);
@@ -852,7 +863,7 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 
 	if (stm_register_device(dev, &drvdata->stm, THIS_MODULE)) {
 		dev_info(dev,
-			 "stm_register_device failed, probing deferred\n");
+			 "stm_register_device failed, probing deffered\n");
 		return -EPROBE_DEFER;
 	}
 
@@ -870,7 +881,7 @@ static int stm_probe(struct amba_device *adev, const struct amba_id *id)
 
 	pm_runtime_put(&adev->dev);
 
-	dev_info(dev, "%s initialized\n", (char *)coresight_get_uci_data(id));
+	dev_info(dev, "%s initialized\n", (char *)id->data);
 	return 0;
 
 stm_unregister:
@@ -905,8 +916,16 @@ static const struct dev_pm_ops stm_dev_pm_ops = {
 };
 
 static const struct amba_id stm_ids[] = {
-	CS_AMBA_ID_DATA(0x000bb962, "STM32"),
-	CS_AMBA_ID_DATA(0x000bb963, "STM500"),
+	{
+		.id     = 0x0003b962,
+		.mask   = 0x0003ffff,
+		.data	= "STM32",
+	},
+	{
+		.id	= 0x0003b963,
+		.mask	= 0x0003ffff,
+		.data	= "STM500",
+	},
 	{ 0, 0},
 };
 

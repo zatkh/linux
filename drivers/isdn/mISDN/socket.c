@@ -103,7 +103,7 @@ mISDN_ctrl(struct mISDNchannel *ch, u_int cmd, void *arg)
 static inline void
 mISDN_sock_cmsg(struct sock *sk, struct msghdr *msg, struct sk_buff *skb)
 {
-	struct __kernel_old_timeval	tv;
+	struct timeval	tv;
 
 	if (_pms(sk)->cmask & MISDN_TIME_STAMP) {
 		skb_get_timestamp(skb, &tv);
@@ -236,7 +236,8 @@ mISDN_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t len)
 	}
 
 done:
-	kfree_skb(skb);
+	if (skb)
+		kfree_skb(skb);
 	release_sock(sk);
 	return err;
 }
@@ -559,7 +560,7 @@ done:
 
 static int
 data_sock_getname(struct socket *sock, struct sockaddr *addr,
-		  int peer)
+		  int *addr_len, int peer)
 {
 	struct sockaddr_mISDN	*maddr = (struct sockaddr_mISDN *) addr;
 	struct sock		*sk = sock->sk;
@@ -569,13 +570,14 @@ data_sock_getname(struct socket *sock, struct sockaddr *addr,
 
 	lock_sock(sk);
 
+	*addr_len = sizeof(*maddr);
 	maddr->family = AF_ISDN;
 	maddr->dev = _pms(sk)->dev->id;
 	maddr->channel = _pms(sk)->ch.nr;
 	maddr->sapi = _pms(sk)->ch.addr & 0xff;
 	maddr->tei = (_pms(sk)->ch.addr >> 8) & 0xff;
 	release_sock(sk);
-	return sizeof(*maddr);
+	return 0;
 }
 
 static const struct proto_ops data_sock_ops = {
@@ -710,10 +712,10 @@ base_sock_bind(struct socket *sock, struct sockaddr *addr, int addr_len)
 	struct sock *sk = sock->sk;
 	int err = 0;
 
-	if (addr_len < sizeof(struct sockaddr_mISDN))
+	if (!maddr || maddr->family != AF_ISDN)
 		return -EINVAL;
 
-	if (!maddr || maddr->family != AF_ISDN)
+	if (addr_len < sizeof(struct sockaddr_mISDN))
 		return -EINVAL;
 
 	lock_sock(sk);
@@ -744,6 +746,7 @@ static const struct proto_ops base_sock_ops = {
 	.getname	= sock_no_getname,
 	.sendmsg	= sock_no_sendmsg,
 	.recvmsg	= sock_no_recvmsg,
+	.poll		= sock_no_poll,
 	.listen		= sock_no_listen,
 	.shutdown	= sock_no_shutdown,
 	.setsockopt	= sock_no_setsockopt,

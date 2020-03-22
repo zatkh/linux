@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/miscdevice.h>
 #include <linux/platform_device.h>
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
@@ -40,10 +41,9 @@
 #include <acpi/acpi_bus.h>
 #include <asm/cpu_device_id.h>
 #include <asm/iosf_mbi.h>
-#include <sound/soc-acpi.h>
-#include <sound/soc-acpi-intel-match.h>
 #include "../sst-mfld-platform.h"
 #include "../../common/sst-dsp.h"
+#include "../../common/sst-acpi.h"
 #include "sst.h"
 
 /* LPE viewpoint addresses */
@@ -143,11 +143,10 @@ static struct sst_platform_info byt_rvp_platform_data = {
 	.lib_info = &byt_lib_dnld_info,
 	.res_info = &byt_rvp_res_info,
 	.platform = "sst-mfld-platform",
-	.streams_lost_on_suspend = true,
 };
 
 /* Cherryview (Cherrytrail and Braswell) uses same mrfld dpcm fw as Baytrail,
- * so pdata is same as Baytrail, minus the streams_lost_on_suspend quirk.
+ * so pdata is same as Baytrail.
  */
 static struct sst_platform_info chv_platform_data = {
 	.probe_data = &byt_fwparse_info,
@@ -237,34 +236,26 @@ static int sst_platform_get_resources(struct intel_sst_drv *ctx)
 	/* Find the IRQ */
 	ctx->irq_num = platform_get_irq(pdev,
 				ctx->pdata->res_info->acpi_ipc_irq_index);
-	if (ctx->irq_num <= 0)
-		return ctx->irq_num < 0 ? ctx->irq_num : -EIO;
-
 	return 0;
 }
 
-static int is_byt(void)
-{
-	bool status = false;
-	static const struct x86_cpu_id cpu_ids[] = {
-		{ X86_VENDOR_INTEL, 6, 55 }, /* Valleyview, Bay Trail */
-		{}
-	};
-	if (x86_match_cpu(cpu_ids))
-		status = true;
-	return status;
-}
 
-static bool is_byt_cr(struct platform_device *pdev)
+static int is_byt_cr(struct device *dev, bool *bytcr)
 {
-	struct device *dev = &pdev->dev;
 	int status = 0;
 
-	if (!is_byt())
-		return false;
-
-	if (iosf_mbi_available()) {
+	if (IS_ENABLED(CONFIG_IOSF_MBI)) {
+		static const struct x86_cpu_id cpu_ids[] = {
+			{ X86_VENDOR_INTEL, 6, 55 }, /* Valleyview, Bay Trail */
+			{}
+		};
 		u32 bios_status;
+
+		if (!x86_match_cpu(cpu_ids) || !iosf_mbi_available()) {
+			/* bail silently */
+			return status;
+		}
+
 		status = iosf_mbi_read(BT_MBI_UNIT_PMC, /* 0x04 PUNIT */
 				       MBI_REG_READ, /* 0x10 */
 				       0x006, /* BIOS_CONFIG */
@@ -276,28 +267,15 @@ static bool is_byt_cr(struct platform_device *pdev)
 			/* bits 26:27 mirror PMIC options */
 			bios_status = (bios_status >> 26) & 3;
 
-			if (bios_status == 1 || bios_status == 3) {
-				dev_info(dev, "Detected Baytrail-CR platform\n");
-				return true;
-			}
-
-			dev_info(dev, "BYT-CR not detected\n");
+			if ((bios_status == 1) || (bios_status == 3))
+				*bytcr = true;
+			else
+				dev_info(dev, "BYT-CR not detected\n");
 		}
 	} else {
-		dev_info(dev, "IOSF_MBI not available, no BYT-CR detection\n");
+		dev_info(dev, "IOSF_MBI not enabled, no BYT-CR detection\n");
 	}
-
-	if (platform_get_resource(pdev, IORESOURCE_IRQ, 5) == NULL) {
-		/*
-		 * Some devices detected as BYT-T have only a single IRQ listed,
-		 * causing platform_get_irq with index 5 to return -ENXIO.
-		 * The correct IRQ in this case is at index 0, as on BYT-CR.
-		 */
-		dev_info(dev, "Falling back to Baytrail-CR platform\n");
-		return true;
-	}
-
-	return false;
+	return status;
 }
 
 
@@ -307,28 +285,25 @@ static int sst_acpi_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct intel_sst_drv *ctx;
 	const struct acpi_device_id *id;
-	struct snd_soc_acpi_mach *mach;
+	struct sst_acpi_mach *mach;
 	struct platform_device *mdev;
 	struct platform_device *plat_dev;
 	struct sst_platform_info *pdata;
 	unsigned int dev_id;
+	bool bytcr = false;
 
 	id = acpi_match_device(dev->driver->acpi_match_table, dev);
 	if (!id)
 		return -ENODEV;
 	dev_dbg(dev, "for %s\n", id->id);
 
-	mach = (struct snd_soc_acpi_mach *)id->driver_data;
-	mach = snd_soc_acpi_find_machine(mach);
+	mach = (struct sst_acpi_mach *)id->driver_data;
+	mach = sst_acpi_find_machine(mach);
 	if (mach == NULL) {
 		dev_err(dev, "No matching machine driver found\n");
 		return -ENODEV;
 	}
 
-	if (is_byt())
-		mach->pdata = &byt_rvp_platform_data;
-	else
-		mach->pdata = &chv_platform_data;
 	pdata = mach->pdata;
 
 	ret = kstrtouint(id->id, 16, &dev_id);
@@ -343,14 +318,13 @@ static int sst_acpi_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	if (is_byt_cr(pdev)) {
+	ret = is_byt_cr(dev, &bytcr);
+	if (!((ret < 0) || (bytcr == false))) {
+		dev_info(dev, "Detected Baytrail-CR platform\n");
+
 		/* override resource info */
 		byt_rvp_platform_data.res_info = &bytcr_res_info;
 	}
-
-	/* update machine parameters */
-	mach->mach_params.acpi_ipc_irq_index =
-		pdata->res_info->acpi_ipc_irq_index;
 
 	plat_dev = platform_device_register_data(dev, pdata->platform, -1,
 						NULL, 0);
@@ -407,9 +381,286 @@ static int sst_acpi_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static unsigned long cht_machine_id;
+
+#define CHT_SURFACE_MACH 1
+#define BYT_THINKPAD_10  2
+
+static int cht_surface_quirk_cb(const struct dmi_system_id *id)
+{
+	cht_machine_id = CHT_SURFACE_MACH;
+	return 1;
+}
+
+static int byt_thinkpad10_quirk_cb(const struct dmi_system_id *id)
+{
+	cht_machine_id = BYT_THINKPAD_10;
+	return 1;
+}
+
+
+static const struct dmi_system_id byt_table[] = {
+	{
+		.callback = byt_thinkpad10_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad 10"),
+		},
+	},
+	{
+		.callback = byt_thinkpad10_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "ThinkPad Tablet B"),
+		},
+	},
+	{
+		.callback = byt_thinkpad10_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo Miix 2 10"),
+		},
+	},
+	{ }
+};
+
+static const struct dmi_system_id cht_table[] = {
+	{
+		.callback = cht_surface_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Surface 3"),
+		},
+	},
+	{ }
+};
+
+
+static struct sst_acpi_mach cht_surface_mach = {
+	.id = "10EC5640",
+	.drv_name = "cht-bsw-rt5645",
+	.fw_filename = "intel/fw_sst_22a8.bin",
+	.board = "cht-bsw",
+	.pdata = &chv_platform_data,
+};
+
+static struct sst_acpi_mach byt_thinkpad_10 = {
+	.id = "10EC5640",
+	.drv_name = "cht-bsw-rt5672",
+	.fw_filename = "intel/fw_sst_0f28.bin",
+	.board = "cht-bsw",
+	.pdata = &byt_rvp_platform_data,
+};
+
+static struct sst_acpi_mach *cht_quirk(void *arg)
+{
+	struct sst_acpi_mach *mach = arg;
+
+	dmi_check_system(cht_table);
+
+	if (cht_machine_id == CHT_SURFACE_MACH)
+		return &cht_surface_mach;
+	else
+		return mach;
+}
+
+static struct sst_acpi_mach *byt_quirk(void *arg)
+{
+	struct sst_acpi_mach *mach = arg;
+
+	dmi_check_system(byt_table);
+
+	if (cht_machine_id == BYT_THINKPAD_10)
+		return &byt_thinkpad_10;
+	else
+		return mach;
+}
+
+
+static struct sst_acpi_mach sst_acpi_bytcr[] = {
+	{
+		.id = "10EC5640",
+		.drv_name = "bytcr_rt5640",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_rt5640",
+		.machine_quirk = byt_quirk,
+		.pdata = &byt_rvp_platform_data,
+	},
+	{
+		.id = "10EC5642",
+		.drv_name = "bytcr_rt5640",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_rt5640",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "INTCCFFD",
+		.drv_name = "bytcr_rt5640",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_rt5640",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "10EC5651",
+		.drv_name = "bytcr_rt5651",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcr_rt5651",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "DLGS7212",
+		.drv_name = "bytcht_da7213",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcht_da7213",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "DLGS7213",
+		.drv_name = "bytcht_da7213",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcht_da7213",
+		.pdata = &byt_rvp_platform_data
+	},
+	/* some Baytrail platforms rely on RT5645, use CHT machine driver */
+	{
+		.id = "10EC5645",
+		.drv_name = "cht-bsw-rt5645",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "cht-bsw",
+		.pdata = &byt_rvp_platform_data
+	},
+	{
+		.id = "10EC5648",
+		.drv_name = "cht-bsw-rt5645",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "cht-bsw",
+		.pdata = &byt_rvp_platform_data
+	},
+#if IS_ENABLED(CONFIG_SND_SOC_INTEL_BYT_CHT_NOCODEC_MACH)
+	/*
+	 * This is always last in the table so that it is selected only when
+	 * enabled explicitly and there is no codec-related information in SSDT
+	 */
+	{
+		.id = "80860F28",
+		.drv_name = "bytcht_nocodec",
+		.fw_filename = "intel/fw_sst_0f28.bin",
+		.board = "bytcht_nocodec",
+		.pdata = &byt_rvp_platform_data
+	},
+#endif
+	{},
+};
+
+/* Cherryview-based platforms: CherryTrail and Braswell */
+static struct sst_acpi_mach sst_acpi_chv[] = {
+	{
+		.id = "10EC5670",
+		.drv_name = "cht-bsw-rt5672",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "10EC5672",
+		.drv_name = "cht-bsw-rt5672",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "10EC5645",
+		.drv_name = "cht-bsw-rt5645",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "10EC5650",
+		.drv_name = "cht-bsw-rt5645",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "10EC3270",
+		.drv_name = "cht-bsw-rt5645",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+
+	{
+		.id = "193C9890",
+		.drv_name = "cht-bsw-max98090",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "cht-bsw",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "DLGS7212",
+		.drv_name = "bytcht_da7213",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcht_da7213",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "DLGS7213",
+		.drv_name = "bytcht_da7213",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcht_da7213",
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "ESSX8316",
+		.drv_name = "bytcht_es8316",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcht_es8316",
+		.pdata = &chv_platform_data
+	},
+	/* some CHT-T platforms rely on RT5640, use Baytrail machine driver */
+	{
+		.id = "10EC5640",
+		.drv_name = "bytcr_rt5640",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcr_rt5640",
+		.machine_quirk = cht_quirk,
+		.pdata = &chv_platform_data
+	},
+	{
+		.id = "10EC3276",
+		.drv_name = "bytcr_rt5640",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcr_rt5640",
+		.pdata = &chv_platform_data
+	},
+	/* some CHT-T platforms rely on RT5651, use Baytrail machine driver */
+	{
+		.id = "10EC5651",
+		.drv_name = "bytcr_rt5651",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcr_rt5651",
+		.pdata = &chv_platform_data
+	},
+#if IS_ENABLED(CONFIG_SND_SOC_INTEL_BYT_CHT_NOCODEC_MACH)
+	/*
+	 * This is always last in the table so that it is selected only when
+	 * enabled explicitly and there is no codec-related information in SSDT
+	 */
+	{
+		.id = "808622A8",
+		.drv_name = "bytcht_nocodec",
+		.fw_filename = "intel/fw_sst_22a8.bin",
+		.board = "bytcht_nocodec",
+		.pdata = &chv_platform_data
+	},
+#endif
+	{},
+};
+
 static const struct acpi_device_id sst_acpi_ids[] = {
-	{ "80860F28", (unsigned long)&snd_soc_acpi_intel_baytrail_machines},
-	{ "808622A8", (unsigned long)&snd_soc_acpi_intel_cherrytrail_machines},
+	{ "80860F28", (unsigned long)&sst_acpi_bytcr},
+	{ "808622A8", (unsigned long) &sst_acpi_chv},
 	{ },
 };
 

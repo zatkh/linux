@@ -1,6 +1,19 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2007 Oracle.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public
+ * License v2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public
+ * License along with this program; if not, write to the
+ * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+ * Boston, MA 021110-1307, USA.
  */
 
 #include <linux/err.h>
@@ -21,12 +34,12 @@ static void btrfs_read_root_item(struct extent_buffer *eb, int slot,
 				struct btrfs_root_item *item)
 {
 	uuid_le uuid;
-	u32 len;
+	int len;
 	int need_reset = 0;
 
 	len = btrfs_item_size_nr(eb, slot);
 	read_extent_buffer(eb, item, btrfs_item_ptr_offset(eb, slot),
-			   min_t(u32, len, sizeof(*item)));
+			min_t(int, len, (int)sizeof(*item)));
 	if (len < sizeof(*item))
 		need_reset = 1;
 	if (!need_reset && btrfs_root_generation(item)
@@ -213,6 +226,10 @@ int btrfs_find_orphan_roots(struct btrfs_fs_info *fs_info)
 	struct btrfs_root *root;
 	int err = 0;
 	int ret;
+	bool can_recover = true;
+
+	if (sb_rdonly(fs_info->sb))
+		can_recover = false;
 
 	path = btrfs_alloc_path();
 	if (!path)
@@ -263,10 +280,8 @@ int btrfs_find_orphan_roots(struct btrfs_fs_info *fs_info)
 		if (root) {
 			WARN_ON(!test_bit(BTRFS_ROOT_ORPHAN_ITEM_INSERTED,
 					  &root->state));
-			if (btrfs_root_refs(&root->root_item) == 0) {
-				set_bit(BTRFS_ROOT_DEAD_TREE, &root->state);
+			if (btrfs_root_refs(&root->root_item) == 0)
 				btrfs_add_dead_root(root);
-			}
 			continue;
 		}
 
@@ -312,10 +327,8 @@ int btrfs_find_orphan_roots(struct btrfs_fs_info *fs_info)
 			break;
 		}
 
-		if (btrfs_root_refs(&root->root_item) == 0) {
-			set_bit(BTRFS_ROOT_DEAD_TREE, &root->state);
+		if (btrfs_root_refs(&root->root_item) == 0)
 			btrfs_add_dead_root(root);
-		}
 	}
 
 	btrfs_free_path(path);
@@ -324,9 +337,9 @@ int btrfs_find_orphan_roots(struct btrfs_fs_info *fs_info)
 
 /* drop the root item for 'key' from the tree root */
 int btrfs_del_root(struct btrfs_trans_handle *trans,
-		   const struct btrfs_key *key)
+		   struct btrfs_fs_info *fs_info, const struct btrfs_key *key)
 {
-	struct btrfs_root *root = trans->fs_info->tree_root;
+	struct btrfs_root *root = fs_info->tree_root;
 	struct btrfs_path *path;
 	int ret;
 
@@ -345,12 +358,13 @@ out:
 	return ret;
 }
 
-int btrfs_del_root_ref(struct btrfs_trans_handle *trans, u64 root_id,
-		       u64 ref_id, u64 dirid, u64 *sequence, const char *name,
-		       int name_len)
+int btrfs_del_root_ref(struct btrfs_trans_handle *trans,
+		       struct btrfs_fs_info *fs_info,
+		       u64 root_id, u64 ref_id, u64 dirid, u64 *sequence,
+		       const char *name, int name_len)
 
 {
-	struct btrfs_root *tree_root = trans->fs_info->tree_root;
+	struct btrfs_root *tree_root = fs_info->tree_root;
 	struct btrfs_path *path;
 	struct btrfs_root_ref *ref;
 	struct extent_buffer *leaf;
@@ -377,6 +391,13 @@ again:
 		WARN_ON(btrfs_root_ref_dirid(leaf, ref) != dirid);
 		WARN_ON(btrfs_root_ref_name_len(leaf, ref) != name_len);
 		ptr = (unsigned long)(ref + 1);
+		ret = btrfs_is_name_len_valid(leaf, path->slots[0], ptr,
+					      name_len);
+		if (!ret) {
+			err = -EIO;
+			goto out;
+		}
+
 		WARN_ON(memcmp_extent_buffer(leaf, name, ptr, name_len));
 		*sequence = btrfs_root_ref_sequence(leaf, ref);
 
@@ -416,11 +437,12 @@ out:
  *
  * Will return 0, -ENOMEM, or anything from the CoW path
  */
-int btrfs_add_root_ref(struct btrfs_trans_handle *trans, u64 root_id,
-		       u64 ref_id, u64 dirid, u64 sequence, const char *name,
-		       int name_len)
+int btrfs_add_root_ref(struct btrfs_trans_handle *trans,
+		       struct btrfs_fs_info *fs_info,
+		       u64 root_id, u64 ref_id, u64 dirid, u64 sequence,
+		       const char *name, int name_len)
 {
-	struct btrfs_root *tree_root = trans->fs_info->tree_root;
+	struct btrfs_root *tree_root = fs_info->tree_root;
 	struct btrfs_key key;
 	int ret;
 	struct btrfs_path *path;
@@ -487,9 +509,9 @@ void btrfs_update_root_times(struct btrfs_trans_handle *trans,
 			     struct btrfs_root *root)
 {
 	struct btrfs_root_item *item = &root->root_item;
-	struct timespec64 ct;
+	struct timespec ct;
 
-	ktime_get_real_ts64(&ct);
+	ktime_get_real_ts(&ct);
 	spin_lock(&root->root_item_lock);
 	btrfs_set_root_ctransid(item, trans->transid);
 	btrfs_set_stack_timespec_sec(&item->ctime, ct.tv_sec);

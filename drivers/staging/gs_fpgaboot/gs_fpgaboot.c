@@ -1,4 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0+
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -96,7 +106,7 @@ static int readmagic_bitstream(u8 *bitdata, int *offset)
 	read_bitstream(bitdata, buf, offset, 13);
 	r = memcmp(buf, bits_magic, 13);
 	if (r) {
-		pr_err("error: corrupted header\n");
+		pr_err("error: corrupted header");
 		return -EINVAL;
 	}
 	pr_info("bitstream file magic number Ok\n");

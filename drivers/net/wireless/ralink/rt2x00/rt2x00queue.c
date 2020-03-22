@@ -113,7 +113,6 @@ int rt2x00queue_map_txskb(struct queue_entry *entry)
 		return -ENOMEM;
 
 	skbdesc->flags |= SKBDESC_DMA_MAPPED_TX;
-	rt2x00lib_dmadone(entry);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(rt2x00queue_map_txskb);
@@ -201,18 +200,15 @@ static void rt2x00queue_create_tx_descriptor_seq(struct rt2x00_dev *rt2x00dev,
 	if (!rt2x00_has_cap_flag(rt2x00dev, REQUIRE_SW_SEQNO)) {
 		/*
 		 * rt2800 has a H/W (or F/W) bug, device incorrectly increase
-		 * seqno on retransmitted data (non-QOS) and management frames.
-		 * To workaround the problem let's generate seqno in software.
-		 * Except for beacons which are transmitted periodically by H/W
-		 * hence hardware has to assign seqno for them.
+		 * seqno on retransmited data (non-QOS) frames. To workaround
+		 * the problem let's generate seqno in software if QOS is
+		 * disabled.
 		 */
-	    	if (ieee80211_is_beacon(hdr->frame_control)) {
-			__set_bit(ENTRY_TXD_GENERATE_SEQ, &txdesc->flags);
+		if (test_bit(CONFIG_QOS_DISABLED, &rt2x00dev->flags))
+			__clear_bit(ENTRY_TXD_GENERATE_SEQ, &txdesc->flags);
+		else
 			/* H/W will generate sequence number */
 			return;
-		}
-
-		__clear_bit(ENTRY_TXD_GENERATE_SEQ, &txdesc->flags);
 	}
 
 	/*
@@ -718,14 +714,6 @@ int rt2x00queue_write_tx_frame(struct data_queue *queue, struct sk_buff *skb,
 	rt2x00queue_kick_tx_queue(queue, &txdesc);
 
 out:
-	/*
-	 * Pausing queue has to be serialized with rt2x00lib_txdone(), so we
-	 * do this under queue->tx_lock. Bottom halve was already disabled
-	 * before ieee80211_xmit() call.
-	 */
-	if (rt2x00queue_threshold(queue))
-		rt2x00queue_pause_queue(queue);
-
 	spin_unlock(&queue->tx_lock);
 	return ret;
 }
@@ -1003,8 +991,6 @@ void rt2x00queue_flush_queue(struct data_queue *queue, bool drop)
 		(queue->qid == QID_AC_BE) ||
 		(queue->qid == QID_AC_BK);
 
-	if (rt2x00queue_empty(queue))
-		return;
 
 	/*
 	 * If we are not supposed to drop any pending
@@ -1042,7 +1028,6 @@ void rt2x00queue_start_queues(struct rt2x00_dev *rt2x00dev)
 	 */
 	tx_queue_for_each(rt2x00dev, queue)
 		rt2x00queue_start_queue(queue);
-	rt2x00dev->last_nostatus_check = jiffies;
 
 	rt2x00queue_start_queue(rt2x00dev->rx);
 }
@@ -1258,8 +1243,10 @@ int rt2x00queue_allocate(struct rt2x00_dev *rt2x00dev)
 	rt2x00dev->data_queues = 2 + rt2x00dev->ops->tx_queues + req_atim;
 
 	queue = kcalloc(rt2x00dev->data_queues, sizeof(*queue), GFP_KERNEL);
-	if (!queue)
+	if (!queue) {
+		rt2x00_err(rt2x00dev, "Queue allocation failed\n");
 		return -ENOMEM;
+	}
 
 	/*
 	 * Initialize pointers

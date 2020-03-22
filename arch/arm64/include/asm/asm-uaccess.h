@@ -13,18 +13,18 @@
  */
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	.macro	__uaccess_ttbr0_disable, tmp1
-	mrs	\tmp1, ttbr1_el1			// swapper_pg_dir
+	mrs	\tmp1, ttbr1_el1		// swapper_pg_dir
 	bic	\tmp1, \tmp1, #TTBR_ASID_MASK
-	sub	\tmp1, \tmp1, #RESERVED_TTBR0_SIZE	// reserved_ttbr0 just before swapper_pg_dir
-	msr	ttbr0_el1, \tmp1			// set reserved TTBR0_EL1
+	add	\tmp1, \tmp1, #SWAPPER_DIR_SIZE	// reserved_ttbr0 at the end of swapper_pg_dir
+	msr	ttbr0_el1, \tmp1		// set reserved TTBR0_EL1
 	isb
-	add	\tmp1, \tmp1, #RESERVED_TTBR0_SIZE
+	sub	\tmp1, \tmp1, #SWAPPER_DIR_SIZE
 	msr	ttbr1_el1, \tmp1		// set reserved ASID
 	isb
 	.endm
 
 	.macro	__uaccess_ttbr0_enable, tmp1, tmp2
-	get_current_task \tmp1
+	get_thread_info \tmp1
 	ldr	\tmp1, [\tmp1, #TSK_TI_TTBR0]	// load saved TTBR0_EL1
 	mrs	\tmp2, ttbr1_el1
 	extr    \tmp2, \tmp2, \tmp1, #48

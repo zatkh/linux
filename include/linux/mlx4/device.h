@@ -40,7 +40,7 @@
 #include <linux/cpu_rmap.h>
 #include <linux/crash_dump.h>
 
-#include <linux/refcount.h>
+#include <linux/atomic.h>
 
 #include <linux/timecounter.h>
 
@@ -225,8 +225,6 @@ enum {
 	MLX4_DEV_CAP_FLAG2_SVLAN_BY_QP          = 1ULL <<  36,
 	MLX4_DEV_CAP_FLAG2_SL_TO_VL_CHANGE_EVENT = 1ULL << 37,
 	MLX4_DEV_CAP_FLAG2_USER_MAC_EN		= 1ULL << 38,
-	MLX4_DEV_CAP_FLAG2_DRIVER_VERSION_TO_FW = 1ULL << 39,
-	MLX4_DEV_CAP_FLAG2_SW_CQ_INIT           = 1ULL << 40,
 };
 
 enum {
@@ -256,6 +254,10 @@ enum {
 	MLX4_DEV_CAP_64B_CQE_ENABLED	= 1LL << 1,
 	MLX4_DEV_CAP_CQE_STRIDE_ENABLED	= 1LL << 2,
 	MLX4_DEV_CAP_EQE_STRIDE_ENABLED	= 1LL << 3
+};
+
+enum {
+	MLX4_USER_DEV_CAP_LARGE_CQE	= 1L << 0
 };
 
 enum {
@@ -631,7 +633,6 @@ struct mlx4_caps {
 	u32			vf_caps;
 	bool			wol_port[MLX4_MAX_PORTS + 1];
 	struct mlx4_rate_limit_caps rl_caps;
-	u32			health_buffer_addrs;
 };
 
 struct mlx4_buf_list {
@@ -750,7 +751,7 @@ struct mlx4_cq {
 	int			cqn;
 	unsigned		vector;
 
-	refcount_t		refcount;
+	atomic_t		refcount;
 	struct completion	free;
 	struct {
 		struct list_head list;
@@ -767,7 +768,7 @@ struct mlx4_qp {
 
 	int			qpn;
 
-	refcount_t		refcount;
+	atomic_t		refcount;
 	struct completion	free;
 	u8			usage;
 };
@@ -780,7 +781,7 @@ struct mlx4_srq {
 	int			max_gs;
 	int			wqe_shift;
 
-	refcount_t		refcount;
+	atomic_t		refcount;
 	struct completion	free;
 };
 
@@ -853,12 +854,6 @@ struct mlx4_vf_dev {
 	u8			n_ports;
 };
 
-struct mlx4_fw_crdump {
-	bool snapshot_enable;
-	struct devlink_region *region_crspace;
-	struct devlink_region *region_fw_health;
-};
-
 enum mlx4_pci_status {
 	MLX4_PCI_STATUS_DISABLED,
 	MLX4_PCI_STATUS_ENABLED,
@@ -879,7 +874,6 @@ struct mlx4_dev_persistent {
 	u8	interface_state;
 	struct mutex		pci_status_mutex; /* sync pci state */
 	enum mlx4_pci_status	pci_status;
-	struct mlx4_fw_crdump	crdump;
 };
 
 struct mlx4_dev {
@@ -1137,8 +1131,7 @@ void mlx4_free_hwq_res(struct mlx4_dev *mdev, struct mlx4_hwq_resources *wqres,
 
 int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 		  struct mlx4_uar *uar, u64 db_rec, struct mlx4_cq *cq,
-		  unsigned int vector, int collapsed, int timestamp_en,
-		  void *buf_addr, bool user_cq);
+		  unsigned vector, int collapsed, int timestamp_en);
 void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq);
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
 			  int *base, u8 flags, u8 usage);

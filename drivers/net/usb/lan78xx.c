@@ -1,6 +1,18 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2015 Microchip Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/version.h>
 #include <linux/module.h>
@@ -13,7 +25,6 @@
 #include <linux/slab.h>
 #include <linux/if_vlan.h>
 #include <linux/uaccess.h>
-#include <linux/linkmode.h>
 #include <linux/list.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
@@ -25,14 +36,14 @@
 #include <linux/irq.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/microchipphy.h>
-#include <linux/phy_fixed.h>
-#include <linux/of_mdio.h>
+#include <linux/phy.h>
 #include <linux/of_net.h>
 #include "lan78xx.h"
 
 #define DRIVER_AUTHOR	"WOOJUNG HUH <woojung.huh@microchip.com>"
 #define DRIVER_DESC	"LAN78XX USB 3.0 Gigabit Ethernet Devices"
 #define DRIVER_NAME	"lan78xx"
+#define DRIVER_VERSION	"1.0.6"
 
 #define TX_TIMEOUT_JIFFIES		(5 * HZ)
 #define THROTTLE_JIFFIES		(HZ / 8)
@@ -269,30 +280,6 @@ struct lan78xx_statstage64 {
 	u64 eee_tx_lpi_time;
 };
 
-static u32 lan78xx_regs[] = {
-	ID_REV,
-	INT_STS,
-	HW_CFG,
-	PMT_CTL,
-	E2P_CMD,
-	E2P_DATA,
-	USB_STATUS,
-	VLAN_TYPE,
-	MAC_CR,
-	MAC_RX,
-	MAC_TX,
-	FLOW,
-	ERR_STS,
-	MII_ACC,
-	MII_DATA,
-	EEE_TX_LPI_REQ_DLY,
-	EEE_TW_TX_SYS,
-	EEE_TX_LPI_REM_DLY,
-	WUCSR
-};
-
-#define PHY_REG_SIZE (32 * sizeof(u32))
-
 struct lan78xx_net;
 
 struct lan78xx_priv {
@@ -427,6 +414,15 @@ struct lan78xx_net {
 static int msg_level = -1;
 module_param(msg_level, int, 0);
 MODULE_PARM_DESC(msg_level, "Override default message level");
+
+/* TSO seems to be having some issue with Selective Acknowledge (SACK) that
+ * results in lost data never being retransmitted.
+ * Disable it by default now, but adds a module parameter to enable it for
+ * debug purposes (the full cause is not currently understood).
+ */
+static bool enable_tso;
+module_param(enable_tso, bool, 0644);
+MODULE_PARM_DESC(enable_tso, "Enables TCP segmentation offload");
 
 static int lan78xx_read_reg(struct lan78xx_net *dev, u32 index, u32 *data)
 {
@@ -937,9 +933,11 @@ static int lan78xx_read_otp(struct lan78xx_net *dev, u32 offset,
 	ret = lan78xx_read_raw_otp(dev, 0, 1, &sig);
 
 	if (ret == 0) {
-		if (sig == OTP_INDICATOR_2)
+		if (sig == OTP_INDICATOR_1)
+			offset = offset;
+		else if (sig == OTP_INDICATOR_2)
 			offset += 0x100;
-		else if (sig != OTP_INDICATOR_1)
+		else
 			ret = -EINVAL;
 		if (!ret)
 			ret = lan78xx_read_raw_otp(dev, offset, length, data);
@@ -1014,7 +1012,7 @@ done:
 static void lan78xx_set_addr_filter(struct lan78xx_priv *pdata,
 				    int index, u8 addr[ETH_ALEN])
 {
-	u32 temp;
+	u32	temp;
 
 	if ((pdata) && (index > 0) && (index < NUM_OF_MAF)) {
 		temp = addr[3];
@@ -1388,10 +1386,19 @@ static int lan78xx_set_wol(struct net_device *netdev,
 	if (ret < 0)
 		return ret;
 
-	if (wol->wolopts & ~WAKE_ALL)
-		return -EINVAL;
-
-	pdata->wol = wol->wolopts;
+	pdata->wol = 0;
+	if (wol->wolopts & WAKE_UCAST)
+		pdata->wol |= WAKE_UCAST;
+	if (wol->wolopts & WAKE_MCAST)
+		pdata->wol |= WAKE_MCAST;
+	if (wol->wolopts & WAKE_BCAST)
+		pdata->wol |= WAKE_BCAST;
+	if (wol->wolopts & WAKE_MAGIC)
+		pdata->wol |= WAKE_MAGIC;
+	if (wol->wolopts & WAKE_PHY)
+		pdata->wol |= WAKE_PHY;
+	if (wol->wolopts & WAKE_ARP)
+		pdata->wol |= WAKE_ARP;
 
 	device_set_wakeup_enable(&dev->udev->dev, (bool)wol->wolopts);
 
@@ -1483,6 +1490,7 @@ static void lan78xx_get_drvinfo(struct net_device *net,
 	struct lan78xx_net *dev = netdev_priv(net);
 
 	strncpy(info->driver, DRIVER_NAME, sizeof(info->driver));
+	strncpy(info->version, DRIVER_VERSION, sizeof(info->version));
 	usb_make_path(dev->udev, info->bus_info, sizeof(info->bus_info));
 }
 
@@ -1587,17 +1595,18 @@ static int lan78xx_set_pause(struct net_device *net,
 		dev->fc_request_control |= FLOW_CTRL_TX;
 
 	if (ecmd.base.autoneg) {
-		__ETHTOOL_DECLARE_LINK_MODE_MASK(fc) = { 0, };
 		u32 mii_adv;
+		u32 advertising;
 
-		linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT,
-				   ecmd.link_modes.advertising);
-		linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT,
-				   ecmd.link_modes.advertising);
+		ethtool_convert_link_mode_to_legacy_u32(
+			&advertising, ecmd.link_modes.advertising);
+
+		advertising &= ~(ADVERTISED_Pause | ADVERTISED_Asym_Pause);
 		mii_adv = (u32)mii_advertise_flowctrl(dev->fc_request_control);
-		mii_adv_to_linkmode_adv_t(fc, mii_adv);
-		linkmode_or(ecmd.link_modes.advertising, fc,
-			    ecmd.link_modes.advertising);
+		advertising |= mii_adv_to_ethtool_adv_t(mii_adv);
+
+		ethtool_convert_legacy_u32_to_link_mode(
+			ecmd.link_modes.advertising, advertising);
 
 		phy_ethtool_ksettings_set(phydev, &ecmd);
 	}
@@ -1607,34 +1616,6 @@ static int lan78xx_set_pause(struct net_device *net,
 	ret = 0;
 exit:
 	return ret;
-}
-
-static int lan78xx_get_regs_len(struct net_device *netdev)
-{
-	if (!netdev->phydev)
-		return (sizeof(lan78xx_regs));
-	else
-		return (sizeof(lan78xx_regs) + PHY_REG_SIZE);
-}
-
-static void
-lan78xx_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
-		 void *buf)
-{
-	u32 *data = buf;
-	int i, j;
-	struct lan78xx_net *dev = netdev_priv(netdev);
-
-	/* Read Device/MAC registers */
-	for (i = 0; i < ARRAY_SIZE(lan78xx_regs); i++)
-		lan78xx_read_reg(dev, lan78xx_regs[i], &data[i]);
-
-	if (!netdev->phydev)
-		return;
-
-	/* Read PHY registers */
-	for (j = 0; j < 32; i++, j++)
-		data[i] = phy_read(netdev->phydev, j);
 }
 
 static const struct ethtool_ops lan78xx_ethtool_ops = {
@@ -1657,8 +1638,6 @@ static const struct ethtool_ops lan78xx_ethtool_ops = {
 	.set_pauseparam	= lan78xx_set_pause,
 	.get_link_ksettings = lan78xx_get_link_ksettings,
 	.set_link_ksettings = lan78xx_set_link_ksettings,
-	.get_regs_len	= lan78xx_get_regs_len,
-	.get_regs	= lan78xx_get_regs,
 };
 
 static int lan78xx_ioctl(struct net_device *netdev, struct ifreq *rq, int cmd)
@@ -1686,31 +1665,44 @@ static void lan78xx_init_mac_address(struct lan78xx_net *dev)
 	addr[5] = (addr_hi >> 8) & 0xFF;
 
 	if (!is_valid_ether_addr(addr)) {
-		if (!eth_platform_get_mac_address(&dev->udev->dev, addr)) {
-			/* valid address present in Device Tree */
-			netif_dbg(dev, ifup, dev->net,
-				  "MAC address read from Device Tree");
-		} else if (((lan78xx_read_eeprom(dev, EEPROM_MAC_OFFSET,
-						 ETH_ALEN, addr) == 0) ||
-			    (lan78xx_read_otp(dev, EEPROM_MAC_OFFSET,
-					      ETH_ALEN, addr) == 0)) &&
-			   is_valid_ether_addr(addr)) {
-			/* eeprom values are valid so use them */
-			netif_dbg(dev, ifup, dev->net,
-				  "MAC address read from EEPROM");
+		const u8 *mac_addr;
+
+		/* maybe the boot loader passed the MAC address in devicetree */
+		mac_addr = of_get_mac_address(dev->udev->dev.of_node);
+		if (mac_addr) {
+			ether_addr_copy(addr, mac_addr);
+			goto set_mac_addr;
+		}
+
+		/* reading mac address from EEPROM or OTP */
+		if ((lan78xx_read_eeprom(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
+					 addr) == 0) ||
+		    (lan78xx_read_otp(dev, EEPROM_MAC_OFFSET, ETH_ALEN,
+				      addr) == 0)) {
+			if (is_valid_ether_addr(addr)) {
+				/* eeprom values are valid so use them */
+				netif_dbg(dev, ifup, dev->net,
+					  "MAC address read from EEPROM");
+			} else {
+				/* generate random MAC */
+				random_ether_addr(addr);
+				netif_dbg(dev, ifup, dev->net,
+					  "MAC address set to random addr");
+			}
+
+set_mac_addr:
+			addr_lo = addr[0] | (addr[1] << 8) |
+				  (addr[2] << 16) | (addr[3] << 24);
+			addr_hi = addr[4] | (addr[5] << 8);
+
+			ret = lan78xx_write_reg(dev, RX_ADDRL, addr_lo);
+			ret = lan78xx_write_reg(dev, RX_ADDRH, addr_hi);
 		} else {
 			/* generate random MAC */
-			eth_random_addr(addr);
+			random_ether_addr(addr);
 			netif_dbg(dev, ifup, dev->net,
 				  "MAC address set to random addr");
 		}
-
-		addr_lo = addr[0] | (addr[1] << 8) |
-			  (addr[2] << 16) | (addr[3] << 24);
-		addr_hi = addr[4] | (addr[5] << 8);
-
-		ret = lan78xx_write_reg(dev, RX_ADDRL, addr_lo);
-		ret = lan78xx_write_reg(dev, RX_ADDRH, addr_hi);
 	}
 
 	ret = lan78xx_write_reg(dev, MAF_LO(0), addr_lo);
@@ -1793,7 +1785,6 @@ done:
 
 static int lan78xx_mdio_init(struct lan78xx_net *dev)
 {
-	struct device_node *node;
 	int ret;
 
 	dev->mdiobus = mdiobus_alloc();
@@ -1822,9 +1813,7 @@ static int lan78xx_mdio_init(struct lan78xx_net *dev)
 		break;
 	}
 
-	node = of_get_child_by_name(dev->udev->dev.of_node, "mdio");
-	ret = of_mdiobus_register(dev->mdiobus, node);
-	of_node_put(node);
+	ret = mdiobus_register(dev->mdiobus);
 	if (ret) {
 		netdev_err(dev->net, "can't register MDIO bus\n");
 		goto exit1;
@@ -2037,91 +2026,55 @@ static int ksz9031rnx_fixup(struct phy_device *phydev)
 	return 1;
 }
 
-static struct phy_device *lan7801_phy_init(struct lan78xx_net *dev)
+static int lan78xx_phy_init(struct lan78xx_net *dev)
 {
-	u32 buf;
 	int ret;
-	struct fixed_phy_status fphy_status = {
-		.link = 1,
-		.speed = SPEED_1000,
-		.duplex = DUPLEX_FULL,
-	};
-	struct phy_device *phydev;
+	u32 mii_adv;
+	u32 led_modes[2];
+	u32 led_modes_reg;
+	int i;
+	struct phy_device *phydev = dev->net->phydev;
 
 	phydev = phy_find_first(dev->mdiobus);
 	if (!phydev) {
-		netdev_dbg(dev->net, "PHY Not Found!! Registering Fixed PHY\n");
-		phydev = fixed_phy_register(PHY_POLL, &fphy_status, NULL);
-		if (IS_ERR(phydev)) {
-			netdev_err(dev->net, "No PHY/fixed_PHY found\n");
-			return NULL;
-		}
-		netdev_dbg(dev->net, "Registered FIXED PHY\n");
-		dev->interface = PHY_INTERFACE_MODE_RGMII;
-		ret = lan78xx_write_reg(dev, MAC_RGMII_ID,
-					MAC_RGMII_ID_TXC_DELAY_EN_);
-		ret = lan78xx_write_reg(dev, RGMII_TX_BYP_DLL, 0x3D00);
-		ret = lan78xx_read_reg(dev, HW_CFG, &buf);
-		buf |= HW_CFG_CLK125_EN_;
-		buf |= HW_CFG_REFCLK25_EN_;
-		ret = lan78xx_write_reg(dev, HW_CFG, buf);
-	} else {
+		netdev_err(dev->net, "no PHY found\n");
+		return -EIO;
+	}
+
+	if ((dev->chipid == ID_REV_CHIP_ID_7800_) ||
+	    (dev->chipid == ID_REV_CHIP_ID_7850_)) {
+		phydev->is_internal = true;
+		dev->interface = PHY_INTERFACE_MODE_GMII;
+
+	} else if (dev->chipid == ID_REV_CHIP_ID_7801_) {
 		if (!phydev->drv) {
 			netdev_err(dev->net, "no PHY driver found\n");
-			return NULL;
+			return -EIO;
 		}
+
 		dev->interface = PHY_INTERFACE_MODE_RGMII;
+
 		/* external PHY fixup for KSZ9031RNX */
 		ret = phy_register_fixup_for_uid(PHY_KSZ9031RNX, 0xfffffff0,
 						 ksz9031rnx_fixup);
 		if (ret < 0) {
-			netdev_err(dev->net, "Failed to register fixup for PHY_KSZ9031RNX\n");
-			return NULL;
+			netdev_err(dev->net, "fail to register fixup\n");
+			return ret;
 		}
 		/* external PHY fixup for LAN8835 */
 		ret = phy_register_fixup_for_uid(PHY_LAN8835, 0xfffffff0,
 						 lan8835_fixup);
 		if (ret < 0) {
-			netdev_err(dev->net, "Failed to register fixup for PHY_LAN8835\n");
-			return NULL;
+			netdev_err(dev->net, "fail to register fixup\n");
+			return ret;
 		}
 		/* add more external PHY fixup here if needed */
 
 		phydev->is_internal = false;
-	}
-	return phydev;
-}
-
-static int lan78xx_phy_init(struct lan78xx_net *dev)
-{
-	__ETHTOOL_DECLARE_LINK_MODE_MASK(fc) = { 0, };
-	int ret;
-	u32 mii_adv;
-	struct phy_device *phydev;
-
-	switch (dev->chipid) {
-	case ID_REV_CHIP_ID_7801_:
-		phydev = lan7801_phy_init(dev);
-		if (!phydev) {
-			netdev_err(dev->net, "lan7801: PHY Init Failed");
-			return -EIO;
-		}
-		break;
-
-	case ID_REV_CHIP_ID_7800_:
-	case ID_REV_CHIP_ID_7850_:
-		phydev = phy_find_first(dev->mdiobus);
-		if (!phydev) {
-			netdev_err(dev->net, "no PHY found\n");
-			return -EIO;
-		}
-		phydev->is_internal = true;
-		dev->interface = PHY_INTERFACE_MODE_GMII;
-		break;
-
-	default:
-		netdev_err(dev->net, "Unknown CHIP ID found\n");
-		return -EIO;
+	} else {
+		netdev_err(dev->net, "unknown ID found\n");
+		ret = -EIO;
+		goto error;
 	}
 
 	/* if phyirq is not set, use polling mode in phylib */
@@ -2140,59 +2093,67 @@ static int lan78xx_phy_init(struct lan78xx_net *dev)
 	if (ret) {
 		netdev_err(dev->net, "can't attach PHY to %s\n",
 			   dev->mdiobus->id);
-		if (dev->chipid == ID_REV_CHIP_ID_7801_) {
-			if (phy_is_pseudo_fixed_link(phydev)) {
-				fixed_phy_unregister(phydev);
-			} else {
-				phy_unregister_fixup_for_uid(PHY_KSZ9031RNX,
-							     0xfffffff0);
-				phy_unregister_fixup_for_uid(PHY_LAN8835,
-							     0xfffffff0);
-			}
-		}
 		return -EIO;
 	}
 
 	/* MAC doesn't support 1000T Half */
-	phy_remove_link_mode(phydev, ETHTOOL_LINK_MODE_1000baseT_Half_BIT);
+	phydev->supported &= ~SUPPORTED_1000baseT_Half;
 
 	/* support both flow controls */
 	dev->fc_request_control = (FLOW_CTRL_RX | FLOW_CTRL_TX);
-	linkmode_clear_bit(ETHTOOL_LINK_MODE_Pause_BIT,
-			   phydev->advertising);
-	linkmode_clear_bit(ETHTOOL_LINK_MODE_Asym_Pause_BIT,
-			   phydev->advertising);
+	phydev->advertising &= ~(ADVERTISED_Pause | ADVERTISED_Asym_Pause);
 	mii_adv = (u32)mii_advertise_flowctrl(dev->fc_request_control);
-	mii_adv_to_linkmode_adv_t(fc, mii_adv);
-	linkmode_or(phydev->advertising, fc, phydev->advertising);
+	phydev->advertising |= mii_adv_to_ethtool_adv_t(mii_adv);
 
-	if (phydev->mdio.dev.of_node) {
-		u32 reg;
-		int len;
+	if (of_property_read_bool(dev->udev->dev.of_node,
+				  "microchip,eee-enabled")) {
+		struct ethtool_eee edata;
+		memset(&edata, 0, sizeof(edata));
+		edata.cmd = ETHTOOL_SEEE;
+		edata.advertised = ADVERTISED_1000baseT_Full |
+				   ADVERTISED_100baseT_Full;
+		edata.eee_enabled = true;
+		edata.tx_lpi_enabled = true;
+		if (of_property_read_u32(dev->udev->dev.of_node,
+					 "microchip,tx-lpi-timer",
+					 &edata.tx_lpi_timer))
+			edata.tx_lpi_timer = 600; /* non-aggressive */
+		(void)lan78xx_set_eee(dev->net, &edata);
+	}
 
-		len = of_property_count_elems_of_size(phydev->mdio.dev.of_node,
-						      "microchip,led-modes",
-						      sizeof(u32));
-		if (len >= 0) {
-			/* Ensure the appropriate LEDs are enabled */
-			lan78xx_read_reg(dev, HW_CFG, &reg);
-			reg &= ~(HW_CFG_LED0_EN_ |
-				 HW_CFG_LED1_EN_ |
-				 HW_CFG_LED2_EN_ |
-				 HW_CFG_LED3_EN_);
-			reg |= (len > 0) * HW_CFG_LED0_EN_ |
-				(len > 1) * HW_CFG_LED1_EN_ |
-				(len > 2) * HW_CFG_LED2_EN_ |
-				(len > 3) * HW_CFG_LED3_EN_;
-			lan78xx_write_reg(dev, HW_CFG, reg);
+	/* Set LED modes:
+	 * led: 0=link/activity          1=link1000/activity
+	 *      2=link100/activity       3=link10/activity
+	 *      4=link100/1000/activity  5=link10/1000/activity
+	 *      6=link10/100/activity    14=off    15=on
+	 */
+
+	memset(led_modes, ~0, sizeof(led_modes));
+
+	of_property_read_u32_array(dev->udev->dev.of_node,
+				   "microchip,led-modes",
+				   led_modes, ARRAY_SIZE(led_modes));
+
+	led_modes_reg = phy_read(phydev, 0x1d);
+	for (i = 0; i < ARRAY_SIZE(led_modes); i++) {
+		if (led_modes[i] != ~0) {
+			led_modes_reg &= ~(0xf << (i * 4));
+			led_modes_reg |= (led_modes[i] & 0xf) << (i * 4);
 		}
 	}
+	(void)phy_write(phydev, 0x1d, led_modes_reg);
 
 	genphy_config_aneg(phydev);
 
 	dev->fc_autoneg = phydev->autoneg;
 
 	return 0;
+
+error:
+	phy_unregister_fixup_for_uid(PHY_KSZ9031RNX, 0xfffffff0);
+	phy_unregister_fixup_for_uid(PHY_LAN8835, 0xfffffff0);
+
+	return ret;
 }
 
 static int lan78xx_set_rx_max_frame_length(struct lan78xx_net *dev, int size)
@@ -2323,10 +2284,6 @@ static int lan78xx_set_mac_addr(struct net_device *netdev, void *p)
 
 	ret = lan78xx_write_reg(dev, RX_ADDRL, addr_lo);
 	ret = lan78xx_write_reg(dev, RX_ADDRH, addr_hi);
-
-	/* Added to support MAC address changes */
-	ret = lan78xx_write_reg(dev, MAF_LO(0), addr_lo);
-	ret = lan78xx_write_reg(dev, MAF_HI(0), addr_hi | MAF_HI_VALID_);
 
 	return 0;
 }
@@ -2460,7 +2417,11 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 	u32 buf;
 	int ret = 0;
 	unsigned long timeout;
-	u8 sig;
+	bool has_eeprom;
+	bool has_otp;
+
+	has_eeprom = !lan78xx_read_eeprom(dev, 0, 0, NULL);
+	has_otp = !lan78xx_read_otp(dev, 0, 0, NULL);
 
 	ret = lan78xx_read_reg(dev, HW_CFG, &buf);
 	buf |= HW_CFG_LRST_;
@@ -2514,6 +2475,9 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 
 	ret = lan78xx_read_reg(dev, HW_CFG, &buf);
 	buf |= HW_CFG_MEF_;
+	/* If no valid EEPROM and no valid OTP, enable the LEDs by default */
+	if (!has_eeprom && !has_otp)
+	    buf |= HW_CFG_LED0_EN_ | HW_CFG_LED1_EN_;
 	ret = lan78xx_write_reg(dev, HW_CFG, buf);
 
 	ret = lan78xx_read_reg(dev, USB_CFG0, &buf);
@@ -2560,15 +2524,9 @@ static int lan78xx_reset(struct lan78xx_net *dev)
 	/* LAN7801 only has RGMII mode */
 	if (dev->chipid == ID_REV_CHIP_ID_7801_)
 		buf &= ~MAC_CR_GMII_EN_;
-
-	if (dev->chipid == ID_REV_CHIP_ID_7800_) {
-		ret = lan78xx_read_raw_eeprom(dev, 0, 1, &sig);
-		if (!ret && sig != EEPROM_INDICATOR) {
-			/* Implies there is no external eeprom. Set mac speed */
-			netdev_info(dev->net, "No External EEPROM. Setting MAC Speed\n");
-			buf |= MAC_CR_AUTO_DUPLEX_ | MAC_CR_AUTO_SPEED_;
-		}
-	}
+	/* If no valid EEPROM and no valid OTP, enable AUTO negotiation */
+	if (!has_eeprom && !has_otp)
+	    buf |= MAC_CR_AUTO_DUPLEX_ | MAC_CR_AUTO_SPEED_;
 	ret = lan78xx_write_reg(dev, MAC_CR, buf);
 
 	ret = lan78xx_read_reg(dev, MAC_TX, &buf);
@@ -2686,7 +2644,7 @@ static void lan78xx_terminate_urbs(struct lan78xx_net *dev)
 
 static int lan78xx_stop(struct net_device *net)
 {
-	struct lan78xx_net *dev = netdev_priv(net);
+	struct lan78xx_net		*dev = netdev_priv(net);
 
 	if (timer_pending(&dev->stat_monitor))
 		del_timer_sync(&dev->stat_monitor);
@@ -2936,11 +2894,6 @@ static int lan78xx_bind(struct lan78xx_net *dev, struct usb_interface *intf)
 	int i;
 
 	ret = lan78xx_get_endpoints(dev, intf);
-	if (ret) {
-		netdev_warn(dev->net, "lan78xx_get_endpoints failed: %d\n",
-			    ret);
-		return ret;
-	}
 
 	dev->data[0] = (unsigned long)kzalloc(sizeof(*pdata), GFP_KERNEL);
 
@@ -2970,8 +2923,14 @@ static int lan78xx_bind(struct lan78xx_net *dev, struct usb_interface *intf)
 	if (DEFAULT_RX_CSUM_ENABLE)
 		dev->net->features |= NETIF_F_RXCSUM;
 
-	if (DEFAULT_TSO_CSUM_ENABLE)
-		dev->net->features |= NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_SG;
+	if (DEFAULT_TSO_CSUM_ENABLE) {
+		dev->net->features |= NETIF_F_SG;
+		/* Use module parameter to control TCP segmentation offload as
+		 * it appears to cause issues.
+		 */
+		if (enable_tso)
+			dev->net->features |= NETIF_F_TSO | NETIF_F_TSO6;
+	}
 
 	if (DEFAULT_VLAN_RX_OFFLOAD)
 		dev->net->features |= NETIF_F_HW_VLAN_CTAG_RX;
@@ -3044,7 +3003,7 @@ static void lan78xx_rx_csum_offload(struct lan78xx_net *dev,
 				    u32 rx_cmd_a, u32 rx_cmd_b)
 {
 	/* HW Checksum offload appears to be flawed if used when not stripping
-	 * VLAN headers. Drop back to S/W checksums under these conditions.
+	 * VLAN headers.
 	 */
 	if (!(dev->net->features & NETIF_F_RXCSUM) ||
 	    unlikely(rx_cmd_a & RX_CMD_A_ICSM_) ||
@@ -3069,7 +3028,7 @@ static void lan78xx_rx_vlan_offload(struct lan78xx_net *dev,
 
 static void lan78xx_skb_return(struct lan78xx_net *dev, struct sk_buff *skb)
 {
-	int status;
+	int		status;
 
 	if (test_bit(EVENT_RX_PAUSED, &dev->flags)) {
 		skb_queue_tail(&dev->rxq_pause, skb);
@@ -3336,9 +3295,9 @@ static void lan78xx_tx_bh(struct lan78xx_net *dev)
 	count = 0;
 	length = 0;
 	spin_lock_irqsave(&tqp->lock, flags);
-	skb_queue_walk(tqp, skb) {
+	for (skb = tqp->next; pkt_cnt < tqp->qlen; skb = skb->next) {
 		if (skb_is_gso(skb)) {
-			if (!skb_queue_is_first(tqp, skb)) {
+			if (pkt_cnt) {
 				/* handle previous packets first */
 				break;
 			}
@@ -3629,10 +3588,9 @@ static void intr_complete(struct urb *urb)
 
 static void lan78xx_disconnect(struct usb_interface *intf)
 {
-	struct lan78xx_net *dev;
-	struct usb_device *udev;
-	struct net_device *net;
-	struct phy_device *phydev;
+	struct lan78xx_net		*dev;
+	struct usb_device		*udev;
+	struct net_device		*net;
 
 	dev = usb_get_intfdata(intf);
 	usb_set_intfdata(intf, NULL);
@@ -3641,15 +3599,11 @@ static void lan78xx_disconnect(struct usb_interface *intf)
 
 	udev = interface_to_usbdev(intf);
 	net = dev->net;
-	phydev = net->phydev;
 
 	phy_unregister_fixup_for_uid(PHY_KSZ9031RNX, 0xfffffff0);
 	phy_unregister_fixup_for_uid(PHY_LAN8835, 0xfffffff0);
 
 	phy_disconnect(net->phydev);
-
-	if (phy_is_pseudo_fixed_link(phydev))
-		fixed_phy_unregister(phydev);
 
 	unregister_netdev(net);
 
@@ -3689,9 +3643,11 @@ static const struct net_device_ops lan78xx_netdev_ops = {
 	.ndo_vlan_rx_kill_vid	= lan78xx_vlan_rx_kill_vid,
 };
 
-static void lan78xx_stat_monitor(struct timer_list *t)
+static void lan78xx_stat_monitor(unsigned long param)
 {
-	struct lan78xx_net *dev = from_timer(dev, t, stat_monitor);
+	struct lan78xx_net *dev;
+
+	dev = (struct lan78xx_net *)param;
 
 	lan78xx_defer_kevent(dev, EVENT_STAT_UPDATE);
 }
@@ -3742,14 +3698,17 @@ static int lan78xx_probe(struct usb_interface *intf,
 	netdev->watchdog_timeo = TX_TIMEOUT_JIFFIES;
 	netdev->ethtool_ops = &lan78xx_ethtool_ops;
 
+	dev->stat_monitor.function = lan78xx_stat_monitor;
+	dev->stat_monitor.data = (unsigned long)dev;
 	dev->delta = 1;
-	timer_setup(&dev->stat_monitor, lan78xx_stat_monitor, 0);
+	init_timer(&dev->stat_monitor);
 
 	mutex_init(&dev->stats.access_lock);
 
 	ret = lan78xx_bind(dev, intf);
 	if (ret < 0)
 		goto out2;
+	strcpy(netdev->name, "eth%d");
 
 	if (netdev->mtu > (dev->hard_mtu - netdev->hard_header_len))
 		netdev->mtu = dev->hard_mtu - netdev->hard_header_len;

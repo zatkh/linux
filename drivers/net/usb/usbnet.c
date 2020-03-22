@@ -458,10 +458,12 @@ static enum skb_state defer_bh(struct usbnet *dev, struct sk_buff *skb,
 void usbnet_defer_kevent (struct usbnet *dev, int work)
 {
 	set_bit (work, &dev->flags);
-	if (!schedule_work (&dev->kevent))
-		netdev_dbg(dev->net, "kevent %d may have been dropped\n", work);
-	else
+	if (!schedule_work (&dev->kevent)) {
+		if (net_ratelimit())
+			netdev_err(dev->net, "kevent %d may have been dropped\n", work);
+	} else {
 		netdev_dbg(dev->net, "kevent %d scheduled\n", work);
+	}
 }
 EXPORT_SYMBOL_GPL(usbnet_defer_kevent);
 
@@ -802,7 +804,7 @@ static void usbnet_terminate_urbs(struct usbnet *dev)
 int usbnet_stop (struct net_device *net)
 {
 	struct usbnet		*dev = netdev_priv(net);
-	const struct driver_info *info = dev->driver_info;
+	struct driver_info	*info = dev->driver_info;
 	int			retval, pm, mpn;
 
 	clear_bit(EVENT_DEV_OPEN, &dev->flags);
@@ -865,7 +867,7 @@ int usbnet_open (struct net_device *net)
 {
 	struct usbnet		*dev = netdev_priv(net);
 	int			retval;
-	const struct driver_info *info = dev->driver_info;
+	struct driver_info	*info = dev->driver_info;
 
 	if ((retval = usb_autopm_get_interface(dev->intf)) < 0) {
 		netif_info(dev, ifup, dev->net,
@@ -1205,7 +1207,7 @@ fail_lowmem:
 	}
 
 	if (test_bit (EVENT_LINK_RESET, &dev->flags)) {
-		const struct driver_info *info = dev->driver_info;
+		struct driver_info	*info = dev->driver_info;
 		int			retval = 0;
 
 		clear_bit (EVENT_LINK_RESET, &dev->flags);
@@ -1323,8 +1325,8 @@ static int build_dma_sg(const struct sk_buff *skb, struct urb *urb)
 		return 0;
 
 	/* reserve one for zero packet */
-	urb->sg = kmalloc_array(num_sgs + 1, sizeof(struct scatterlist),
-				GFP_ATOMIC);
+	urb->sg = kmalloc((num_sgs + 1) * sizeof(struct scatterlist),
+			  GFP_ATOMIC);
 	if (!urb->sg)
 		return -ENOMEM;
 
@@ -1353,7 +1355,7 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 	unsigned int			length;
 	struct urb		*urb = NULL;
 	struct skb_data		*entry;
-	const struct driver_info *info = dev->driver_info;
+	struct driver_info	*info = dev->driver_info;
 	unsigned long		flags;
 	int retval;
 
@@ -1512,9 +1514,9 @@ err:
 
 // tasklet (work deferred from completions, in_irq) or timer
 
-static void usbnet_bh (struct timer_list *t)
+static void usbnet_bh (unsigned long param)
 {
-	struct usbnet		*dev = from_timer(dev, t, delay);
+	struct usbnet		*dev = (struct usbnet *) param;
 	struct sk_buff		*skb;
 	struct skb_data		*entry;
 
@@ -1527,7 +1529,6 @@ static void usbnet_bh (struct timer_list *t)
 			continue;
 		case tx_done:
 			kfree(entry->urb->sg);
-			/* fall through */
 		case rx_cleanup:
 			usb_free_urb (entry->urb);
 			dev_kfree_skb (skb);
@@ -1647,7 +1648,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	struct usbnet			*dev;
 	struct net_device		*net;
 	struct usb_host_interface	*interface;
-	const struct driver_info	*info;
+	struct driver_info		*info;
 	struct usb_device		*xdev;
 	int				status;
 	const char			*name;
@@ -1663,7 +1664,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	}
 
 	name = udev->dev.driver->name;
-	info = (const struct driver_info *) prod->driver_info;
+	info = (struct driver_info *) prod->driver_info;
 	if (!info) {
 		dev_dbg (&udev->dev, "blacklisted by %s\n", name);
 		return -ENODEV;
@@ -1698,11 +1699,13 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	skb_queue_head_init (&dev->txq);
 	skb_queue_head_init (&dev->done);
 	skb_queue_head_init(&dev->rxq_pause);
-	dev->bh.func = (void (*)(unsigned long))usbnet_bh;
-	dev->bh.data = (unsigned long)&dev->delay;
+	dev->bh.func = usbnet_bh;
+	dev->bh.data = (unsigned long) dev;
 	INIT_WORK (&dev->kevent, usbnet_deferred_kevent);
 	init_usb_anchor(&dev->deferred);
-	timer_setup(&dev->delay, usbnet_bh, 0);
+	dev->delay.function = usbnet_bh;
+	dev->delay.data = (unsigned long) dev;
+	init_timer (&dev->delay);
 	mutex_init (&dev->phy_mutex);
 	mutex_init(&dev->interrupt_mutex);
 	dev->interrupt_count = 0;

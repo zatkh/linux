@@ -1,10 +1,24 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * WUSB devices
  * sysfs bindings
  *
  * Copyright (C) 2007 Intel Corporation
  * Inaky Perez-Gonzalez <inaky.perez-gonzalez@intel.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
  *
  * Get them out of the way...
  */
@@ -50,9 +64,10 @@ static ssize_t wusb_cdid_show(struct device *dev,
 	wusb_dev = wusb_dev_get_by_usb_dev(to_usb_device(dev));
 	if (wusb_dev == NULL)
 		return -ENODEV;
-	result = sprintf(buf, "%16ph\n", wusb_dev->cdid.data);
+	result = ckhdid_printf(buf, PAGE_SIZE, &wusb_dev->cdid);
+	strcat(buf, "\n");
 	wusb_dev_put(wusb_dev);
-	return result;
+	return result + 1;
 }
 static DEVICE_ATTR_RO(wusb_cdid);
 

@@ -121,35 +121,14 @@ static void esp_ssg_unref(struct xfrm_state *x, void *tmp)
 static void esp_output_done(struct crypto_async_request *base, int err)
 {
 	struct sk_buff *skb = base->data;
-	struct xfrm_offload *xo = xfrm_offload(skb);
 	void *tmp;
-	struct xfrm_state *x;
-
-	if (xo && (xo->flags & XFRM_DEV_RESUME)) {
-		struct sec_path *sp = skb_sec_path(skb);
-
-		x = sp->xvec[sp->len - 1];
-	} else {
-		x = skb_dst(skb)->xfrm;
-	}
+	struct dst_entry *dst = skb_dst(skb);
+	struct xfrm_state *x = dst->xfrm;
 
 	tmp = ESP_SKB_CB(skb)->tmp;
 	esp_ssg_unref(x, tmp);
 	kfree(tmp);
-
-	if (xo && (xo->flags & XFRM_DEV_RESUME)) {
-		if (err) {
-			XFRM_INC_STATS(xs_net(x), LINUX_MIB_XFRMOUTSTATEPROTOERROR);
-			kfree_skb(skb);
-			return;
-		}
-
-		skb_push(skb, skb->data - skb_mac_header(skb));
-		secpath_reset(skb);
-		xfrm_dev_resume(skb);
-	} else {
-		xfrm_output_resume(skb, err);
-	}
+	xfrm_output_resume(skb, err);
 }
 
 /* Move ESP header back into place. */
@@ -226,7 +205,7 @@ static void esp_output_fill_trailer(u8 *tail, int tfclen, int plen, __u8 proto)
 	tail[plen - 1] = proto;
 }
 
-static int esp_output_udp_encap(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *esp)
+static void esp_output_udp_encap(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *esp)
 {
 	int encap_type;
 	struct udphdr *uh;
@@ -234,7 +213,6 @@ static int esp_output_udp_encap(struct xfrm_state *x, struct sk_buff *skb, struc
 	__be16 sport, dport;
 	struct xfrm_encap_tmpl *encap = x->encap;
 	struct ip_esp_hdr *esph = esp->esph;
-	unsigned int len;
 
 	spin_lock_bh(&x->lock);
 	sport = encap->encap_sport;
@@ -242,14 +220,11 @@ static int esp_output_udp_encap(struct xfrm_state *x, struct sk_buff *skb, struc
 	encap_type = encap->encap_type;
 	spin_unlock_bh(&x->lock);
 
-	len = skb->len + esp->tailen - skb_transport_offset(skb);
-	if (len + sizeof(struct iphdr) >= IP_MAX_MTU)
-		return -EMSGSIZE;
-
 	uh = (struct udphdr *)esph;
 	uh->source = sport;
 	uh->dest = dport;
-	uh->len = htons(len);
+	uh->len = htons(skb->len + esp->tailen
+		  - skb_transport_offset(skb));
 	uh->check = 0;
 
 	switch (encap_type) {
@@ -266,8 +241,6 @@ static int esp_output_udp_encap(struct xfrm_state *x, struct sk_buff *skb, struc
 
 	*skb_mac_header(skb) = IPPROTO_UDP;
 	esp->esph = esph;
-
-	return 0;
 }
 
 int esp_output_head(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *esp)
@@ -281,12 +254,8 @@ int esp_output_head(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *
 	int tailen = esp->tailen;
 
 	/* this is non-NULL only with UDP Encapsulation */
-	if (x->encap) {
-		int err = esp_output_udp_encap(x, skb, esp);
-
-		if (err < 0)
-			return err;
-	}
+	if (x->encap)
+		esp_output_udp_encap(x, skb, esp);
 
 	if (!skb_cloned(skb)) {
 		if (tailen <= skb_tailroom(skb)) {
@@ -338,7 +307,7 @@ int esp_output_head(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *
 			skb->len += tailen;
 			skb->data_len += tailen;
 			skb->truesize += tailen;
-			if (sk && sk_fullsock(sk))
+			if (sk)
 				refcount_add(tailen, &sk->sk_wmem_alloc);
 
 			goto out;
@@ -463,7 +432,7 @@ int esp_output_tail(struct xfrm_state *x, struct sk_buff *skb, struct esp_info *
 	case -EINPROGRESS:
 		goto error;
 
-	case -ENOSPC:
+	case -EBUSY:
 		err = NET_XMIT_DROP;
 		break;
 
@@ -667,7 +636,7 @@ static void esp_input_restore_header(struct sk_buff *skb)
 static void esp_input_set_header(struct sk_buff *skb, __be32 *seqhi)
 {
 	struct xfrm_state *x = xfrm_input_state(skb);
-	struct ip_esp_hdr *esph;
+	struct ip_esp_hdr *esph = (struct ip_esp_hdr *)skb->data;
 
 	/* For ESN we move the header forward by 4 bytes to
 	 * accomodate the high bits.  We will move it back after
@@ -696,11 +665,12 @@ static void esp_input_done_esn(struct crypto_async_request *base, int err)
  */
 static int esp_input(struct xfrm_state *x, struct sk_buff *skb)
 {
+	struct ip_esp_hdr *esph;
 	struct crypto_aead *aead = x->data;
 	struct aead_request *req;
 	struct sk_buff *trailer;
 	int ivlen = crypto_aead_ivsize(aead);
-	int elen = skb->len - sizeof(struct ip_esp_hdr) - ivlen;
+	int elen = skb->len - sizeof(*esph) - ivlen;
 	int nfrags;
 	int assoclen;
 	int seqhilen;
@@ -710,13 +680,13 @@ static int esp_input(struct xfrm_state *x, struct sk_buff *skb)
 	struct scatterlist *sg;
 	int err = -EINVAL;
 
-	if (!pskb_may_pull(skb, sizeof(struct ip_esp_hdr) + ivlen))
+	if (!pskb_may_pull(skb, sizeof(*esph) + ivlen))
 		goto out;
 
 	if (elen <= 0)
 		goto out;
 
-	assoclen = sizeof(struct ip_esp_hdr);
+	assoclen = sizeof(*esph);
 	seqhilen = 0;
 
 	if (x->props.flags & XFRM_STATE_ESN) {
@@ -832,9 +802,9 @@ static int esp4_err(struct sk_buff *skb, u32 info)
 		return 0;
 
 	if (icmp_hdr(skb)->type == ICMP_DEST_UNREACH)
-		ipv4_update_pmtu(skb, net, info, 0, IPPROTO_ESP);
+		ipv4_update_pmtu(skb, net, info, 0, 0, IPPROTO_ESP, 0);
 	else
-		ipv4_redirect(skb, net, 0, IPPROTO_ESP);
+		ipv4_redirect(skb, net, 0, 0, IPPROTO_ESP, 0);
 	xfrm_state_put(x);
 
 	return 0;
@@ -855,13 +825,17 @@ static int esp_init_aead(struct xfrm_state *x)
 	char aead_name[CRYPTO_MAX_ALG_NAME];
 	struct crypto_aead *aead;
 	int err;
+	u32 mask = 0;
 
 	err = -ENAMETOOLONG;
 	if (snprintf(aead_name, CRYPTO_MAX_ALG_NAME, "%s(%s)",
 		     x->geniv, x->aead->alg_name) >= CRYPTO_MAX_ALG_NAME)
 		goto error;
 
-	aead = crypto_alloc_aead(aead_name, 0, 0);
+	if (x->xso.offload_handle)
+		mask |= CRYPTO_ALG_ASYNC;
+
+	aead = crypto_alloc_aead(aead_name, 0, mask);
 	err = PTR_ERR(aead);
 	if (IS_ERR(aead))
 		goto error;
@@ -891,6 +865,7 @@ static int esp_init_authenc(struct xfrm_state *x)
 	char authenc_name[CRYPTO_MAX_ALG_NAME];
 	unsigned int keylen;
 	int err;
+	u32 mask = 0;
 
 	err = -EINVAL;
 	if (!x->ealg)
@@ -916,7 +891,10 @@ static int esp_init_authenc(struct xfrm_state *x)
 			goto error;
 	}
 
-	aead = crypto_alloc_aead(authenc_name, 0, 0);
+	if (x->xso.offload_handle)
+		mask |= CRYPTO_ALG_ASYNC;
+
+	aead = crypto_alloc_aead(authenc_name, 0, mask);
 	err = PTR_ERR(aead);
 	if (IS_ERR(aead))
 		goto error;
@@ -1003,7 +981,6 @@ static int esp_init_state(struct xfrm_state *x)
 
 		switch (encap->encap_type) {
 		default:
-			err = -EINVAL;
 			goto error;
 		case UDP_ENCAP_ESPINUDP:
 			x->props.header_len += sizeof(struct udphdr);

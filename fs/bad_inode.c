@@ -26,14 +26,8 @@ static const struct file_operations bad_file_ops =
 	.open		= bad_file_open,
 };
 
-#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bad_inode_create (struct inode *dir, struct dentry *dentry,
 		umode_t mode, bool excl)
-#else
-static int bad_inode_create (struct inode *dir, struct dentry *dentry,
-		umode_t mode, bool excl,void* label)
-#endif
-
 {
 	return -EIO;
 }
@@ -61,12 +55,8 @@ static int bad_inode_symlink (struct inode *dir, struct dentry *dentry,
 	return -EIO;
 }
 
-
-#ifndef CONFIG_EXTENDED_LSM_DIFC
-static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,umode_t mode)
-#else
-static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,umode_t mode,void* label)
-#endif
+static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,
+			umode_t mode)
 {
 	return -EIO;
 }
@@ -76,15 +66,8 @@ static int bad_inode_rmdir (struct inode *dir, struct dentry *dentry)
 	return -EIO;
 }
 
-
-#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bad_inode_mknod (struct inode *dir, struct dentry *dentry,
 			umode_t mode, dev_t rdev)
-#else
-static int bad_inode_mknod (struct inode *dir, struct dentry *dentry,
-			umode_t mode, dev_t rdev,void* label)
-#endif
-
 {
 	return -EIO;
 }
@@ -143,7 +126,7 @@ static int bad_inode_fiemap(struct inode *inode,
 	return -EIO;
 }
 
-static int bad_inode_update_time(struct inode *inode, struct timespec64 *time,
+static int bad_inode_update_time(struct inode *inode, struct timespec *time,
 				 int flags)
 {
 	return -EIO;
@@ -151,7 +134,7 @@ static int bad_inode_update_time(struct inode *inode, struct timespec64 *time,
 
 static int bad_inode_atomic_open(struct inode *inode, struct dentry *dentry,
 				 struct file *file, unsigned int open_flag,
-				 umode_t create_mode)
+				 umode_t create_mode, int *opened)
 {
 	return -EIO;
 }

@@ -30,14 +30,16 @@ static inline int gfs2_is_jdata(const struct gfs2_inode *ip)
 	return ip->i_diskflags & GFS2_DIF_JDATA;
 }
 
-static inline bool gfs2_is_ordered(const struct gfs2_sbd *sdp)
+static inline int gfs2_is_writeback(const struct gfs2_inode *ip)
 {
-	return sdp->sd_args.ar_data == GFS2_DATA_ORDERED;
+	const struct gfs2_sbd *sdp = GFS2_SB(&ip->i_inode);
+	return (sdp->sd_args.ar_data == GFS2_DATA_WRITEBACK) && !gfs2_is_jdata(ip);
 }
 
-static inline bool gfs2_is_writeback(const struct gfs2_sbd *sdp)
+static inline int gfs2_is_ordered(const struct gfs2_inode *ip)
 {
-	return sdp->sd_args.ar_data == GFS2_DATA_WRITEBACK;
+	const struct gfs2_sbd *sdp = GFS2_SB(&ip->i_inode);
+	return (sdp->sd_args.ar_data == GFS2_DATA_ORDERED) && !gfs2_is_jdata(ip);
 }
 
 static inline int gfs2_is_dir(const struct gfs2_inode *ip)
@@ -59,8 +61,8 @@ static inline u64 gfs2_get_inode_blocks(const struct inode *inode)
 
 static inline void gfs2_add_inode_blocks(struct inode *inode, s64 change)
 {
-	change <<= inode->i_blkbits - GFS2_BASIC_BLOCK_SHIFT;
-	gfs2_assert(GFS2_SB(inode), (change >= 0 || inode->i_blocks >= -change));
+	gfs2_assert(GFS2_SB(inode), (change >= 0 || inode->i_blocks > -change));
+	change *= (GFS2_SB(inode)->sd_sb.sb_bsize/GFS2_BASIC_BLOCK);
 	inode->i_blocks += change;
 }
 
@@ -107,8 +109,6 @@ extern int gfs2_setattr_simple(struct inode *inode, struct iattr *attr);
 extern struct inode *gfs2_lookup_simple(struct inode *dip, const char *name);
 extern void gfs2_dinode_out(const struct gfs2_inode *ip, void *buf);
 extern int gfs2_open_common(struct inode *inode, struct file *file);
-extern loff_t gfs2_seek_data(struct file *file, loff_t offset);
-extern loff_t gfs2_seek_hole(struct file *file, loff_t offset);
 
 extern const struct inode_operations gfs2_file_iops;
 extern const struct inode_operations gfs2_dir_iops;

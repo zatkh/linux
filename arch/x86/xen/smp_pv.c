@@ -22,7 +22,6 @@
 #include <linux/tick.h>
 #include <linux/nmi.h>
 #include <linux/cpuhotplug.h>
-#include <linux/stackprotector.h>
 
 #include <asm/paravirt.h>
 #include <asm/desc.h>
@@ -89,7 +88,6 @@ static void cpu_bringup(void)
 asmlinkage __visible void cpu_bringup_and_idle(void)
 {
 	cpu_bringup();
-	boot_init_stack_canary();
 	cpu_startup_entry(CPUHP_AP_ONLINE_IDLE);
 }
 
@@ -432,7 +430,6 @@ static void xen_pv_play_dead(void) /* used only with HOTPLUG_CPU */
 	 * data back is to call:
 	 */
 	tick_nohz_idle_enter();
-	tick_nohz_idle_stop_tick_protected();
 
 	cpuhp_online_idle(CPUHP_AP_ONLINE_IDLE);
 }

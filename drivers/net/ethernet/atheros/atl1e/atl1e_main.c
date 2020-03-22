@@ -130,10 +130,9 @@ static inline void atl1e_irq_reset(struct atl1e_adapter *adapter)
  * atl1e_phy_config - Timer Call-back
  * @data: pointer to netdev cast into an unsigned long
  */
-static void atl1e_phy_config(struct timer_list *t)
+static void atl1e_phy_config(unsigned long data)
 {
-	struct atl1e_adapter *adapter = from_timer(adapter, t,
-						   phy_config_timer);
+	struct atl1e_adapter *adapter = (struct atl1e_adapter *) data;
 	struct atl1e_hw *hw = &adapter->hw;
 	unsigned long flags;
 
@@ -473,9 +472,7 @@ static void atl1e_mdio_write(struct net_device *netdev, int phy_id,
 {
 	struct atl1e_adapter *adapter = netdev_priv(netdev);
 
-	if (atl1e_write_phy_reg(&adapter->hw,
-				reg_num & MDIO_REG_ADDR_MASK, val))
-		netdev_err(netdev, "write phy register failed\n");
+	atl1e_write_phy_reg(&adapter->hw, reg_num & MDIO_REG_ADDR_MASK, val);
 }
 
 static int atl1e_mii_ioctl(struct net_device *netdev,
@@ -1259,7 +1256,7 @@ static bool atl1e_clean_tx_irq(struct atl1e_adapter *adapter)
 		}
 
 		if (tx_buffer->skb) {
-			dev_consume_skb_irq(tx_buffer->skb);
+			dev_kfree_skb_irq(tx_buffer->skb);
 			tx_buffer->skb = NULL;
 		}
 
@@ -2364,7 +2361,8 @@ static int atl1e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	netif_napi_add(netdev, &adapter->napi, atl1e_clean, 64);
 
-	timer_setup(&adapter->phy_config_timer, atl1e_phy_config, 0);
+	setup_timer(&adapter->phy_config_timer, atl1e_phy_config,
+		    (unsigned long)adapter);
 
 	/* get user settings */
 	atl1e_check_options(adapter);

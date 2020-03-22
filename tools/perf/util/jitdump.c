@@ -2,7 +2,6 @@
 #include <sys/sysmacros.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,7 +30,7 @@
 #include "sane_ctype.h"
 
 struct jit_buf_desc {
-	struct perf_data *output;
+	struct perf_data_file *output;
 	struct perf_session *session;
 	struct machine *machine;
 	union jr_entry   *entry;
@@ -39,7 +38,7 @@ struct jit_buf_desc {
 	uint64_t	 sample_type;
 	size_t           bufsize;
 	FILE             *in;
-	bool		 needs_bswap; /* handles cross-endianness */
+	bool		 needs_bswap; /* handles cross-endianess */
 	bool		 use_arch_timestamp;
 	void		 *debug_data;
 	void		 *unwinding_data;
@@ -62,8 +61,8 @@ struct debug_line_info {
 
 struct jit_tool {
 	struct perf_tool tool;
-	struct perf_data	output;
-	struct perf_data	input;
+	struct perf_data_file	output;
+	struct perf_data_file	input;
 	u64 bytes_written;
 };
 
@@ -358,7 +357,7 @@ jit_inject_event(struct jit_buf_desc *jd, union perf_event *event)
 {
 	ssize_t size;
 
-	size = perf_data__write(jd->output, event, event->header.size);
+	size = perf_data_file__write(jd->output, event, event->header.size);
 	if (size < 0)
 		return -1;
 
@@ -753,7 +752,7 @@ jit_detect(char *mmap_name, pid_t pid)
 
 int
 jit_process(struct perf_session *session,
-	    struct perf_data *output,
+	    struct perf_data_file *output,
 	    struct machine *machine,
 	    char *filename,
 	    pid_t pid,

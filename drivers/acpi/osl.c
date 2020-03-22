@@ -191,15 +191,12 @@ early_param("acpi_rsdp", setup_acpi_rsdp);
 
 acpi_physical_address __init acpi_os_get_root_pointer(void)
 {
-	acpi_physical_address pa;
+	acpi_physical_address pa = 0;
 
 #ifdef CONFIG_KEXEC
 	if (acpi_rsdp)
 		return acpi_rsdp;
 #endif
-	pa = acpi_arch_get_root_pointer();
-	if (pa)
-		return pa;
 
 	if (efi_enabled(EFI_CONFIG_TABLES)) {
 		if (efi.acpi20 != EFI_INVALID_TABLE_ADDR)
@@ -617,18 +614,15 @@ void acpi_os_stall(u32 us)
 }
 
 /*
- * Support ACPI 3.0 AML Timer operand. Returns a 64-bit free-running,
- * monotonically increasing timer with 100ns granularity. Do not use
- * ktime_get() to implement this function because this function may get
- * called after timekeeping has been suspended. Note: calling this function
- * after timekeeping has been suspended may lead to unexpected results
- * because when timekeeping is suspended the jiffies counter is not
- * incremented. See also timekeeping_suspend().
+ * Support ACPI 3.0 AML Timer operand
+ * Returns 64-bit free-running, monotonically increasing timer
+ * with 100ns granularity
  */
 u64 acpi_os_get_timer(void)
 {
-	return (get_jiffies_64() - INITIAL_JIFFIES) *
-		(ACPI_100NSEC_PER_SEC / HZ);
+	u64 time_ns = ktime_to_ns(ktime_get());
+	do_div(time_ns, 100);
+	return time_ns;
 }
 
 acpi_status acpi_os_read_port(acpi_io_address port, u32 * value, u32 width)
@@ -671,8 +665,26 @@ acpi_status acpi_os_write_port(acpi_io_address port, u32 value, u32 width)
 
 EXPORT_SYMBOL(acpi_os_write_port);
 
-int acpi_os_read_iomem(void __iomem *virt_addr, u64 *value, u32 width)
+acpi_status
+acpi_os_read_memory(acpi_physical_address phys_addr, u64 *value, u32 width)
 {
+	void __iomem *virt_addr;
+	unsigned int size = width / 8;
+	bool unmap = false;
+	u64 dummy;
+
+	rcu_read_lock();
+	virt_addr = acpi_map_vaddr_lookup(phys_addr, size);
+	if (!virt_addr) {
+		rcu_read_unlock();
+		virt_addr = acpi_os_ioremap(phys_addr, size);
+		if (!virt_addr)
+			return AE_BAD_ADDRESS;
+		unmap = true;
+	}
+
+	if (!value)
+		value = &dummy;
 
 	switch (width) {
 	case 8:
@@ -688,36 +700,8 @@ int acpi_os_read_iomem(void __iomem *virt_addr, u64 *value, u32 width)
 		*(u64 *) value = readq(virt_addr);
 		break;
 	default:
-		return -EINVAL;
+		BUG();
 	}
-
-	return 0;
-}
-
-acpi_status
-acpi_os_read_memory(acpi_physical_address phys_addr, u64 *value, u32 width)
-{
-	void __iomem *virt_addr;
-	unsigned int size = width / 8;
-	bool unmap = false;
-	u64 dummy;
-	int error;
-
-	rcu_read_lock();
-	virt_addr = acpi_map_vaddr_lookup(phys_addr, size);
-	if (!virt_addr) {
-		rcu_read_unlock();
-		virt_addr = acpi_os_ioremap(phys_addr, size);
-		if (!virt_addr)
-			return AE_BAD_ADDRESS;
-		unmap = true;
-	}
-
-	if (!value)
-		value = &dummy;
-
-	error = acpi_os_read_iomem(virt_addr, value, width);
-	BUG_ON(error);
 
 	if (unmap)
 		iounmap(virt_addr);
@@ -769,7 +753,6 @@ acpi_os_write_memory(acpi_physical_address phys_addr, u64 value, u32 width)
 	return AE_OK;
 }
 
-#ifdef CONFIG_PCI
 acpi_status
 acpi_os_read_pci_configuration(struct acpi_pci_id * pci_id, u32 reg,
 			       u64 *value, u32 width)
@@ -828,7 +811,6 @@ acpi_os_write_pci_configuration(struct acpi_pci_id * pci_id, u32 reg,
 
 	return (result ? AE_ERROR : AE_OK);
 }
-#endif
 
 static void acpi_os_execute_deferred(struct work_struct *work)
 {
@@ -1134,7 +1116,6 @@ void acpi_os_wait_events_complete(void)
 	flush_workqueue(kacpid_wq);
 	flush_workqueue(kacpi_notify_wq);
 }
-EXPORT_SYMBOL(acpi_os_wait_events_complete);
 
 struct acpi_hp_work {
 	struct work_struct work;

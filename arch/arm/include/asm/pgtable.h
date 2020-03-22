@@ -102,8 +102,8 @@ extern pgprot_t		pgprot_s2_device;
 #define PAGE_HYP_EXEC		_MOD_PROT(pgprot_kernel, L_PTE_HYP | L_PTE_RDONLY)
 #define PAGE_HYP_RO		_MOD_PROT(pgprot_kernel, L_PTE_HYP | L_PTE_RDONLY | L_PTE_XN)
 #define PAGE_HYP_DEVICE		_MOD_PROT(pgprot_hyp_device, L_PTE_HYP)
-#define PAGE_S2			_MOD_PROT(pgprot_s2, L_PTE_S2_RDONLY | L_PTE_XN)
-#define PAGE_S2_DEVICE		_MOD_PROT(pgprot_s2_device, L_PTE_S2_RDONLY | L_PTE_XN)
+#define PAGE_S2			_MOD_PROT(pgprot_s2, L_PTE_S2_RDONLY)
+#define PAGE_S2_DEVICE		_MOD_PROT(pgprot_s2_device, L_PTE_S2_RDONLY)
 
 #define __PAGE_NONE		__pgprot(_L_PTE_DEFAULT | L_PTE_RDONLY | L_PTE_XN | L_PTE_NONE)
 #define __PAGE_SHARED		__pgprot(_L_PTE_DEFAULT | L_PTE_USER | L_PTE_XN)
@@ -124,9 +124,6 @@ extern pgprot_t		pgprot_s2_device;
 
 #define pgprot_stronglyordered(prot) \
 	__pgprot_modify(prot, L_PTE_MT_MASK, L_PTE_MT_UNCACHED)
-
-#define pgprot_device(prot) \
-	__pgprot_modify(prot, L_PTE_MT_MASK, L_PTE_MT_DEV_SHARED | L_PTE_SHARED | L_PTE_DIRTY | L_PTE_XN)
 
 #ifdef CONFIG_ARM_DMA_MEM_BUFFERABLE
 #define pgprot_dmacoherent(prot) \
@@ -182,17 +179,8 @@ extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 /* to find an entry in a page-table-directory */
 #define pgd_index(addr)		((addr) >> PGDIR_SHIFT)
 
-
-#ifdef CONFIG_SW_UDOM
-#define pgd_offset(mm, address) \
-	( ((mm)->using_smv && (current)->smv_id != -1) ? \
-	  ((mm)->pgd_smv[(current)->smv_id] + pgd_index((address))) : ((mm)->pgd  + pgd_index((address))) )
-
-#else
-
 #define pgd_offset(mm, addr)	((mm)->pgd + pgd_index(addr))
 
-#endif
 /* to find an entry in a kernel page-table-directory */
 #define pgd_offset_k(addr)	pgd_offset(&init_mm, addr)
 
@@ -243,18 +231,6 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 
 #define pte_valid_user(pte)	\
 	(pte_valid(pte) && pte_isset((pte), L_PTE_USER) && pte_young(pte))
-
-static inline bool pte_access_permitted(pte_t pte, bool write)
-{
-	pteval_t mask = L_PTE_PRESENT | L_PTE_USER;
-	pteval_t needed = mask;
-
-	if (write)
-		mask |= L_PTE_RDONLY;
-
-	return (pte_val(pte) & mask) == needed;
-}
-#define pte_access_permitted pte_access_permitted
 
 #if __LINUX_ARM_ARCH__ < 6
 static inline void __sync_icache_dcache(pte_t pteval)

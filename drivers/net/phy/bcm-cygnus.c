@@ -1,6 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2015 Broadcom Corporation
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation version 2.
+ *
+ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
+ * kind, whether express or implied; without even the implied warranty
+ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
  */
 
 /* Broadcom Cygnus SoC internal transceivers support. */
@@ -128,6 +136,8 @@ static struct phy_driver bcm_cygnus_phy_driver[] = {
 	.name          = "Broadcom Cygnus PHY",
 	.features      = PHY_GBIT_FEATURES,
 	.config_init   = bcm_cygnus_config_init,
+	.config_aneg   = genphy_config_aneg,
+	.read_status   = genphy_read_status,
 	.ack_interrupt = bcm_phy_ack_intr,
 	.config_intr   = bcm_phy_config_intr,
 	.suspend       = genphy_suspend,

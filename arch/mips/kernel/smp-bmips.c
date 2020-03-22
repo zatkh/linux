@@ -25,7 +25,6 @@
 #include <linux/linkage.h>
 #include <linux/bug.h>
 #include <linux/kernel.h>
-#include <linux/kexec.h>
 
 #include <asm/time.h>
 #include <asm/pgtable.h>
@@ -424,9 +423,6 @@ const struct plat_smp_ops bmips43xx_smp_ops = {
 	.cpu_disable		= bmips_cpu_disable,
 	.cpu_die		= bmips_cpu_die,
 #endif
-#ifdef CONFIG_KEXEC
-	.kexec_nonboot_cpu	= kexec_nonboot_cpu_jump,
-#endif
 };
 
 const struct plat_smp_ops bmips5000_smp_ops = {
@@ -440,9 +436,6 @@ const struct plat_smp_ops bmips5000_smp_ops = {
 #ifdef CONFIG_HOTPLUG_CPU
 	.cpu_disable		= bmips_cpu_disable,
 	.cpu_die		= bmips_cpu_die,
-#endif
-#ifdef CONFIG_KEXEC
-	.kexec_nonboot_cpu	= kexec_nonboot_cpu_jump,
 #endif
 };
 
@@ -579,7 +572,7 @@ asmlinkage void __weak plat_wired_tlb_setup(void)
 	 */
 }
 
-void bmips_cpu_setup(void)
+void __init bmips_cpu_setup(void)
 {
 	void __iomem __maybe_unused *cbr = BMIPS_GET_CBR();
 	u32 __maybe_unused cfg;

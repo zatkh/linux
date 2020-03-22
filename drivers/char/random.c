@@ -265,7 +265,7 @@
 #include <linux/syscalls.h>
 #include <linux/completion.h>
 #include <linux/uuid.h>
-#include <crypto/chacha.h>
+#include <crypto/chacha20.h>
 
 #include <asm/processor.h>
 #include <linux/uaccess.h>
@@ -431,10 +431,11 @@ static int crng_init = 0;
 #define crng_ready() (likely(crng_init > 1))
 static int crng_init_cnt = 0;
 static unsigned long crng_global_init_time = 0;
-#define CRNG_INIT_CNT_THRESH (2*CHACHA_KEY_SIZE)
-static void _extract_crng(struct crng_state *crng, __u8 out[CHACHA_BLOCK_SIZE]);
+#define CRNG_INIT_CNT_THRESH (2*CHACHA20_KEY_SIZE)
+static void _extract_crng(struct crng_state *crng,
+			  __u8 out[CHACHA20_BLOCK_SIZE]);
 static void _crng_backtrack_protect(struct crng_state *crng,
-				    __u8 tmp[CHACHA_BLOCK_SIZE], int used);
+				    __u8 tmp[CHACHA20_BLOCK_SIZE], int used);
 static void process_random_ready_list(void);
 static void _get_random_bytes(void *buf, int nbytes);
 
@@ -651,7 +652,7 @@ static void credit_entropy_bits(struct entropy_store *r, int nbits)
 		return;
 
 retry:
-	entropy_count = orig = READ_ONCE(r->entropy_count);
+	entropy_count = orig = ACCESS_ONCE(r->entropy_count);
 	if (nfrac < 0) {
 		/* Debit */
 		entropy_count += nfrac;
@@ -720,8 +721,7 @@ retry:
 		}
 
 		/* should we wake readers? */
-		if (entropy_bits >= random_read_wakeup_bits &&
-		    wq_has_sleeper(&random_read_wait)) {
+		if (entropy_bits >= random_read_wakeup_bits) {
 			wake_up_interruptible(&random_read_wait);
 			kill_fasync(&fasync, SIGIO, POLL_IN);
 		}
@@ -778,17 +778,9 @@ static struct crng_state **crng_node_pool __read_mostly;
 
 static void invalidate_batched_entropy(void);
 
-static bool trust_cpu __ro_after_init = IS_ENABLED(CONFIG_RANDOM_TRUST_CPU);
-static int __init parse_trust_cpu(char *arg)
-{
-	return kstrtobool(arg, &trust_cpu);
-}
-early_param("random.trust_cpu", parse_trust_cpu);
-
 static void crng_initialize(struct crng_state *crng)
 {
 	int		i;
-	int		arch_init = 1;
 	unsigned long	rv;
 
 	memcpy(&crng->state[0], "expand 32-byte k", 16);
@@ -799,15 +791,9 @@ static void crng_initialize(struct crng_state *crng)
 		_get_random_bytes(&crng->state[4], sizeof(__u32) * 12);
 	for (i = 4; i < 16; i++) {
 		if (!arch_get_random_seed_long(&rv) &&
-		    !arch_get_random_long(&rv)) {
+		    !arch_get_random_long(&rv))
 			rv = random_get_entropy();
-			arch_init = 0;
-		}
 		crng->state[i] ^= rv;
-	}
-	if (trust_cpu && arch_init) {
-		crng_init = 2;
-		pr_notice("random: crng done (trusting CPU's manufacturer)\n");
 	}
 	crng->init_time = jiffies - CRNG_RESEED_INTERVAL - 1;
 }
@@ -862,7 +848,7 @@ static int crng_fast_load(const char *cp, size_t len)
 	}
 	p = (unsigned char *) &primary_crng.state[4];
 	while (len > 0 && crng_init_cnt < CRNG_INIT_CNT_THRESH) {
-		p[crng_init_cnt % CHACHA_KEY_SIZE] ^= *cp;
+		p[crng_init_cnt % CHACHA20_KEY_SIZE] ^= *cp;
 		cp++; crng_init_cnt++; len--;
 	}
 	spin_unlock_irqrestore(&primary_crng.lock, flags);
@@ -894,7 +880,7 @@ static int crng_slow_load(const char *cp, size_t len)
 	unsigned long		flags;
 	static unsigned char	lfsr = 1;
 	unsigned char		tmp;
-	unsigned		i, max = CHACHA_KEY_SIZE;
+	unsigned		i, max = CHACHA20_KEY_SIZE;
 	const char *		src_buf = cp;
 	char *			dest_buf = (char *) &primary_crng.state[4];
 
@@ -912,8 +898,8 @@ static int crng_slow_load(const char *cp, size_t len)
 		lfsr >>= 1;
 		if (tmp & 1)
 			lfsr ^= 0xE1;
-		tmp = dest_buf[i % CHACHA_KEY_SIZE];
-		dest_buf[i % CHACHA_KEY_SIZE] ^= src_buf[i % len] ^ lfsr;
+		tmp = dest_buf[i % CHACHA20_KEY_SIZE];
+		dest_buf[i % CHACHA20_KEY_SIZE] ^= src_buf[i % len] ^ lfsr;
 		lfsr += (tmp << 3) | (tmp >> 5);
 	}
 	spin_unlock_irqrestore(&primary_crng.lock, flags);
@@ -925,7 +911,7 @@ static void crng_reseed(struct crng_state *crng, struct entropy_store *r)
 	unsigned long	flags;
 	int		i, num;
 	union {
-		__u8	block[CHACHA_BLOCK_SIZE];
+		__u8	block[CHACHA20_BLOCK_SIZE];
 		__u32	key[8];
 	} buf;
 
@@ -936,7 +922,7 @@ static void crng_reseed(struct crng_state *crng, struct entropy_store *r)
 	} else {
 		_extract_crng(&primary_crng, buf.block);
 		_crng_backtrack_protect(&primary_crng, buf.block,
-					CHACHA_KEY_SIZE);
+					CHACHA20_KEY_SIZE);
 	}
 	spin_lock_irqsave(&crng->lock, flags);
 	for (i = 0; i < 8; i++) {
@@ -972,7 +958,7 @@ static void crng_reseed(struct crng_state *crng, struct entropy_store *r)
 }
 
 static void _extract_crng(struct crng_state *crng,
-			  __u8 out[CHACHA_BLOCK_SIZE])
+			  __u8 out[CHACHA20_BLOCK_SIZE])
 {
 	unsigned long v, flags;
 
@@ -989,7 +975,7 @@ static void _extract_crng(struct crng_state *crng,
 	spin_unlock_irqrestore(&crng->lock, flags);
 }
 
-static void extract_crng(__u8 out[CHACHA_BLOCK_SIZE])
+static void extract_crng(__u8 out[CHACHA20_BLOCK_SIZE])
 {
 	struct crng_state *crng = NULL;
 
@@ -1007,14 +993,14 @@ static void extract_crng(__u8 out[CHACHA_BLOCK_SIZE])
  * enough) to mutate the CRNG key to provide backtracking protection.
  */
 static void _crng_backtrack_protect(struct crng_state *crng,
-				    __u8 tmp[CHACHA_BLOCK_SIZE], int used)
+				    __u8 tmp[CHACHA20_BLOCK_SIZE], int used)
 {
 	unsigned long	flags;
 	__u32		*s, *d;
 	int		i;
 
 	used = round_up(used, sizeof(__u32));
-	if (used + CHACHA_KEY_SIZE > CHACHA_BLOCK_SIZE) {
+	if (used + CHACHA20_KEY_SIZE > CHACHA20_BLOCK_SIZE) {
 		extract_crng(tmp);
 		used = 0;
 	}
@@ -1026,7 +1012,7 @@ static void _crng_backtrack_protect(struct crng_state *crng,
 	spin_unlock_irqrestore(&crng->lock, flags);
 }
 
-static void crng_backtrack_protect(__u8 tmp[CHACHA_BLOCK_SIZE], int used)
+static void crng_backtrack_protect(__u8 tmp[CHACHA20_BLOCK_SIZE], int used)
 {
 	struct crng_state *crng = NULL;
 
@@ -1041,8 +1027,8 @@ static void crng_backtrack_protect(__u8 tmp[CHACHA_BLOCK_SIZE], int used)
 
 static ssize_t extract_crng_user(void __user *buf, size_t nbytes)
 {
-	ssize_t ret = 0, i = CHACHA_BLOCK_SIZE;
-	__u8 tmp[CHACHA_BLOCK_SIZE] __aligned(4);
+	ssize_t ret = 0, i = CHACHA20_BLOCK_SIZE;
+	__u8 tmp[CHACHA20_BLOCK_SIZE];
 	int large_request = (nbytes > 256);
 
 	while (nbytes) {
@@ -1056,7 +1042,7 @@ static ssize_t extract_crng_user(void __user *buf, size_t nbytes)
 		}
 
 		extract_crng(tmp);
-		i = min_t(int, nbytes, CHACHA_BLOCK_SIZE);
+		i = min_t(int, nbytes, CHACHA20_BLOCK_SIZE);
 		if (copy_to_user(buf, tmp, i)) {
 			ret = -EFAULT;
 			break;
@@ -1085,6 +1071,7 @@ static ssize_t extract_crng_user(void __user *buf, size_t nbytes)
 struct timer_rand_state {
 	cycles_t last_time;
 	long last_delta, last_delta2;
+	unsigned dont_count_entropy:1;
 };
 
 #define INIT_TIMER_RAND_STATE { INITIAL_JIFFIES, };
@@ -1135,6 +1122,8 @@ static void add_timer_randomness(struct timer_rand_state *state, unsigned num)
 	} sample;
 	long delta, delta2, delta3;
 
+	preempt_disable();
+
 	sample.jiffies = jiffies;
 	sample.cycles = random_get_entropy();
 	sample.num = num;
@@ -1146,32 +1135,36 @@ static void add_timer_randomness(struct timer_rand_state *state, unsigned num)
 	 * We take into account the first, second and third-order deltas
 	 * in order to make our estimate.
 	 */
-	delta = sample.jiffies - state->last_time;
-	state->last_time = sample.jiffies;
 
-	delta2 = delta - state->last_delta;
-	state->last_delta = delta;
+	if (!state->dont_count_entropy) {
+		delta = sample.jiffies - state->last_time;
+		state->last_time = sample.jiffies;
 
-	delta3 = delta2 - state->last_delta2;
-	state->last_delta2 = delta2;
+		delta2 = delta - state->last_delta;
+		state->last_delta = delta;
 
-	if (delta < 0)
-		delta = -delta;
-	if (delta2 < 0)
-		delta2 = -delta2;
-	if (delta3 < 0)
-		delta3 = -delta3;
-	if (delta > delta2)
-		delta = delta2;
-	if (delta > delta3)
-		delta = delta3;
+		delta3 = delta2 - state->last_delta2;
+		state->last_delta2 = delta2;
 
-	/*
-	 * delta is now minimum absolute delta.
-	 * Round down by 1 bit on general principles,
-	 * and limit entropy entimate to 12 bits.
-	 */
-	credit_entropy_bits(r, min_t(int, fls(delta>>1), 11));
+		if (delta < 0)
+			delta = -delta;
+		if (delta2 < 0)
+			delta2 = -delta2;
+		if (delta3 < 0)
+			delta3 = -delta3;
+		if (delta > delta2)
+			delta = delta2;
+		if (delta > delta3)
+			delta = delta3;
+
+		/*
+		 * delta is now minimum absolute delta.
+		 * Round down by 1 bit on general principles,
+		 * and limit entropy entimate to 12 bits.
+		 */
+		credit_entropy_bits(r, min_t(int, fls(delta>>1), 11));
+	}
+	preempt_enable();
 }
 
 void add_input_randomness(unsigned int type, unsigned int code,
@@ -1377,7 +1370,7 @@ static size_t account(struct entropy_store *r, size_t nbytes, int min,
 
 	/* Can we pull enough? */
 retry:
-	entropy_count = orig = READ_ONCE(r->entropy_count);
+	entropy_count = orig = ACCESS_ONCE(r->entropy_count);
 	ibytes = nbytes;
 	/* never pull more than available */
 	have_bytes = entropy_count >> (ENTROPY_SHIFT + 3);
@@ -1621,14 +1614,14 @@ static void _warn_unseeded_randomness(const char *func_name, void *caller,
  */
 static void _get_random_bytes(void *buf, int nbytes)
 {
-	__u8 tmp[CHACHA_BLOCK_SIZE] __aligned(4);
+	__u8 tmp[CHACHA20_BLOCK_SIZE];
 
 	trace_get_random_bytes(nbytes, _RET_IP_);
 
-	while (nbytes >= CHACHA_BLOCK_SIZE) {
+	while (nbytes >= CHACHA20_BLOCK_SIZE) {
 		extract_crng(buf);
-		buf += CHACHA_BLOCK_SIZE;
-		nbytes -= CHACHA_BLOCK_SIZE;
+		buf += CHACHA20_BLOCK_SIZE;
+		nbytes -= CHACHA20_BLOCK_SIZE;
 	}
 
 	if (nbytes > 0) {
@@ -1636,7 +1629,7 @@ static void _get_random_bytes(void *buf, int nbytes)
 		memcpy(buf, tmp, nbytes);
 		crng_backtrack_protect(tmp, nbytes);
 	} else
-		crng_backtrack_protect(tmp, CHACHA_BLOCK_SIZE);
+		crng_backtrack_protect(tmp, CHACHA20_BLOCK_SIZE);
 	memzero_explicit(tmp, sizeof(tmp));
 }
 
@@ -1666,21 +1659,6 @@ int wait_for_random_bytes(void)
 	return wait_event_interruptible(crng_init_wait, crng_ready());
 }
 EXPORT_SYMBOL(wait_for_random_bytes);
-
-/*
- * Returns whether or not the urandom pool has been seeded and thus guaranteed
- * to supply cryptographically secure random numbers. This applies to: the
- * /dev/urandom device, the get_random_bytes function, and the get_random_{u32,
- * ,u64,int,long} family of functions.
- *
- * Returns: true if the urandom pool has been seeded.
- *          false if the urandom pool has not been seeded.
- */
-bool rng_is_initialized(void)
-{
-	return crng_ready();
-}
-EXPORT_SYMBOL(rng_is_initialized);
 
 /*
  * Add a callback function that will be invoked when the nonblocking
@@ -1749,30 +1727,29 @@ EXPORT_SYMBOL(del_random_ready_callback);
  * key known by the NSA).  So it's useful if we need the speed, but
  * only if we're willing to trust the hardware manufacturer not to
  * have put in a back door.
- *
- * Return number of bytes filled in.
  */
-int __must_check get_random_bytes_arch(void *buf, int nbytes)
+void get_random_bytes_arch(void *buf, int nbytes)
 {
-	int left = nbytes;
 	char *p = buf;
 
-	trace_get_random_bytes_arch(left, _RET_IP_);
-	while (left) {
+	trace_get_random_bytes_arch(nbytes, _RET_IP_);
+	while (nbytes) {
 		unsigned long v;
-		int chunk = min_t(int, left, sizeof(unsigned long));
+		int chunk = min(nbytes, (int)sizeof(unsigned long));
 
 		if (!arch_get_random_long(&v))
 			break;
-
+		
 		memcpy(p, &v, chunk);
 		p += chunk;
-		left -= chunk;
+		nbytes -= chunk;
 	}
 
-	return nbytes - left;
+	if (nbytes)
+		get_random_bytes(p, nbytes);
 }
 EXPORT_SYMBOL(get_random_bytes_arch);
+
 
 /*
  * init_std_data - initialize pool with system data
@@ -1901,18 +1878,18 @@ urandom_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 	return ret;
 }
 
-static __poll_t
+static unsigned int
 random_poll(struct file *file, poll_table * wait)
 {
-	__poll_t mask;
+	unsigned int mask;
 
 	poll_wait(file, &random_read_wait, wait);
 	poll_wait(file, &random_write_wait, wait);
 	mask = 0;
 	if (ENTROPY_BITS(&input_pool) >= random_read_wakeup_bits)
-		mask |= EPOLLIN | EPOLLRDNORM;
+		mask |= POLLIN | POLLRDNORM;
 	if (ENTROPY_BITS(&input_pool) < random_write_wakeup_bits)
-		mask |= EPOLLOUT | EPOLLWRNORM;
+		mask |= POLLOUT | POLLWRNORM;
 	return mask;
 }
 
@@ -1920,21 +1897,13 @@ static int
 write_pool(struct entropy_store *r, const char __user *buffer, size_t count)
 {
 	size_t bytes;
-	__u32 t, buf[16];
+	__u32 buf[16];
 	const char __user *p = buffer;
 
 	while (count > 0) {
-		int b, i = 0;
-
 		bytes = min(count, sizeof(buf));
 		if (copy_from_user(&buf, p, bytes))
 			return -EFAULT;
-
-		for (b = bytes ; b > 0 ; b -= sizeof(__u32), i++) {
-			if (!arch_get_random_int(&t))
-				break;
-			buf[i] ^= t;
-		}
 
 		count -= bytes;
 		p += bytes;
@@ -2207,8 +2176,8 @@ struct ctl_table random_table[] = {
 
 struct batched_entropy {
 	union {
-		u64 entropy_u64[CHACHA_BLOCK_SIZE / sizeof(u64)];
-		u32 entropy_u32[CHACHA_BLOCK_SIZE / sizeof(u32)];
+		u64 entropy_u64[CHACHA20_BLOCK_SIZE / sizeof(u64)];
+		u32 entropy_u32[CHACHA20_BLOCK_SIZE / sizeof(u32)];
 	};
 	unsigned int position;
 };

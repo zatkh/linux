@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Cryptographic API.
  *
@@ -7,6 +6,12 @@
  * Copyright IBM Corp. 2003, 2011
  * Author(s): Thomas Spatzier
  *	      Jan Glauber (jan.glauber@de.ibm.com)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
  */
 
 #include <linux/init.h>
@@ -38,7 +43,7 @@ static int des_setkey(struct crypto_tfm *tfm, const u8 *key,
 
 	/* check for weak keys */
 	if (!des_ekey(tmp, key) &&
-	    (tfm->crt_flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS)) {
+	    (tfm->crt_flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
 		tfm->crt_flags |= CRYPTO_TFM_RES_WEAK_KEY;
 		return -EINVAL;
 	}
@@ -228,7 +233,7 @@ static int des3_setkey(struct crypto_tfm *tfm, const u8 *key,
 	if (!(crypto_memneq(key, &key[DES_KEY_SIZE], DES_KEY_SIZE) &&
 	    crypto_memneq(&key[DES_KEY_SIZE], &key[DES_KEY_SIZE * 2],
 			  DES_KEY_SIZE)) &&
-	    (tfm->crt_flags & CRYPTO_TFM_REQ_FORBID_WEAK_KEYS)) {
+	    (tfm->crt_flags & CRYPTO_TFM_REQ_WEAK_KEY)) {
 		tfm->crt_flags |= CRYPTO_TFM_RES_WEAK_KEY;
 		return -EINVAL;
 	}

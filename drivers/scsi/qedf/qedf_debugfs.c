@@ -1,6 +1,6 @@
 /*
  *  QLogic FCoE Offload Driver
- *  Copyright (c) 2016-2018 QLogic Corporation
+ *  Copyright (c) 2016-2017 QLogic Corporation
  *
  *  This software is available under the terms of the GNU General Public License
  *  (GPL) Version 2, available from the file COPYING in the main directory of
@@ -23,23 +23,34 @@ static struct dentry *qedf_dbg_root;
  **/
 void
 qedf_dbg_host_init(struct qedf_dbg_ctx *qedf,
-		    const struct qedf_debugfs_ops *dops,
-		    const struct file_operations *fops)
+		    struct qedf_debugfs_ops *dops,
+		    struct file_operations *fops)
 {
 	char host_dirname[32];
+	struct dentry *file_dentry = NULL;
 
 	QEDF_INFO(qedf, QEDF_LOG_DEBUGFS, "Creating debugfs host node\n");
 	/* create pf dir */
 	sprintf(host_dirname, "host%u", qedf->host_no);
 	qedf->bdf_dentry = debugfs_create_dir(host_dirname, qedf_dbg_root);
+	if (!qedf->bdf_dentry)
+		return;
 
 	/* create debugfs files */
 	while (dops) {
 		if (!(dops->name))
 			break;
 
-		debugfs_create_file(dops->name, 0600, qedf->bdf_dentry, qedf,
-				    fops);
+		file_dentry = debugfs_create_file(dops->name, 0600,
+						  qedf->bdf_dentry, qedf,
+						  fops);
+		if (!file_dentry) {
+			QEDF_INFO(qedf, QEDF_LOG_DEBUGFS,
+				   "Debugfs entry %s creation failed\n",
+				   dops->name);
+			debugfs_remove_recursive(qedf->bdf_dentry);
+			return;
+		}
 		dops++;
 		fops++;
 	}
@@ -69,6 +80,9 @@ qedf_dbg_init(char *drv_name)
 
 	/* create qed dir in root of debugfs. NULL means debugfs root */
 	qedf_dbg_root = debugfs_create_dir(drv_name, NULL);
+	if (!qedf_dbg_root)
+		QEDF_INFO(NULL, QEDF_LOG_DEBUGFS, "Init of debugfs "
+			   "failed\n");
 }
 
 /**
@@ -85,7 +99,7 @@ qedf_dbg_exit(void)
 	qedf_dbg_root = NULL;
 }
 
-const struct qedf_debugfs_ops qedf_debugfs_ops[] = {
+struct qedf_debugfs_ops qedf_debugfs_ops[] = {
 	{ "fp_int", NULL },
 	{ "io_trace", NULL },
 	{ "debug", NULL },
@@ -424,6 +438,7 @@ qedf_dbg_offload_stats_open(struct inode *inode, struct file *file)
 
 	return single_open(file, qedf_offload_stats_show, qedf);
 }
+
 
 const struct file_operations qedf_dbg_fops[] = {
 	qedf_dbg_fileops(qedf, fp_int),

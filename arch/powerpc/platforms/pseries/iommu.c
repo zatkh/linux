@@ -55,27 +55,38 @@
 
 static struct iommu_table_group *iommu_pseries_alloc_group(int node)
 {
-	struct iommu_table_group *table_group;
-	struct iommu_table *tbl;
+	struct iommu_table_group *table_group = NULL;
+	struct iommu_table *tbl = NULL;
+	struct iommu_table_group_link *tgl = NULL;
 
 	table_group = kzalloc_node(sizeof(struct iommu_table_group), GFP_KERNEL,
 			   node);
 	if (!table_group)
-		return NULL;
+		goto fail_exit;
 
 	tbl = kzalloc_node(sizeof(struct iommu_table), GFP_KERNEL, node);
 	if (!tbl)
-		goto free_group;
+		goto fail_exit;
+
+	tgl = kzalloc_node(sizeof(struct iommu_table_group_link), GFP_KERNEL,
+			node);
+	if (!tgl)
+		goto fail_exit;
 
 	INIT_LIST_HEAD_RCU(&tbl->it_group_list);
 	kref_init(&tbl->it_kref);
+	tgl->table_group = table_group;
+	list_add_rcu(&tgl->next, &tbl->it_group_list);
 
 	table_group->tables[0] = tbl;
 
 	return table_group;
 
-free_group:
+fail_exit:
+	kfree(tgl);
 	kfree(table_group);
+	kfree(tbl);
+
 	return NULL;
 }
 
@@ -83,12 +94,23 @@ static void iommu_pseries_free_group(struct iommu_table_group *table_group,
 		const char *node_name)
 {
 	struct iommu_table *tbl;
+#ifdef CONFIG_IOMMU_API
+	struct iommu_table_group_link *tgl;
+#endif
 
 	if (!table_group)
 		return;
 
 	tbl = table_group->tables[0];
 #ifdef CONFIG_IOMMU_API
+	tgl = list_first_entry_or_null(&tbl->it_group_list,
+			struct iommu_table_group_link, next);
+
+	WARN_ON_ONCE(!tgl);
+	if (tgl) {
+		list_del_rcu(&tgl->next);
+		kfree(tgl);
+	}
 	if (table_group->group) {
 		iommu_group_put(table_group->group);
 		BUG_ON(table_group->group);
@@ -624,6 +646,7 @@ static void pci_dma_bus_setup_pSeries(struct pci_bus *bus)
 	iommu_table_setparms(pci->phb, dn, tbl);
 	tbl->it_ops = &iommu_table_pseries_ops;
 	iommu_init_table(tbl, pci->phb->node);
+	iommu_register_group(pci->table_group, pci_domain_nr(bus), 0);
 
 	/* Divide the rest (1.75GB) among the children */
 	pci->phb->dma_window_size = 0x80000000ul;
@@ -734,7 +757,10 @@ static void pci_dma_dev_setup_pSeries(struct pci_dev *dev)
 		iommu_table_setparms(phb, dn, tbl);
 		tbl->it_ops = &iommu_table_pseries_ops;
 		iommu_init_table(tbl, phb->node);
+		iommu_register_group(PCI_DN(dn)->table_group,
+				pci_domain_nr(phb->bus), 0);
 		set_iommu_table_base(&dev->dev, tbl);
+		iommu_add_device(&dev->dev);
 		return;
 	}
 
@@ -745,10 +771,11 @@ static void pci_dma_dev_setup_pSeries(struct pci_dev *dev)
 	while (dn && PCI_DN(dn) && PCI_DN(dn)->table_group == NULL)
 		dn = dn->parent;
 
-	if (dn && PCI_DN(dn))
+	if (dn && PCI_DN(dn)) {
 		set_iommu_table_base(&dev->dev,
 				PCI_DN(dn)->table_group->tables[0]);
-	else
+		iommu_add_device(&dev->dev);
+	} else
 		printk(KERN_WARNING "iommu: Device %s has no iommu table\n",
 		       pci_name(dev));
 }
@@ -790,15 +817,15 @@ static void remove_ddw(struct device_node *np, bool remove_prop)
 	ret = tce_clearrange_multi_pSeriesLP(0,
 		1ULL << (be32_to_cpu(dwp->window_shift) - PAGE_SHIFT), dwp);
 	if (ret)
-		pr_warn("%pOF failed to clear tces in window.\n",
-			np);
+		pr_warning("%pOF failed to clear tces in window.\n",
+			 np);
 	else
 		pr_debug("%pOF successfully cleared tces in window.\n",
 			 np);
 
 	ret = rtas_call(ddw_avail[2], 1, 1, NULL, liobn);
 	if (ret)
-		pr_warn("%pOF: failed to remove direct window: rtas returned "
+		pr_warning("%pOF: failed to remove direct window: rtas returned "
 			"%d to ibm,remove-pe-dma-window(%x) %llx\n",
 			np, ret, ddw_avail[2], liobn);
 	else
@@ -810,7 +837,7 @@ delprop:
 	if (remove_prop)
 		ret = of_remove_property(np, win64);
 	if (ret)
-		pr_warn("%pOF: failed to remove direct window property: %d\n",
+		pr_warning("%pOF: failed to remove direct window property: %d\n",
 			np, ret);
 }
 
@@ -938,37 +965,6 @@ struct failed_ddw_pdn {
 
 static LIST_HEAD(failed_ddw_pdn_list);
 
-static phys_addr_t ddw_memory_hotplug_max(void)
-{
-	phys_addr_t max_addr = memory_hotplug_max();
-	struct device_node *memory;
-
-	for_each_node_by_type(memory, "memory") {
-		unsigned long start, size;
-		int ranges, n_mem_addr_cells, n_mem_size_cells, len;
-		const __be32 *memcell_buf;
-
-		memcell_buf = of_get_property(memory, "reg", &len);
-		if (!memcell_buf || len <= 0)
-			continue;
-
-		n_mem_addr_cells = of_n_addr_cells(memory);
-		n_mem_size_cells = of_n_size_cells(memory);
-
-		/* ranges in cell */
-		ranges = (len >> 2) / (n_mem_addr_cells + n_mem_size_cells);
-
-		start = of_read_number(memcell_buf, n_mem_addr_cells);
-		memcell_buf += n_mem_addr_cells;
-		size = of_read_number(memcell_buf, n_mem_size_cells);
-		memcell_buf += n_mem_size_cells;
-
-		max_addr = max_t(phys_addr_t, max_addr, start + size);
-	}
-
-	return max_addr;
-}
-
 /*
  * If the PE supports dynamic dma windows, and there is space for a table
  * that can map all pages in a linear offset, then setup such a table,
@@ -978,7 +974,7 @@ static phys_addr_t ddw_memory_hotplug_max(void)
  * pdn: the parent pe node with the ibm,dma_window property
  * Future: also check if we can remap the base window for our base page size
  *
- * returns the dma offset for use by the direct mapped DMA code.
+ * returns the dma offset for use by dma_set_mask
  */
 static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 {
@@ -1058,7 +1054,7 @@ static u64 enable_ddw(struct pci_dev *dev, struct device_node *pdn)
 	}
 	/* verify the window * number of ptes will map the partition */
 	/* check largest block * page size > max memory hotplug addr */
-	max_addr = ddw_memory_hotplug_max();
+	max_addr = memory_hotplug_max();
 	if (query.largest_available_block < (max_addr >> page_shift)) {
 		dev_dbg(&dev->dev, "can't map partition max 0x%llx with %u "
 			  "%llu-sized pages\n", max_addr,  query.largest_available_block,
@@ -1195,40 +1191,90 @@ static void pci_dma_dev_setup_pSeriesLP(struct pci_dev *dev)
 	}
 
 	set_iommu_table_base(&dev->dev, pci->table_group->tables[0]);
-	iommu_add_device(pci->table_group, &dev->dev);
+	iommu_add_device(&dev->dev);
 }
 
-static bool iommu_bypass_supported_pSeriesLP(struct pci_dev *pdev, u64 dma_mask)
+static int dma_set_mask_pSeriesLP(struct device *dev, u64 dma_mask)
 {
-	struct device_node *dn = pci_device_to_OF_node(pdev), *pdn;
+	bool ddw_enabled = false;
+	struct device_node *pdn, *dn;
+	struct pci_dev *pdev;
 	const __be32 *dma_window = NULL;
+	u64 dma_offset;
+
+	if (!dev->dma_mask)
+		return -EIO;
+
+	if (!dev_is_pci(dev))
+		goto check_mask;
+
+	pdev = to_pci_dev(dev);
 
 	/* only attempt to use a new window if 64-bit DMA is requested */
-	if (dma_mask < DMA_BIT_MASK(64))
-		return false;
+	if (!disable_ddw && dma_mask == DMA_BIT_MASK(64)) {
+		dn = pci_device_to_OF_node(pdev);
+		dev_dbg(dev, "node is %pOF\n", dn);
 
-	dev_dbg(&pdev->dev, "node is %pOF\n", dn);
-
-	/*
-	 * the device tree might contain the dma-window properties
-	 * per-device and not necessarily for the bus. So we need to
-	 * search upwards in the tree until we either hit a dma-window
-	 * property, OR find a parent with a table already allocated.
-	 */
-	for (pdn = dn; pdn && PCI_DN(pdn) && !PCI_DN(pdn)->table_group;
-			pdn = pdn->parent) {
-		dma_window = of_get_property(pdn, "ibm,dma-window", NULL);
-		if (dma_window)
-			break;
+		/*
+		 * the device tree might contain the dma-window properties
+		 * per-device and not necessarily for the bus. So we need to
+		 * search upwards in the tree until we either hit a dma-window
+		 * property, OR find a parent with a table already allocated.
+		 */
+		for (pdn = dn; pdn && PCI_DN(pdn) && !PCI_DN(pdn)->table_group;
+				pdn = pdn->parent) {
+			dma_window = of_get_property(pdn, "ibm,dma-window", NULL);
+			if (dma_window)
+				break;
+		}
+		if (pdn && PCI_DN(pdn)) {
+			dma_offset = enable_ddw(pdev, pdn);
+			if (dma_offset != 0) {
+				dev_info(dev, "Using 64-bit direct DMA at offset %llx\n", dma_offset);
+				set_dma_offset(dev, dma_offset);
+				set_dma_ops(dev, &dma_direct_ops);
+				ddw_enabled = true;
+			}
+		}
 	}
 
-	if (pdn && PCI_DN(pdn)) {
-		pdev->dev.archdata.dma_offset = enable_ddw(pdev, pdn);
-		if (pdev->dev.archdata.dma_offset)
-			return true;
+	/* fall back on iommu ops */
+	if (!ddw_enabled && get_dma_ops(dev) != &dma_iommu_ops) {
+		dev_info(dev, "Restoring 32-bit DMA via iommu\n");
+		set_dma_ops(dev, &dma_iommu_ops);
 	}
 
-	return false;
+check_mask:
+	if (!dma_supported(dev, dma_mask))
+		return -EIO;
+
+	*dev->dma_mask = dma_mask;
+	return 0;
+}
+
+static u64 dma_get_required_mask_pSeriesLP(struct device *dev)
+{
+	if (!dev->dma_mask)
+		return 0;
+
+	if (!disable_ddw && dev_is_pci(dev)) {
+		struct pci_dev *pdev = to_pci_dev(dev);
+		struct device_node *dn;
+
+		dn = pci_device_to_OF_node(pdev);
+
+		/* search upwards for ibm,dma-window */
+		for (; dn && PCI_DN(dn) && !PCI_DN(dn)->table_group;
+				dn = dn->parent)
+			if (of_get_property(dn, "ibm,dma-window", NULL))
+				break;
+		/* if there is a ibm,ddw-applicable property require 64 bits */
+		if (dn && PCI_DN(dn) &&
+				of_get_property(dn, "ibm,ddw-applicable", NULL))
+			return DMA_BIT_MASK(64);
+	}
+
+	return dma_iommu_ops.get_required_mask(dev);
 }
 
 static int iommu_mem_notifier(struct notifier_block *nb, unsigned long action,
@@ -1323,9 +1369,8 @@ void iommu_init_early_pSeries(void)
 	if (firmware_has_feature(FW_FEATURE_LPAR)) {
 		pseries_pci_controller_ops.dma_bus_setup = pci_dma_bus_setup_pSeriesLP;
 		pseries_pci_controller_ops.dma_dev_setup = pci_dma_dev_setup_pSeriesLP;
-		if (!disable_ddw)
-			pseries_pci_controller_ops.iommu_bypass_supported =
-				iommu_bypass_supported_pSeriesLP;
+		ppc_md.dma_set_mask = dma_set_mask_pSeriesLP;
+		ppc_md.dma_get_required_mask = dma_get_required_mask_pSeriesLP;
 	} else {
 		pseries_pci_controller_ops.dma_bus_setup = pci_dma_bus_setup_pSeries;
 		pseries_pci_controller_ops.dma_dev_setup = pci_dma_dev_setup_pSeries;
@@ -1351,27 +1396,4 @@ static int __init disable_multitce(char *str)
 
 __setup("multitce=", disable_multitce);
 
-static int tce_iommu_bus_notifier(struct notifier_block *nb,
-		unsigned long action, void *data)
-{
-	struct device *dev = data;
-
-	switch (action) {
-	case BUS_NOTIFY_DEL_DEVICE:
-		iommu_del_device(dev);
-		return 0;
-	default:
-		return 0;
-	}
-}
-
-static struct notifier_block tce_iommu_bus_nb = {
-	.notifier_call = tce_iommu_bus_notifier,
-};
-
-static int __init tce_iommu_bus_notifier_init(void)
-{
-	bus_register_notifier(&pci_bus_type, &tce_iommu_bus_nb);
-	return 0;
-}
 machine_subsys_initcall_sync(pseries, tce_iommu_bus_notifier_init);

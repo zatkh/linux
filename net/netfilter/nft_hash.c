@@ -35,9 +35,7 @@ static void nft_jhash_eval(const struct nft_expr *expr,
 	const void *data = &regs->data[priv->sreg];
 	u32 h;
 
-	h = reciprocal_scale(jhash(data, priv->len, priv->seed),
-			     priv->modulus);
-
+	h = reciprocal_scale(jhash(data, priv->len, priv->seed), priv->modulus);
 	regs->data[priv->dreg] = h + priv->offset;
 }
 
@@ -99,7 +97,7 @@ static int nft_jhash_init(const struct nft_ctx *ctx,
 	priv->len = len;
 
 	priv->modulus = ntohl(nla_get_be32(tb[NFTA_HASH_MODULUS]));
-	if (priv->modulus < 1)
+	if (priv->modulus <= 1)
 		return -ERANGE;
 
 	if (priv->offset + priv->modulus - 1 < priv->offset)

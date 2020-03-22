@@ -1,11 +1,13 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
+ * linux/kernel/irq/chip.c
+ *
  * Copyright (C) 1992, 1998-2006 Linus Torvalds, Ingo Molnar
  * Copyright (C) 2005-2006, Thomas Gleixner, Russell King
  *
- * This file contains the core interrupt handling code, for irq-chip based
- * architectures. Detailed information is available in
- * Documentation/core-api/genericirq.rst
+ * This file contains the core interrupt handling code, for irq-chip
+ * based architectures.
+ *
+ * Detailed information is available in Documentation/core-api/genericirq.rst
  */
 
 #include <linux/irq.h>
@@ -205,24 +207,20 @@ __irq_startup_managed(struct irq_desc *desc, struct cpumask *aff, bool force)
 		 * Catch code which fiddles with enable_irq() on a managed
 		 * and potentially shutdown IRQ. Chained interrupt
 		 * installment or irq auto probing should not happen on
-		 * managed irqs either.
+		 * managed irqs either. Emit a warning, break the affinity
+		 * and start it up as a normal interrupt.
 		 */
 		if (WARN_ON_ONCE(force))
-			return IRQ_STARTUP_ABORT;
+			return IRQ_STARTUP_NORMAL;
 		/*
 		 * The interrupt was requested, but there is no online CPU
 		 * in it's affinity mask. Put it into managed shutdown
 		 * state and let the cpu hotplug mechanism start it up once
 		 * a CPU in the mask becomes available.
 		 */
+		irqd_set_managed_shutdown(d);
 		return IRQ_STARTUP_ABORT;
 	}
-	/*
-	 * Managed interrupts have reserved resources, so this should not
-	 * happen.
-	 */
-	if (WARN_ON(irq_domain_activate_irq(d, false)))
-		return IRQ_STARTUP_ABORT;
 	return IRQ_STARTUP_MANAGED;
 }
 #else
@@ -238,9 +236,7 @@ static int __irq_startup(struct irq_desc *desc)
 	struct irq_data *d = irq_desc_get_irq_data(desc);
 	int ret = 0;
 
-	/* Warn if this interrupt is not activated but try nevertheless */
-	WARN_ON_ONCE(!irqd_is_activated(d));
-
+	irq_domain_activate_irq(d);
 	if (d->chip->irq_startup) {
 		ret = d->chip->irq_startup(d);
 		irq_state_clr_disabled(desc);
@@ -273,7 +269,6 @@ int irq_startup(struct irq_desc *desc, bool resend, bool force)
 			ret = __irq_startup(desc);
 			break;
 		case IRQ_STARTUP_ABORT:
-			irqd_set_managed_shutdown(d);
 			return 0;
 		}
 	}
@@ -281,22 +276,6 @@ int irq_startup(struct irq_desc *desc, bool resend, bool force)
 		check_irq_resend(desc);
 
 	return ret;
-}
-
-int irq_activate(struct irq_desc *desc)
-{
-	struct irq_data *d = irq_desc_get_irq_data(desc);
-
-	if (!irqd_affinity_is_managed(d))
-		return irq_domain_activate_irq(d, false);
-	return 0;
-}
-
-int irq_activate_and_startup(struct irq_desc *desc, bool resend)
-{
-	if (WARN_ON(irq_activate(desc)))
-		return 0;
-	return irq_startup(desc, resend, IRQ_START_FORCE);
 }
 
 static void __irq_disable(struct irq_desc *desc, bool mask);
@@ -730,37 +709,6 @@ out:
 EXPORT_SYMBOL_GPL(handle_fasteoi_irq);
 
 /**
- *	handle_fasteoi_nmi - irq handler for NMI interrupt lines
- *	@desc:	the interrupt description structure for this irq
- *
- *	A simple NMI-safe handler, considering the restrictions
- *	from request_nmi.
- *
- *	Only a single callback will be issued to the chip: an ->eoi()
- *	call when the interrupt has been serviced. This enables support
- *	for modern forms of interrupt handlers, which handle the flow
- *	details in hardware, transparently.
- */
-void handle_fasteoi_nmi(struct irq_desc *desc)
-{
-	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irqaction *action = desc->action;
-	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
-
-	trace_irq_handler_entry(irq, action);
-	/*
-	 * NMIs cannot be shared, there is only one action.
-	 */
-	res = action->handler(irq, action->dev_id);
-	trace_irq_handler_exit(irq, action, res);
-
-	if (chip->irq_eoi)
-		chip->irq_eoi(&desc->irq_data);
-}
-EXPORT_SYMBOL_GPL(handle_fasteoi_nmi);
-
-/**
  *	handle_edge_irq - edge type IRQ handler
  *	@desc:	the interrupt description structure for this irq
  *
@@ -886,11 +834,7 @@ void handle_percpu_irq(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
 
-	/*
-	 * PER CPU interrupts are not serialized. Do not touch
-	 * desc->tot_count.
-	 */
-	__kstat_incr_irqs_this_cpu(desc);
+	kstat_incr_irqs_this_cpu(desc);
 
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
@@ -919,11 +863,7 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 	unsigned int irq = irq_desc_get_irq(desc);
 	irqreturn_t res;
 
-	/*
-	 * PER CPU interrupts are not serialized. Do not touch
-	 * desc->tot_count.
-	 */
-	__kstat_incr_irqs_this_cpu(desc);
+	kstat_incr_irqs_this_cpu(desc);
 
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
@@ -942,29 +882,6 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 		pr_err_once("Spurious%s percpu IRQ%u on CPU%u\n",
 			    enabled ? " and unmasked" : "", irq, cpu);
 	}
-
-	if (chip->irq_eoi)
-		chip->irq_eoi(&desc->irq_data);
-}
-
-/**
- * handle_percpu_devid_fasteoi_nmi - Per CPU local NMI handler with per cpu
- *				     dev ids
- * @desc:	the interrupt description structure for this irq
- *
- * Similar to handle_fasteoi_nmi, but handling the dev_id cookie
- * as a percpu pointer.
- */
-void handle_percpu_devid_fasteoi_nmi(struct irq_desc *desc)
-{
-	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irqaction *action = desc->action;
-	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
-
-	trace_irq_handler_entry(irq, action);
-	res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-	trace_irq_handler_exit(irq, action, res);
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
@@ -991,7 +908,7 @@ __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 				break;
 			/*
 			 * Bail out if the outer chip is not set up
-			 * and the interrupt supposed to be started
+			 * and the interrrupt supposed to be started
 			 * right away.
 			 */
 			if (WARN_ON(is_chained))
@@ -1036,7 +953,7 @@ __irq_do_set_handler(struct irq_desc *desc, irq_flow_handler_t handle,
 		irq_settings_set_norequest(desc);
 		irq_settings_set_nothread(desc);
 		desc->action = &chained_action;
-		irq_activate_and_startup(desc, IRQ_RESEND);
+		irq_startup(desc, IRQ_RESEND, IRQ_START_FORCE);
 	}
 }
 
@@ -1340,17 +1257,6 @@ void irq_chip_mask_parent(struct irq_data *data)
 EXPORT_SYMBOL_GPL(irq_chip_mask_parent);
 
 /**
- * irq_chip_mask_ack_parent - Mask and acknowledge the parent interrupt
- * @data:	Pointer to interrupt specific data
- */
-void irq_chip_mask_ack_parent(struct irq_data *data)
-{
-	data = data->parent_data;
-	data->chip->irq_mask_ack(data);
-}
-EXPORT_SYMBOL_GPL(irq_chip_mask_ack_parent);
-
-/**
  * irq_chip_unmask_parent - Unmask the parent interrupt
  * @data:	Pointer to interrupt specific data
  */
@@ -1449,16 +1355,11 @@ int irq_chip_set_vcpu_affinity_parent(struct irq_data *data, void *vcpu_info)
 int irq_chip_set_wake_parent(struct irq_data *data, unsigned int on)
 {
 	data = data->parent_data;
-
-	if (data->chip->flags & IRQCHIP_SKIP_SET_WAKE)
-		return 0;
-
 	if (data->chip->irq_set_wake)
 		return data->chip->irq_set_wake(data, on);
 
 	return -ENOSYS;
 }
-EXPORT_SYMBOL_GPL(irq_chip_set_wake_parent);
 #endif
 
 /**

@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * trace_output.c
  *
@@ -339,24 +338,43 @@ static inline const char *kretprobed(const char *name)
 #endif /* CONFIG_KRETPROBES */
 
 static void
-seq_print_sym(struct trace_seq *s, unsigned long address, bool offset)
+seq_print_sym_short(struct trace_seq *s, const char *fmt, unsigned long address)
 {
-#ifdef CONFIG_KALLSYMS
 	char str[KSYM_SYMBOL_LEN];
+#ifdef CONFIG_KALLSYMS
 	const char *name;
 
-	if (offset)
-		sprint_symbol(str, address);
-	else
-		kallsyms_lookup(address, NULL, NULL, NULL, str);
+	kallsyms_lookup(address, NULL, NULL, NULL, str);
+
 	name = kretprobed(str);
 
 	if (name && strlen(name)) {
-		trace_seq_puts(s, name);
+		trace_seq_printf(s, fmt, name);
 		return;
 	}
 #endif
-	trace_seq_printf(s, "0x%08lx", address);
+	snprintf(str, KSYM_SYMBOL_LEN, "0x%08lx", address);
+	trace_seq_printf(s, fmt, str);
+}
+
+static void
+seq_print_sym_offset(struct trace_seq *s, const char *fmt,
+		     unsigned long address)
+{
+	char str[KSYM_SYMBOL_LEN];
+#ifdef CONFIG_KALLSYMS
+	const char *name;
+
+	sprint_symbol(str, address);
+	name = kretprobed(str);
+
+	if (name && strlen(name)) {
+		trace_seq_printf(s, fmt, name);
+		return;
+	}
+#endif
+	snprintf(str, KSYM_SYMBOL_LEN, "0x%08lx", address);
+	trace_seq_printf(s, fmt, str);
 }
 
 #ifndef CONFIG_64BIT
@@ -405,7 +423,10 @@ seq_print_ip_sym(struct trace_seq *s, unsigned long ip, unsigned long sym_flags)
 		goto out;
 	}
 
-	seq_print_sym(s, ip, sym_flags & TRACE_ITER_SYM_OFFSET);
+	if (sym_flags & TRACE_ITER_SYM_OFFSET)
+		seq_print_sym_offset(s, "%s", ip);
+	else
+		seq_print_sym_short(s, "%s", ip);
 
 	if (sym_flags & TRACE_ITER_SYM_ADDR)
 		trace_seq_printf(s, " <" IP_FMT ">", ip);
@@ -901,8 +922,8 @@ static enum print_line_t trace_ctxwake_print(struct trace_iterator *iter,
 
 	trace_assign_type(field, iter->ent);
 
-	T = task_index_to_char(field->next_state);
-	S = task_index_to_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
+	S = __task_state_to_char(field->prev_state);
 	trace_find_cmdline(field->next_pid, comm);
 	trace_seq_printf(&iter->seq,
 			 " %5d:%3d:%c %s [%03d] %5d:%3d:%c %s\n",
@@ -937,8 +958,8 @@ static int trace_ctxwake_raw(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = task_index_to_char(field->prev_state);
-	T = task_index_to_char(field->next_state);
+		S = __task_state_to_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
 	trace_seq_printf(&iter->seq, "%d %d %c %d %d %d %c\n",
 			 field->prev_pid,
 			 field->prev_prio,
@@ -973,8 +994,8 @@ static int trace_ctxwake_hex(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = task_index_to_char(field->prev_state);
-	T = task_index_to_char(field->next_state);
+		S = __task_state_to_char(field->prev_state);
+	T = __task_state_to_char(field->next_state);
 
 	SEQ_PUT_HEX_FIELD(s, field->prev_pid);
 	SEQ_PUT_HEX_FIELD(s, field->prev_prio);

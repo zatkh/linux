@@ -32,8 +32,10 @@
 #include <asm/cpufeature.h>
 #include <asm/ptrace.h>
 #include <asm/memory.h>
+#include <asm/compiler.h>
 #include <asm/extable.h>
 
+#define get_ds()	(KERNEL_DS)
 #define get_fs()	(current_thread_info()->addr_limit)
 
 static inline void set_fs(mm_segment_t fs)
@@ -44,7 +46,8 @@ static inline void set_fs(mm_segment_t fs)
 	 * Prevent a mispredicted conditional call to set_fs from forwarding
 	 * the wrong address limit to access_ok under speculation.
 	 */
-	spec_bar();
+	dsb(nsh);
+	isb();
 
 	/* On user-mode return, check fs is correct */
 	set_thread_flag(TIF_FSCHECK);
@@ -69,15 +72,15 @@ static inline void set_fs(mm_segment_t fs)
  * This is equivalent to the following test:
  * (u65)addr + (u65)size <= (u65)current->addr_limit + 1
  */
-static inline unsigned long __range_ok(const void __user *addr, unsigned long size)
+static inline unsigned long __range_ok(unsigned long addr, unsigned long size)
 {
-	unsigned long ret, limit = current_thread_info()->addr_limit;
+	unsigned long limit = current_thread_info()->addr_limit;
 
 	__chk_user_ptr(addr);
 	asm volatile(
 	// A + B <= C + 1 for all A,B,C, in four easy steps:
 	// 1: X = A + B; X' = X % 2^64
-	"	adds	%0, %3, %2\n"
+	"	adds	%0, %0, %2\n"
 	// 2: Set C = 0 if X > 2^64, to guarantee X' > C in step 4
 	"	csel	%1, xzr, %1, hi\n"
 	// 3: Set X' = ~0 if X >= 2^64. For X == 2^64, this decrements X'
@@ -89,12 +92,19 @@ static inline unsigned long __range_ok(const void __user *addr, unsigned long si
 	//    testing X' - C == 0, subject to the previous adjustments.
 	"	sbcs	xzr, %0, %1\n"
 	"	cset	%0, ls\n"
-	: "=&r" (ret), "+r" (limit) : "Ir" (size), "0" (addr) : "cc");
+	: "+r" (addr), "+r" (limit) : "Ir" (size) : "cc");
 
-	return ret;
+	return addr;
 }
 
-#define access_ok(addr, size)	__range_ok(addr, size)
+/*
+ * When dealing with data aborts, watchpoints, or instruction traps we may end
+ * up with a tagged userland pointer. Clear the tag to get a sane pointer to
+ * pass on to access_ok(), for instance.
+ */
+#define untagged_addr(addr)		sign_extend64(addr, 55)
+
+#define access_ok(type, addr, size)	__range_ok((unsigned long)(addr), size)
 #define user_addr_max			get_fs
 
 #define _ASM_EXTABLE(from, to)						\
@@ -114,8 +124,8 @@ static inline void __uaccess_ttbr0_disable(void)
 	local_irq_save(flags);
 	ttbr = read_sysreg(ttbr1_el1);
 	ttbr &= ~TTBR_ASID_MASK;
-	/* reserved_ttbr0 placed before swapper_pg_dir */
-	write_sysreg(ttbr - RESERVED_TTBR0_SIZE, ttbr0_el1);
+	/* reserved_ttbr0 placed at the end of swapper_pg_dir */
+	write_sysreg(ttbr + SWAPPER_DIR_SIZE, ttbr0_el1);
 	isb();
 	/* Set reserved ASID */
 	write_sysreg(ttbr, ttbr1_el1);
@@ -174,18 +184,6 @@ static inline bool uaccess_ttbr0_enable(void)
 	return false;
 }
 #endif
-
-static inline void __uaccess_disable_hw_pan(void)
-{
-	asm(ALTERNATIVE("nop", SET_PSTATE_PAN(0), ARM64_HAS_PAN,
-			CONFIG_ARM64_PAN));
-}
-
-static inline void __uaccess_enable_hw_pan(void)
-{
-	asm(ALTERNATIVE("nop", SET_PSTATE_PAN(1), ARM64_HAS_PAN,
-			CONFIG_ARM64_PAN));
-}
 
 #define __uaccess_disable(alt)						\
 do {									\
@@ -267,7 +265,7 @@ static inline void __user *__uaccess_mask_ptr(const void __user *ptr)
 	: "+r" (err), "=&r" (x)						\
 	: "r" (addr), "i" (-EFAULT))
 
-#define __raw_get_user(x, ptr, err)					\
+#define __get_user_err(x, ptr, err)					\
 do {									\
 	unsigned long __gu_val;						\
 	__chk_user_ptr(ptr);						\
@@ -296,22 +294,28 @@ do {									\
 	(x) = (__force __typeof__(*(ptr)))__gu_val;			\
 } while (0)
 
-#define __get_user_error(x, ptr, err)					\
-do {									\
+#define __get_user_check(x, ptr, err)					\
+({									\
 	__typeof__(*(ptr)) __user *__p = (ptr);				\
 	might_fault();							\
-	if (access_ok(__p, sizeof(*__p))) {				\
+	if (access_ok(VERIFY_READ, __p, sizeof(*__p))) {		\
 		__p = uaccess_mask_ptr(__p);				\
-		__raw_get_user((x), __p, (err));			\
+		__get_user_err((x), __p, (err));			\
 	} else {							\
 		(x) = 0; (err) = -EFAULT;				\
 	}								\
-} while (0)
+})
+
+#define __get_user_error(x, ptr, err)					\
+({									\
+	__get_user_check((x), (ptr), (err));				\
+	(void)0;							\
+})
 
 #define __get_user(x, ptr)						\
 ({									\
 	int __gu_err = 0;						\
-	__get_user_error((x), (ptr), __gu_err);				\
+	__get_user_check((x), (ptr), __gu_err);				\
 	__gu_err;							\
 })
 
@@ -331,7 +335,7 @@ do {									\
 	: "+r" (err)							\
 	: "r" (x), "r" (addr), "i" (-EFAULT))
 
-#define __raw_put_user(x, ptr, err)					\
+#define __put_user_err(x, ptr, err)					\
 do {									\
 	__typeof__(*(ptr)) __pu_val = (x);				\
 	__chk_user_ptr(ptr);						\
@@ -359,22 +363,28 @@ do {									\
 	uaccess_disable_not_uao();					\
 } while (0)
 
-#define __put_user_error(x, ptr, err)					\
-do {									\
+#define __put_user_check(x, ptr, err)					\
+({									\
 	__typeof__(*(ptr)) __user *__p = (ptr);				\
 	might_fault();							\
-	if (access_ok(__p, sizeof(*__p))) {				\
+	if (access_ok(VERIFY_WRITE, __p, sizeof(*__p))) {		\
 		__p = uaccess_mask_ptr(__p);				\
-		__raw_put_user((x), __p, (err));			\
+		__put_user_err((x), __p, (err));			\
 	} else	{							\
 		(err) = -EFAULT;					\
 	}								\
-} while (0)
+})
+
+#define __put_user_error(x, ptr, err)					\
+({									\
+	__put_user_check((x), (ptr), (err));				\
+	(void)0;							\
+})
 
 #define __put_user(x, ptr)						\
 ({									\
 	int __pu_err = 0;						\
-	__put_user_error((x), (ptr), __pu_err);				\
+	__put_user_check((x), (ptr), __pu_err);				\
 	__pu_err;							\
 })
 
@@ -405,7 +415,7 @@ extern unsigned long __must_check __arch_copy_in_user(void __user *to, const voi
 extern unsigned long __must_check __arch_clear_user(void __user *to, unsigned long n);
 static inline unsigned long __must_check __clear_user(void __user *to, unsigned long n)
 {
-	if (access_ok(to, n))
+	if (access_ok(VERIFY_WRITE, to, n))
 		n = __arch_clear_user(__uaccess_mask_ptr(to), n);
 	return n;
 }

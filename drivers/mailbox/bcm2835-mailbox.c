@@ -1,8 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  *  Copyright (C) 2010,2015 Broadcom
  *  Copyright (C) 2013-2014 Lubomir Rintel
  *  Copyright (C) 2013 Craig McGeachie
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This device provides a mechanism for writing to the mailboxes,
+ * that are shared between the ARM and the VideoCore processor
  *
  * Parts of the driver are based on:
  *  - arch/arm/mach-bcm2708/vcio.c file written by Gray Girling that was
@@ -45,12 +51,15 @@
 #define MAIL1_WRT	(ARM_0_MAIL1 + 0x00)
 #define MAIL1_STA	(ARM_0_MAIL1 + 0x18)
 
+/* On ARCH_BCM270x these come through <linux/interrupt.h> (arm_control.h ) */
+#ifndef ARM_MS_FULL
 /* Status register: FIFO state. */
 #define ARM_MS_FULL		BIT(31)
 #define ARM_MS_EMPTY		BIT(30)
 
 /* Configuration register: Enable interrupts. */
 #define ARM_MC_IHAVEDATAIRQEN	BIT(0)
+#endif
 
 struct bcm2835_mbox {
 	void __iomem *regs;
@@ -128,7 +137,7 @@ static struct mbox_chan *bcm2835_mbox_index_xlate(struct mbox_controller *mbox,
 		    const struct of_phandle_args *sp)
 {
 	if (sp->args_count != 0)
-		return ERR_PTR(-EINVAL);
+		return NULL;
 
 	return &mbox->chans[0];
 }
@@ -145,7 +154,7 @@ static int bcm2835_mbox_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	spin_lock_init(&mbox->lock);
 
-	ret = devm_request_irq(dev, irq_of_parse_and_map(dev->of_node, 0),
+	ret = devm_request_irq(dev, platform_get_irq(pdev, 0),
 			       bcm2835_mbox_irq, 0, dev_name(dev), mbox);
 	if (ret) {
 		dev_err(dev, "Failed to register a mailbox IRQ handler: %d\n",
@@ -172,7 +181,7 @@ static int bcm2835_mbox_probe(struct platform_device *pdev)
 	if (!mbox->controller.chans)
 		return -ENOMEM;
 
-	ret = devm_mbox_controller_register(dev, &mbox->controller);
+	ret = mbox_controller_register(&mbox->controller);
 	if (ret)
 		return ret;
 
@@ -180,6 +189,13 @@ static int bcm2835_mbox_probe(struct platform_device *pdev)
 	dev_info(dev, "mailbox enabled\n");
 
 	return ret;
+}
+
+static int bcm2835_mbox_remove(struct platform_device *pdev)
+{
+	struct bcm2835_mbox *mbox = platform_get_drvdata(pdev);
+	mbox_controller_unregister(&mbox->controller);
+	return 0;
 }
 
 static const struct of_device_id bcm2835_mbox_of_match[] = {
@@ -194,8 +210,20 @@ static struct platform_driver bcm2835_mbox_driver = {
 		.of_match_table = bcm2835_mbox_of_match,
 	},
 	.probe		= bcm2835_mbox_probe,
+	.remove		= bcm2835_mbox_remove,
 };
-module_platform_driver(bcm2835_mbox_driver);
+
+static int __init bcm2835_mbox_init(void)
+{
+	return platform_driver_register(&bcm2835_mbox_driver);
+}
+arch_initcall(bcm2835_mbox_init);
+
+static void __init bcm2835_mbox_exit(void)
+{
+	platform_driver_unregister(&bcm2835_mbox_driver);
+}
+module_exit(bcm2835_mbox_exit);
 
 MODULE_AUTHOR("Lubomir Rintel <lkundrak@v3.sk>");
 MODULE_DESCRIPTION("BCM2835 mailbox IPC driver");

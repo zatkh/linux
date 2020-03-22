@@ -9,15 +9,11 @@
 #include <linux/module.h>
 #include <drm/drmP.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_probe_helper.h>
 #include "udl_drv.h"
 
 static int udl_usb_suspend(struct usb_interface *interface,
 			   pm_message_t message)
 {
-	struct drm_device *dev = usb_get_intfdata(interface);
-
-	drm_kms_helper_poll_disable(dev);
 	return 0;
 }
 
@@ -25,7 +21,6 @@ static int udl_usb_resume(struct usb_interface *interface)
 {
 	struct drm_device *dev = usb_get_intfdata(interface);
 
-	drm_kms_helper_poll_enable(dev);
 	udl_modeset_restore(dev);
 	return 0;
 }
@@ -52,10 +47,9 @@ static struct drm_driver driver = {
 	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME,
 	.load = udl_driver_load,
 	.unload = udl_driver_unload,
-	.release = udl_driver_release,
 
 	/* gem hooks */
-	.gem_free_object_unlocked = udl_gem_free_object,
+	.gem_free_object = udl_gem_free_object,
 	.gem_vm_ops = &udl_gem_vm_ops,
 
 	.dumb_create = udl_dumb_create,
@@ -96,7 +90,7 @@ static int udl_usb_probe(struct usb_interface *interface,
 	return 0;
 
 err_free:
-	drm_dev_put(dev);
+	drm_dev_unref(dev);
 	return r;
 }
 

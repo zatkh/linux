@@ -54,6 +54,18 @@ struct block_device *I_BDEV(struct inode *inode)
 }
 EXPORT_SYMBOL(I_BDEV);
 
+void __vfs_msg(struct super_block *sb, const char *prefix, const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+
+	va_start(args, fmt);
+	vaf.fmt = fmt;
+	vaf.va = &args;
+	printk_ratelimited("%sVFS (%s): %pV\n", prefix, sb->s_id, &vaf);
+	va_end(args);
+}
+
 static void bdev_write_inode(struct block_device *bdev)
 {
 	struct inode *inode = bdev->bd_inode;
@@ -103,20 +115,6 @@ void invalidate_bdev(struct block_device *bdev)
 	cleancache_invalidate_inode(mapping);
 }
 EXPORT_SYMBOL(invalidate_bdev);
-
-static void set_init_blocksize(struct block_device *bdev)
-{
-	unsigned bsize = bdev_logical_block_size(bdev);
-	loff_t size = i_size_read(bdev->bd_inode);
-
-	while (bsize < PAGE_SIZE) {
-		if (size & bsize)
-			break;
-		bsize <<= 1;
-	}
-	bdev->bd_block_size = bsize;
-	bdev->bd_inode->i_blkbits = blksize_bits(bsize);
-}
 
 int set_blocksize(struct block_device *bdev, int size)
 {
@@ -195,7 +193,7 @@ static void blkdev_bio_end_io_simple(struct bio *bio)
 	struct task_struct *waiter = bio->bi_private;
 
 	WRITE_ONCE(bio->bi_private, NULL);
-	blk_wake_io_task(waiter);
+	wake_up_process(waiter);
 }
 
 static ssize_t
@@ -211,7 +209,6 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 	ssize_t ret;
 	blk_qc_t qc;
 	int i;
-	struct bvec_iter_all iter_all;
 
 	if ((pos | iov_iter_alignment(iter)) &
 	    (bdev_logical_block_size(bdev) - 1))
@@ -220,8 +217,7 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 	if (nr_pages <= DIO_INLINE_BIO_VECS)
 		vecs = inline_vecs;
 	else {
-		vecs = kmalloc_array(nr_pages, sizeof(struct bio_vec),
-				     GFP_KERNEL);
+		vecs = kmalloc(nr_pages * sizeof(struct bio_vec), GFP_KERNEL);
 		if (!vecs)
 			return -ENOMEM;
 	}
@@ -232,11 +228,10 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 	bio.bi_write_hint = iocb->ki_hint;
 	bio.bi_private = current;
 	bio.bi_end_io = blkdev_bio_end_io_simple;
-	bio.bi_ioprio = iocb->ki_ioprio;
 
 	ret = bio_iov_iter_get_pages(&bio, iter);
 	if (unlikely(ret))
-		goto out;
+		return ret;
 	ret = bio.bi_iter.bi_size;
 
 	if (iov_iter_rw(iter) == READ) {
@@ -247,8 +242,6 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 		bio.bi_opf = dio_bio_write_op(iocb);
 		task_io_account_write(ret);
 	}
-	if (iocb->ki_flags & IOCB_HIPRI)
-		bio_set_polled(&bio, iocb);
 
 	qc = submit_bio(&bio);
 	for (;;) {
@@ -256,24 +249,22 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 		if (!READ_ONCE(bio.bi_private))
 			break;
 		if (!(iocb->ki_flags & IOCB_HIPRI) ||
-		    !blk_poll(bdev_get_queue(bdev), qc, true))
+		    !blk_mq_poll(bdev_get_queue(bdev), qc))
 			io_schedule();
 	}
 	__set_current_state(TASK_RUNNING);
 
-	bio_for_each_segment_all(bvec, &bio, i, iter_all) {
+	bio_for_each_segment_all(bvec, &bio, i) {
 		if (should_dirty && !PageCompound(bvec->bv_page))
 			set_page_dirty_lock(bvec->bv_page);
-		if (!bio_flagged(&bio, BIO_NO_PAGE_REF))
-			put_page(bvec->bv_page);
+		put_page(bvec->bv_page);
 	}
+
+	if (vecs != inline_vecs)
+		kfree(vecs);
 
 	if (unlikely(bio.bi_status))
 		ret = blk_status_to_errno(bio.bi_status);
-
-out:
-	if (vecs != inline_vecs)
-		kfree(vecs);
 
 	bio_uninit(&bio);
 
@@ -293,25 +284,17 @@ struct blkdev_dio {
 	struct bio		bio;
 };
 
-static struct bio_set blkdev_dio_pool;
-
-static int blkdev_iopoll(struct kiocb *kiocb, bool wait)
-{
-	struct block_device *bdev = I_BDEV(kiocb->ki_filp->f_mapping->host);
-	struct request_queue *q = bdev_get_queue(bdev);
-
-	return blk_poll(q, READ_ONCE(kiocb->ki_cookie), wait);
-}
+static struct bio_set *blkdev_dio_pool __read_mostly;
 
 static void blkdev_bio_end_io(struct bio *bio)
 {
 	struct blkdev_dio *dio = bio->bi_private;
 	bool should_dirty = dio->should_dirty;
 
-	if (bio->bi_status && !dio->bio.bi_status)
-		dio->bio.bi_status = bio->bi_status;
-
-	if (!dio->multi_bio || atomic_dec_and_test(&dio->ref)) {
+	if (dio->multi_bio && !atomic_dec_and_test(&dio->ref)) {
+		if (bio->bi_status && !dio->bio.bi_status)
+			dio->bio.bi_status = bio->bi_status;
+	} else {
 		if (!dio->is_sync) {
 			struct kiocb *iocb = dio->iocb;
 			ssize_t ret;
@@ -324,27 +307,23 @@ static void blkdev_bio_end_io(struct bio *bio)
 			}
 
 			dio->iocb->ki_complete(iocb, ret, 0);
-			if (dio->multi_bio)
-				bio_put(&dio->bio);
+			bio_put(&dio->bio);
 		} else {
 			struct task_struct *waiter = dio->waiter;
 
 			WRITE_ONCE(dio->waiter, NULL);
-			blk_wake_io_task(waiter);
+			wake_up_process(waiter);
 		}
 	}
 
 	if (should_dirty) {
 		bio_check_pages_dirty(bio);
 	} else {
-		if (!bio_flagged(bio, BIO_NO_PAGE_REF)) {
-			struct bvec_iter_all iter_all;
-			struct bio_vec *bvec;
-			int i;
+		struct bio_vec *bvec;
+		int i;
 
-			bio_for_each_segment_all(bvec, bio, i, iter_all)
-				put_page(bvec->bv_page);
-		}
+		bio_for_each_segment_all(bvec, bio, i)
+			put_page(bvec->bv_page);
 		bio_put(bio);
 	}
 }
@@ -358,7 +337,6 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 	struct blk_plug plug;
 	struct blkdev_dio *dio;
 	struct bio *bio;
-	bool is_poll = (iocb->ki_flags & IOCB_HIPRI) != 0;
 	bool is_read = (iov_iter_rw(iter) == READ), is_sync;
 	loff_t pos = iocb->ki_pos;
 	blk_qc_t qc = BLK_QC_T_NONE;
@@ -368,35 +346,27 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 	    (bdev_logical_block_size(bdev) - 1))
 		return -EINVAL;
 
-	bio = bio_alloc_bioset(GFP_KERNEL, nr_pages, &blkdev_dio_pool);
+	bio = bio_alloc_bioset(GFP_KERNEL, nr_pages, blkdev_dio_pool);
+	bio_get(bio); /* extra ref for the completion handler */
 
 	dio = container_of(bio, struct blkdev_dio, bio);
 	dio->is_sync = is_sync = is_sync_kiocb(iocb);
-	if (dio->is_sync) {
+	if (dio->is_sync)
 		dio->waiter = current;
-		bio_get(bio);
-	} else {
+	else
 		dio->iocb = iocb;
-	}
 
 	dio->size = 0;
 	dio->multi_bio = false;
-	dio->should_dirty = is_read && iter_is_iovec(iter);
+	dio->should_dirty = is_read && (iter->type == ITER_IOVEC);
 
-	/*
-	 * Don't plug for HIPRI/polled IO, as those should go straight
-	 * to issue
-	 */
-	if (!is_poll)
-		blk_start_plug(&plug);
-
+	blk_start_plug(&plug);
 	for (;;) {
 		bio_set_dev(bio, bdev);
 		bio->bi_iter.bi_sector = pos >> 9;
 		bio->bi_write_hint = iocb->ki_hint;
 		bio->bi_private = dio;
 		bio->bi_end_io = blkdev_bio_end_io;
-		bio->bi_ioprio = iocb->ki_ioprio;
 
 		ret = bio_iov_iter_get_pages(bio, iter);
 		if (unlikely(ret)) {
@@ -419,28 +389,11 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 
 		nr_pages = iov_iter_npages(iter, BIO_MAX_PAGES);
 		if (!nr_pages) {
-			bool polled = false;
-
-			if (iocb->ki_flags & IOCB_HIPRI) {
-				bio_set_polled(bio, iocb);
-				polled = true;
-			}
-
 			qc = submit_bio(bio);
-
-			if (polled)
-				WRITE_ONCE(iocb->ki_cookie, qc);
 			break;
 		}
 
 		if (!dio->multi_bio) {
-			/*
-			 * AIO needs an extra reference to ensure the dio
-			 * structure which is embedded into the first bio
-			 * stays around.
-			 */
-			if (!is_sync)
-				bio_get(bio);
 			dio->multi_bio = true;
 			atomic_set(&dio->ref, 2);
 		} else {
@@ -450,9 +403,7 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 		submit_bio(bio);
 		bio = bio_alloc(GFP_KERNEL, nr_pages);
 	}
-
-	if (!is_poll)
-		blk_finish_plug(&plug);
+	blk_finish_plug(&plug);
 
 	if (!is_sync)
 		return -EIOCBQUEUED;
@@ -463,7 +414,7 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 			break;
 
 		if (!(iocb->ki_flags & IOCB_HIPRI) ||
-		    !blk_poll(bdev_get_queue(bdev), qc, true))
+		    !blk_mq_poll(bdev_get_queue(bdev), qc))
 			io_schedule();
 	}
 	__set_current_state(TASK_RUNNING);
@@ -493,7 +444,10 @@ blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 
 static __init int blkdev_init(void)
 {
-	return bioset_init(&blkdev_dio_pool, 4, offsetof(struct blkdev_dio, bio), BIOSET_NEED_BVECS);
+	blkdev_dio_pool = bioset_create(4, offsetof(struct blkdev_dio, bio), BIOSET_NEED_BVECS);
+	if (!blkdev_dio_pool)
+		return -ENOMEM;
+	return 0;
 }
 module_init(blkdev_init);
 
@@ -720,11 +674,10 @@ int bdev_read_page(struct block_device *bdev, sector_t sector,
 	if (!ops->rw_page || bdev_get_integrity(bdev))
 		return result;
 
-	result = blk_queue_enter(bdev->bd_queue, 0);
+	result = blk_queue_enter(bdev->bd_queue, false);
 	if (result)
 		return result;
-	result = ops->rw_page(bdev, sector + get_start_sect(bdev), page,
-			      REQ_OP_READ);
+	result = ops->rw_page(bdev, sector + get_start_sect(bdev), page, false);
 	blk_queue_exit(bdev->bd_queue);
 	return result;
 }
@@ -757,13 +710,12 @@ int bdev_write_page(struct block_device *bdev, sector_t sector,
 
 	if (!ops->rw_page || bdev_get_integrity(bdev))
 		return -EOPNOTSUPP;
-	result = blk_queue_enter(bdev->bd_queue, 0);
+	result = blk_queue_enter(bdev->bd_queue, false);
 	if (result)
 		return result;
 
 	set_page_writeback(page);
-	result = ops->rw_page(bdev, sector + get_start_sect(bdev), page,
-			      REQ_OP_WRITE);
+	result = ops->rw_page(bdev, sector + get_start_sect(bdev), page, true);
 	if (result) {
 		end_page_writeback(page);
 	} else {
@@ -1118,27 +1070,6 @@ retry:
 	return 0;
 }
 
-static struct gendisk *bdev_get_gendisk(struct block_device *bdev, int *partno)
-{
-	struct gendisk *disk = get_gendisk(bdev->bd_dev, partno);
-
-	if (!disk)
-		return NULL;
-	/*
-	 * Now that we hold gendisk reference we make sure bdev we looked up is
-	 * not stale. If it is, it means device got removed and created before
-	 * we looked up gendisk and we fail open in such case. Associating
-	 * unhashed bdev with newly created gendisk could lead to two bdevs
-	 * (and thus two independent caches) being associated with one device
-	 * which is bad.
-	 */
-	if (inode_unhashed(bdev->bd_inode)) {
-		put_disk_and_module(disk);
-		return NULL;
-	}
-	return disk;
-}
-
 /**
  * bd_start_claiming - start claiming a block device
  * @bdev: block device of interest
@@ -1175,7 +1106,7 @@ static struct block_device *bd_start_claiming(struct block_device *bdev,
 	 * @bdev might not have been initialized properly yet, look up
 	 * and grab the outer block device the hard way.
 	 */
-	disk = bdev_get_gendisk(bdev, &partno);
+	disk = get_gendisk(bdev->bd_dev, &partno);
 	if (!disk)
 		return ERR_PTR(-ENXIO);
 
@@ -1192,7 +1123,8 @@ static struct block_device *bd_start_claiming(struct block_device *bdev,
 	else
 		whole = bdgrab(bdev);
 
-	put_disk_and_module(disk);
+	module_put(disk->fops->owner);
+	put_disk(disk);
 	if (!whole)
 		return ERR_PTR(-ENOMEM);
 
@@ -1382,30 +1314,25 @@ static void flush_disk(struct block_device *bdev, bool kill_dirty)
  * check_disk_size_change - checks for disk size change and adjusts bdev size.
  * @disk: struct gendisk to check
  * @bdev: struct bdev to adjust.
- * @verbose: if %true log a message about a size change if there is any
  *
  * This routine checks to see if the bdev size does not match the disk size
- * and adjusts it if it differs. When shrinking the bdev size, its all caches
- * are freed.
+ * and adjusts it if it differs.
  */
-void check_disk_size_change(struct gendisk *disk, struct block_device *bdev,
-		bool verbose)
+void check_disk_size_change(struct gendisk *disk, struct block_device *bdev)
 {
 	loff_t disk_size, bdev_size;
 
 	disk_size = (loff_t)get_capacity(disk) << 9;
 	bdev_size = i_size_read(bdev->bd_inode);
 	if (disk_size != bdev_size) {
-		if (verbose) {
-			printk(KERN_INFO
-			       "%s: detected capacity change from %lld to %lld\n",
-			       disk->disk_name, bdev_size, disk_size);
-		}
+		printk(KERN_INFO
+		       "%s: detected capacity change from %lld to %lld\n",
+		       disk->disk_name, bdev_size, disk_size);
 		i_size_write(bdev->bd_inode, disk_size);
-		if (bdev_size > disk_size)
-			flush_disk(bdev, false);
+		flush_disk(bdev, false);
 	}
 }
+EXPORT_SYMBOL(check_disk_size_change);
 
 /**
  * revalidate_disk - wrapper for lower-level driver's revalidate_disk call-back
@@ -1427,7 +1354,7 @@ int revalidate_disk(struct gendisk *disk)
 		return ret;
 
 	mutex_lock(&bdev->bd_mutex);
-	check_disk_size_change(disk, bdev, ret == 0);
+	check_disk_size_change(disk, bdev);
 	bdev->bd_invalidated = 0;
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
@@ -1465,9 +1392,18 @@ EXPORT_SYMBOL(check_disk_change);
 
 void bd_set_size(struct block_device *bdev, loff_t size)
 {
+	unsigned bsize = bdev_logical_block_size(bdev);
+
 	inode_lock(bdev->bd_inode);
 	i_size_write(bdev->bd_inode, size);
 	inode_unlock(bdev->bd_inode);
+	while (bsize < PAGE_SIZE) {
+		if (size & bsize)
+			break;
+		bsize <<= 1;
+	}
+	bdev->bd_block_size = bsize;
+	bdev->bd_inode->i_blkbits = blksize_bits(bsize);
 }
 EXPORT_SYMBOL(bd_set_size);
 
@@ -1483,10 +1419,10 @@ static void __blkdev_put(struct block_device *bdev, fmode_t mode, int for_part);
 static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 {
 	struct gendisk *disk;
+	struct module *owner;
 	int ret;
 	int partno;
 	int perm = 0;
-	bool first_open = false;
 
 	if (mode & FMODE_READ)
 		perm |= MAY_READ;
@@ -1506,14 +1442,14 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
  restart:
 
 	ret = -ENXIO;
-	disk = bdev_get_gendisk(bdev, &partno);
+	disk = get_gendisk(bdev->bd_dev, &partno);
 	if (!disk)
 		goto out;
+	owner = disk->fops->owner;
 
 	disk_block_events(disk);
 	mutex_lock_nested(&bdev->bd_mutex, for_part);
 	if (!bdev->bd_openers) {
-		first_open = true;
 		bdev->bd_disk = disk;
 		bdev->bd_queue = disk->queue;
 		bdev->bd_contains = bdev;
@@ -1539,15 +1475,14 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 					bdev->bd_queue = NULL;
 					mutex_unlock(&bdev->bd_mutex);
 					disk_unblock_events(disk);
-					put_disk_and_module(disk);
+					put_disk(disk);
+					module_put(owner);
 					goto restart;
 				}
 			}
 
-			if (!ret) {
+			if (!ret)
 				bd_set_size(bdev,(loff_t)get_capacity(disk)<<9);
-				set_init_blocksize(bdev);
-			}
 
 			/*
 			 * If the device is invalidated, rescan partition
@@ -1582,7 +1517,6 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 				goto out_clear;
 			}
 			bd_set_size(bdev, (loff_t)bdev->bd_part->nr_sects << 9);
-			set_init_blocksize(bdev);
 		}
 
 		if (bdev->bd_bdi == &noop_backing_dev_info)
@@ -1602,15 +1536,15 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 			if (ret)
 				goto out_unlock_bdev;
 		}
+		/* only one opener holds refs to the module and disk */
+		put_disk(disk);
+		module_put(owner);
 	}
 	bdev->bd_openers++;
 	if (for_part)
 		bdev->bd_part_count++;
 	mutex_unlock(&bdev->bd_mutex);
 	disk_unblock_events(disk);
-	/* only one opener holds refs to the module and disk */
-	if (!first_open)
-		put_disk_and_module(disk);
 	return 0;
 
  out_clear:
@@ -1624,7 +1558,8 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
  out_unlock_bdev:
 	mutex_unlock(&bdev->bd_mutex);
 	disk_unblock_events(disk);
-	put_disk_and_module(disk);
+	put_disk(disk);
+	module_put(owner);
  out:
 	bdput(bdev);
 
@@ -1847,6 +1782,8 @@ static void __blkdev_put(struct block_device *bdev, fmode_t mode, int for_part)
 			disk->fops->release(disk, mode);
 	}
 	if (!bdev->bd_openers) {
+		struct module *owner = disk->fops->owner;
+
 		disk_put_part(bdev->bd_part);
 		bdev->bd_part = NULL;
 		bdev->bd_disk = NULL;
@@ -1854,7 +1791,8 @@ static void __blkdev_put(struct block_device *bdev, fmode_t mode, int for_part)
 			victim = bdev->bd_contains;
 		bdev->bd_contains = NULL;
 
-		put_disk_and_module(disk);
+		put_disk(disk);
+		module_put(owner);
 	}
 	mutex_unlock(&bdev->bd_mutex);
 	bdput(bdev);
@@ -2005,6 +1943,11 @@ static int blkdev_releasepage(struct page *page, gfp_t wait)
 static int blkdev_writepages(struct address_space *mapping,
 			     struct writeback_control *wbc)
 {
+	if (dax_mapping(mapping)) {
+		struct block_device *bdev = I_BDEV(mapping->host);
+
+		return dax_writeback_mapping_range(mapping, bdev, wbc);
+	}
 	return generic_writepages(mapping, wbc);
 }
 
@@ -2017,7 +1960,6 @@ static const struct address_space_operations def_blk_aops = {
 	.writepages	= blkdev_writepages,
 	.releasepage	= blkdev_releasepage,
 	.direct_IO	= blkdev_direct_IO,
-	.migratepage	= buffer_migrate_page_norefs,
 	.is_dirty_writeback = buffer_check_dirty_writeback,
 };
 
@@ -2096,7 +2038,6 @@ const struct file_operations def_blk_fops = {
 	.llseek		= block_llseek,
 	.read_iter	= blkdev_read_iter,
 	.write_iter	= blkdev_write_iter,
-	.iopoll		= blkdev_iopoll,
 	.mmap		= generic_file_mmap,
 	.fsync		= blkdev_fsync,
 	.unlocked_ioctl	= block_ioctl,

@@ -1,7 +1,17 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2010,2015 Broadcom
  * Copyright (C) 2012 Stephen Warren
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
  */
 
 /**
@@ -27,6 +37,7 @@
 #include <linux/clk-provider.h>
 #include <linux/clkdev.h>
 #include <linux/clk.h>
+#include <linux/clk/bcm2835.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/module.h>
@@ -34,6 +45,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <dt-bindings/clock/bcm2835.h>
+#include <soc/bcm2835/raspberrypi-firmware.h>
 
 #define CM_PASSWORD		0x5a000000
 
@@ -288,6 +300,8 @@
 #define LOCK_TIMEOUT_NS		100000000
 #define BCM2835_MAX_FB_RATE	1750000000u
 
+#define VCMSG_ID_CORE_CLOCK     4
+
 /*
  * Names of clocks used within the driver that need to be replaced
  * with an external parent's name.  This array is in the order that
@@ -306,6 +320,7 @@ static const char *const cprman_parent_names[] = {
 struct bcm2835_cprman {
 	struct device *dev;
 	void __iomem *regs;
+	struct rpi_firmware *fw;
 	spinlock_t regs_lock; /* spinlock for all clocks */
 
 	/*
@@ -384,21 +399,54 @@ out:
 	return count * 1000;
 }
 
-static void bcm2835_debugfs_regset(struct bcm2835_cprman *cprman, u32 base,
+static int bcm2835_debugfs_regset(struct bcm2835_cprman *cprman, u32 base,
 				  struct debugfs_reg32 *regs, size_t nregs,
 				  struct dentry *dentry)
 {
+	struct dentry *regdump;
 	struct debugfs_regset32 *regset;
 
 	regset = devm_kzalloc(cprman->dev, sizeof(*regset), GFP_KERNEL);
 	if (!regset)
-		return;
+		return -ENOMEM;
 
 	regset->regs = regs;
 	regset->nregs = nregs;
 	regset->base = cprman->regs + base;
 
-	debugfs_create_regset32("regdump", S_IRUGO, dentry, regset);
+	regdump = debugfs_create_regset32("regdump", S_IRUGO, dentry,
+					  regset);
+
+	return regdump ? 0 : -ENOMEM;
+}
+
+/*
+ * These are fixed clocks. They're probably not all root clocks and it may
+ * be possible to turn them on and off but until this is mapped out better
+ * it's the only way they can be used.
+ */
+void __init bcm2835_init_clocks(void)
+{
+	struct clk_hw *hw;
+	int ret;
+
+	hw = clk_hw_register_fixed_rate(NULL, "apb_pclk", NULL, 0, 126000000);
+	if (IS_ERR(hw))
+		pr_err("apb_pclk not registered\n");
+
+	hw = clk_hw_register_fixed_rate(NULL, "uart0_pclk", NULL, 0, 3000000);
+	if (IS_ERR(hw))
+		pr_err("uart0_pclk not registered\n");
+	ret = clk_hw_register_clkdev(hw, NULL, "20201000.uart");
+	if (ret)
+		pr_err("uart0_pclk alias not registered\n");
+
+	hw = clk_hw_register_fixed_rate(NULL, "uart1_pclk", NULL, 0, 125000000);
+	if (IS_ERR(hw))
+		pr_err("uart1_pclk not registered\n");
+	ret = clk_hw_register_clkdev(hw, NULL, "20215000.uart");
+	if (ret)
+		pr_err("uart1_pclk alias not registered\n");
 }
 
 struct bcm2835_pll_data {
@@ -716,7 +764,7 @@ static int bcm2835_pll_set_rate(struct clk_hw *hw,
 	return 0;
 }
 
-static void bcm2835_pll_debug_init(struct clk_hw *hw,
+static int bcm2835_pll_debug_init(struct clk_hw *hw,
 				  struct dentry *dentry)
 {
 	struct bcm2835_pll *pll = container_of(hw, struct bcm2835_pll, hw);
@@ -724,9 +772,9 @@ static void bcm2835_pll_debug_init(struct clk_hw *hw,
 	const struct bcm2835_pll_data *data = pll->data;
 	struct debugfs_reg32 *regs;
 
-	regs = devm_kcalloc(cprman->dev, 7, sizeof(*regs), GFP_KERNEL);
+	regs = devm_kzalloc(cprman->dev, 7 * sizeof(*regs), GFP_KERNEL);
 	if (!regs)
-		return;
+		return -ENOMEM;
 
 	regs[0].name = "cm_ctrl";
 	regs[0].offset = data->cm_ctrl_reg;
@@ -743,7 +791,7 @@ static void bcm2835_pll_debug_init(struct clk_hw *hw,
 	regs[6].name = "ana3";
 	regs[6].offset = data->ana_reg_base + 3 * 4;
 
-	bcm2835_debugfs_regset(cprman, 0, regs, 7, dentry);
+	return bcm2835_debugfs_regset(cprman, 0, regs, 7, dentry);
 }
 
 static const struct clk_ops bcm2835_pll_clk_ops = {
@@ -847,24 +895,24 @@ static int bcm2835_pll_divider_set_rate(struct clk_hw *hw,
 	return 0;
 }
 
-static void bcm2835_pll_divider_debug_init(struct clk_hw *hw,
-					   struct dentry *dentry)
+static int bcm2835_pll_divider_debug_init(struct clk_hw *hw,
+					  struct dentry *dentry)
 {
 	struct bcm2835_pll_divider *divider = bcm2835_pll_divider_from_hw(hw);
 	struct bcm2835_cprman *cprman = divider->cprman;
 	const struct bcm2835_pll_divider_data *data = divider->data;
 	struct debugfs_reg32 *regs;
 
-	regs = devm_kcalloc(cprman->dev, 7, sizeof(*regs), GFP_KERNEL);
+	regs = devm_kzalloc(cprman->dev, 7 * sizeof(*regs), GFP_KERNEL);
 	if (!regs)
-		return;
+		return -ENOMEM;
 
 	regs[0].name = "cm";
 	regs[0].offset = data->cm_reg;
 	regs[1].name = "a2w";
 	regs[1].offset = data->a2w_reg;
 
-	bcm2835_debugfs_regset(cprman, 0, regs, 2, dentry);
+	return bcm2835_debugfs_regset(cprman, 0, regs, 2, dentry);
 }
 
 static const struct clk_ops bcm2835_pll_divider_clk_ops = {
@@ -986,6 +1034,30 @@ static unsigned long bcm2835_clock_get_rate(struct clk_hw *hw,
 	div = cprman_read(cprman, data->div_reg);
 
 	return bcm2835_clock_rate_from_divisor(clock, parent_rate, div);
+}
+
+static unsigned long bcm2835_clock_get_rate_vpu(struct clk_hw *hw,
+						unsigned long parent_rate)
+{
+	struct bcm2835_clock *clock = bcm2835_clock_from_hw(hw);
+	struct bcm2835_cprman *cprman = clock->cprman;
+
+	if (cprman->fw) {
+		struct {
+			u32 id;
+			u32 val;
+		} packet;
+
+		packet.id = VCMSG_ID_CORE_CLOCK;
+		packet.val = 0;
+
+		if (!rpi_firmware_property(cprman->fw,
+					   RPI_FIRMWARE_GET_MAX_CLOCK_RATE,
+					   &packet, sizeof(packet)))
+			return packet.val;
+	}
+
+	return bcm2835_clock_get_rate(hw, parent_rate);
 }
 
 static void bcm2835_clock_wait_busy(struct bcm2835_clock *clock)
@@ -1240,14 +1312,15 @@ static struct debugfs_reg32 bcm2835_debugfs_clock_reg32[] = {
 	},
 };
 
-static void bcm2835_clock_debug_init(struct clk_hw *hw,
+static int bcm2835_clock_debug_init(struct clk_hw *hw,
 				    struct dentry *dentry)
 {
 	struct bcm2835_clock *clock = bcm2835_clock_from_hw(hw);
 	struct bcm2835_cprman *cprman = clock->cprman;
 	const struct bcm2835_clock_data *data = clock->data;
 
-	bcm2835_debugfs_regset(cprman, data->ctl_reg,
+	return bcm2835_debugfs_regset(
+		cprman, data->ctl_reg,
 		bcm2835_debugfs_clock_reg32,
 		ARRAY_SIZE(bcm2835_debugfs_clock_reg32),
 		dentry);
@@ -1276,13 +1349,15 @@ static int bcm2835_vpu_clock_is_on(struct clk_hw *hw)
  */
 static const struct clk_ops bcm2835_vpu_clock_clk_ops = {
 	.is_prepared = bcm2835_vpu_clock_is_on,
-	.recalc_rate = bcm2835_clock_get_rate,
+	.recalc_rate = bcm2835_clock_get_rate_vpu,
 	.set_rate = bcm2835_clock_set_rate,
 	.determine_rate = bcm2835_clock_determine_rate,
 	.set_parent = bcm2835_clock_set_parent,
 	.get_parent = bcm2835_clock_get_parent,
 	.debug_init = bcm2835_clock_debug_init,
 };
+
+static bool bcm2835_clk_is_claimed(const char *name);
 
 static struct clk_hw *bcm2835_register_pll(struct bcm2835_cprman *cprman,
 					   const struct bcm2835_pll_data *data)
@@ -1299,6 +1374,9 @@ static struct clk_hw *bcm2835_register_pll(struct bcm2835_cprman *cprman,
 	init.name = data->name;
 	init.ops = &bcm2835_pll_clk_ops;
 	init.flags = CLK_IGNORE_UNUSED;
+
+	if (!bcm2835_clk_is_claimed(data->name))
+		init.flags |= CLK_IS_CRITICAL;
 
 	pll = kzalloc(sizeof(*pll), GFP_KERNEL);
 	if (!pll)
@@ -1352,6 +1430,13 @@ bcm2835_register_pll_divider(struct bcm2835_cprman *cprman,
 	divider->div.hw.init = &init;
 	divider->div.table = NULL;
 
+	if (!(cprman_read(cprman, data->cm_reg) & data->hold_mask)) {
+		if (!bcm2835_clk_is_claimed(data->source_pll))
+			init.flags |= CLK_IS_CRITICAL;
+		if (!bcm2835_clk_is_claimed(data->name))
+			divider->div.flags |= CLK_IS_CRITICAL;
+	}
+
 	divider->cprman = cprman;
 	divider->data = data;
 
@@ -1380,7 +1465,7 @@ static struct clk_hw *bcm2835_register_clock(struct bcm2835_cprman *cprman,
 	struct bcm2835_clock *clock;
 	struct clk_init_data init;
 	const char *parents[1 << CM_SRC_BITS];
-	size_t i;
+	size_t i, j;
 	int ret;
 
 	/*
@@ -1390,11 +1475,12 @@ static struct clk_hw *bcm2835_register_clock(struct bcm2835_cprman *cprman,
 	for (i = 0; i < data->num_mux_parents; i++) {
 		parents[i] = data->parents[i];
 
-		ret = match_string(cprman_parent_names,
-				   ARRAY_SIZE(cprman_parent_names),
-				   parents[i]);
-		if (ret >= 0)
-			parents[i] = cprman->real_parent_names[ret];
+		for (j = 0; j < ARRAY_SIZE(cprman_parent_names); j++) {
+			if (strcmp(parents[i], cprman_parent_names[j]) == 0) {
+				parents[i] = cprman->real_parent_names[j];
+				break;
+			}
+		}
 	}
 
 	memset(&init, 0, sizeof(init));
@@ -1402,6 +1488,15 @@ static struct clk_hw *bcm2835_register_clock(struct bcm2835_cprman *cprman,
 	init.num_parents = data->num_mux_parents;
 	init.name = data->name;
 	init.flags = data->flags | CLK_IGNORE_UNUSED;
+
+	/*
+	 * Some GPIO clocks for ethernet/wifi PLLs are marked as
+	 * critical (since some platforms use them), but if the
+	 * firmware didn't have them turned on then they clearly
+	 * aren't actually critical.
+	 */
+	if ((cprman_read(cprman, data->ctl_reg) & CM_ENABLE) == 0)
+		init.flags &= ~CLK_IS_CRITICAL;
 
 	/*
 	 * Pass the CLK_SET_RATE_PARENT flag if we are allowed to propagate
@@ -2101,6 +2196,8 @@ static const struct bcm2835_clk_desc clk_desc_array[] = {
 		.ctl_reg = CM_PERIICTL),
 };
 
+static bool bcm2835_clk_claimed[ARRAY_SIZE(clk_desc_array)];
+
 /*
  * Permanently take a reference on the parent of the SDRAM clock.
  *
@@ -2120,6 +2217,19 @@ static int bcm2835_mark_sdc_parent_critical(struct clk *sdc)
 	return clk_prepare_enable(parent);
 }
 
+static bool bcm2835_clk_is_claimed(const char *name)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(clk_desc_array); i++) {
+		const char *clk_name = *(const char **)(clk_desc_array[i].data);
+		if (!strcmp(name, clk_name))
+		    return bcm2835_clk_claimed[i];
+	}
+
+	return false;
+}
+
 static int bcm2835_clk_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -2128,11 +2238,13 @@ static int bcm2835_clk_probe(struct platform_device *pdev)
 	struct resource *res;
 	const struct bcm2835_clk_desc *desc;
 	const size_t asize = ARRAY_SIZE(clk_desc_array);
+	struct device_node *fw_node;
 	size_t i;
+	u32 clk_id;
 	int ret;
 
-	cprman = devm_kzalloc(dev,
-			      struct_size(cprman, onecell.hws, asize),
+	cprman = devm_kzalloc(dev, sizeof(*cprman) +
+			      sizeof(*cprman->onecell.hws) * asize,
 			      GFP_KERNEL);
 	if (!cprman)
 		return -ENOMEM;
@@ -2143,6 +2255,21 @@ static int bcm2835_clk_probe(struct platform_device *pdev)
 	cprman->regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR(cprman->regs))
 		return PTR_ERR(cprman->regs);
+
+	fw_node = of_parse_phandle(dev->of_node, "firmware", 0);
+	if (fw_node) {
+		struct rpi_firmware *fw = rpi_firmware_get(NULL);
+		if (!fw)
+			return -EPROBE_DEFER;
+		cprman->fw = fw;
+	}
+
+	memset(bcm2835_clk_claimed, 0, sizeof(bcm2835_clk_claimed));
+	for (i = 0;
+	     !of_property_read_u32_index(pdev->dev.of_node, "claim-clocks",
+					 i, &clk_id);
+	     i++)
+		bcm2835_clk_claimed[clk_id]= true;
 
 	memcpy(cprman->real_parent_names, cprman_parent_names,
 	       sizeof(cprman_parent_names));
@@ -2174,8 +2301,15 @@ static int bcm2835_clk_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	return of_clk_add_hw_provider(dev->of_node, of_clk_hw_onecell_get,
+	ret = of_clk_add_hw_provider(dev->of_node, of_clk_hw_onecell_get,
 				      &cprman->onecell);
+	if (ret)
+		return ret;
+
+	/* note that we have registered all the clocks */
+	dev_dbg(dev, "registered %d clocks\n", asize);
+
+	return 0;
 }
 
 static const struct of_device_id bcm2835_clk_of_match[] = {
@@ -2192,8 +2326,12 @@ static struct platform_driver bcm2835_clk_driver = {
 	.probe          = bcm2835_clk_probe,
 };
 
-builtin_platform_driver(bcm2835_clk_driver);
+static int __init __bcm2835_clk_driver_init(void)
+{
+	return platform_driver_register(&bcm2835_clk_driver);
+}
+core_initcall(__bcm2835_clk_driver_init);
 
 MODULE_AUTHOR("Eric Anholt <eric@anholt.net>");
 MODULE_DESCRIPTION("BCM2835 clock driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

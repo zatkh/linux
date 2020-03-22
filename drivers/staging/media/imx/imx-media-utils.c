@@ -78,7 +78,6 @@ static const struct imx_media_pixfmt rgb_formats[] = {
 		.codes  = {MEDIA_BUS_FMT_RGB565_2X8_LE},
 		.cs     = IPUV3_COLORSPACE_RGB,
 		.bpp    = 16,
-		.cycles = 2,
 	}, {
 		.fourcc	= V4L2_PIX_FMT_RGB24,
 		.codes  = {
@@ -88,13 +87,13 @@ static const struct imx_media_pixfmt rgb_formats[] = {
 		.cs     = IPUV3_COLORSPACE_RGB,
 		.bpp    = 24,
 	}, {
-		.fourcc	= V4L2_PIX_FMT_XRGB32,
+		.fourcc	= V4L2_PIX_FMT_RGB32,
 		.codes  = {MEDIA_BUS_FMT_ARGB8888_1X32},
 		.cs     = IPUV3_COLORSPACE_RGB,
 		.bpp    = 32,
 		.ipufmt = true,
 	},
-	/*** raw bayer and grayscale formats start here ***/
+	/*** raw bayer formats start here ***/
 	{
 		.fourcc = V4L2_PIX_FMT_SBGGR8,
 		.codes  = {MEDIA_BUS_FMT_SBGGR8_1X8},
@@ -163,21 +162,6 @@ static const struct imx_media_pixfmt rgb_formats[] = {
 		.cs     = IPUV3_COLORSPACE_RGB,
 		.bpp    = 16,
 		.bayer  = true,
-	}, {
-		.fourcc = V4L2_PIX_FMT_GREY,
-		.codes = {MEDIA_BUS_FMT_Y8_1X8},
-		.cs     = IPUV3_COLORSPACE_RGB,
-		.bpp    = 8,
-		.bayer  = true,
-	}, {
-		.fourcc = V4L2_PIX_FMT_Y16,
-		.codes = {
-			MEDIA_BUS_FMT_Y10_1X10,
-			MEDIA_BUS_FMT_Y12_1X12,
-		},
-		.cs     = IPUV3_COLORSPACE_RGB,
-		.bpp    = 16,
-		.bayer  = true,
 	},
 	/***
 	 * non-mbus RGB formats start here. NOTE! when adding non-mbus
@@ -212,7 +196,7 @@ static const struct imx_media_pixfmt ipu_yuv_formats[] = {
 
 static const struct imx_media_pixfmt ipu_rgb_formats[] = {
 	{
-		.fourcc	= V4L2_PIX_FMT_XRGB32,
+		.fourcc	= V4L2_PIX_FMT_RGB32,
 		.codes  = {MEDIA_BUS_FMT_ARGB8888_1X32},
 		.cs     = IPUV3_COLORSPACE_RGB,
 		.bpp    = 32,
@@ -235,63 +219,58 @@ static void init_mbus_colorimetry(struct v4l2_mbus_framefmt *mbus,
 					      mbus->ycbcr_enc);
 }
 
-static const
-struct imx_media_pixfmt *__find_format(u32 fourcc,
-				       u32 code,
-				       bool allow_non_mbus,
-				       bool allow_bayer,
-				       const struct imx_media_pixfmt *array,
-				       u32 array_size)
-{
-	const struct imx_media_pixfmt *fmt;
-	int i, j;
-
-	for (i = 0; i < array_size; i++) {
-		fmt = &array[i];
-
-		if ((!allow_non_mbus && !fmt->codes[0]) ||
-		    (!allow_bayer && fmt->bayer))
-			continue;
-
-		if (fourcc && fmt->fourcc == fourcc)
-			return fmt;
-
-		if (!code)
-			continue;
-
-		for (j = 0; fmt->codes[j]; j++) {
-			if (code == fmt->codes[j])
-				return fmt;
-		}
-	}
-	return NULL;
-}
-
 static const struct imx_media_pixfmt *find_format(u32 fourcc,
 						  u32 code,
 						  enum codespace_sel cs_sel,
 						  bool allow_non_mbus,
 						  bool allow_bayer)
 {
-	const struct imx_media_pixfmt *ret;
+	const struct imx_media_pixfmt *array, *fmt, *ret = NULL;
+	u32 array_size;
+	int i, j;
 
 	switch (cs_sel) {
 	case CS_SEL_YUV:
-		return __find_format(fourcc, code, allow_non_mbus, allow_bayer,
-				     yuv_formats, NUM_YUV_FORMATS);
+		array_size = NUM_YUV_FORMATS;
+		array = yuv_formats;
+		break;
 	case CS_SEL_RGB:
-		return __find_format(fourcc, code, allow_non_mbus, allow_bayer,
-				     rgb_formats, NUM_RGB_FORMATS);
+		array_size = NUM_RGB_FORMATS;
+		array = rgb_formats;
+		break;
 	case CS_SEL_ANY:
-		ret = __find_format(fourcc, code, allow_non_mbus, allow_bayer,
-				    yuv_formats, NUM_YUV_FORMATS);
-		if (ret)
-			return ret;
-		return __find_format(fourcc, code, allow_non_mbus, allow_bayer,
-				     rgb_formats, NUM_RGB_FORMATS);
+		array_size = NUM_YUV_FORMATS + NUM_RGB_FORMATS;
+		array = yuv_formats;
+		break;
 	default:
 		return NULL;
 	}
+
+	for (i = 0; i < array_size; i++) {
+		if (cs_sel == CS_SEL_ANY && i >= NUM_YUV_FORMATS)
+			fmt = &rgb_formats[i - NUM_YUV_FORMATS];
+		else
+			fmt = &array[i];
+
+		if ((!allow_non_mbus && fmt->codes[0] == 0) ||
+		    (!allow_bayer && fmt->bayer))
+			continue;
+
+		if (fourcc && fmt->fourcc == fourcc) {
+			ret = fmt;
+			goto out;
+		}
+
+		for (j = 0; code && fmt->codes[j]; j++) {
+			if (code == fmt->codes[j]) {
+				ret = fmt;
+				goto out;
+			}
+		}
+	}
+
+out:
+	return ret;
 }
 
 static int enum_format(u32 *fourcc, u32 *code, u32 index,
@@ -486,35 +465,6 @@ int imx_media_init_mbus_fmt(struct v4l2_mbus_framefmt *mbus,
 EXPORT_SYMBOL_GPL(imx_media_init_mbus_fmt);
 
 /*
- * Initializes the TRY format to the ACTIVE format on all pads
- * of a subdev. Can be used as the .init_cfg pad operation.
- */
-int imx_media_init_cfg(struct v4l2_subdev *sd,
-		       struct v4l2_subdev_pad_config *cfg)
-{
-	struct v4l2_mbus_framefmt *mf_try;
-	struct v4l2_subdev_format format;
-	unsigned int pad;
-	int ret;
-
-	for (pad = 0; pad < sd->entity.num_pads; pad++) {
-		memset(&format, 0, sizeof(format));
-
-		format.pad = pad;
-		format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-		ret = v4l2_subdev_call(sd, pad, get_fmt, NULL, &format);
-		if (ret)
-			continue;
-
-		mf_try = v4l2_subdev_get_try_format(sd, cfg, pad);
-		*mf_try = format.format;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(imx_media_init_cfg);
-
-/*
  * Check whether the field and colorimetry parameters in tryfmt are
  * uninitialized, and if so fill them with the values from fmt,
  * or if tryfmt->colorspace has been initialized, all the default
@@ -577,11 +527,9 @@ void imx_media_fill_default_mbus_fields(struct v4l2_mbus_framefmt *tryfmt,
 EXPORT_SYMBOL_GPL(imx_media_fill_default_mbus_fields);
 
 int imx_media_mbus_fmt_to_pix_fmt(struct v4l2_pix_format *pix,
-				  struct v4l2_rect *compose,
-				  const struct v4l2_mbus_framefmt *mbus,
+				  struct v4l2_mbus_framefmt *mbus,
 				  const struct imx_media_pixfmt *cc)
 {
-	u32 width;
 	u32 stride;
 
 	if (!cc) {
@@ -604,16 +552,9 @@ int imx_media_mbus_fmt_to_pix_fmt(struct v4l2_pix_format *pix,
 		cc = imx_media_find_mbus_format(code, CS_SEL_YUV, false);
 	}
 
-	/* Round up width for minimum burst size */
-	width = round_up(mbus->width, 8);
+	stride = cc->planar ? mbus->width : (mbus->width * cc->bpp) >> 3;
 
-	/* Round up stride for IDMAC line start address alignment */
-	if (cc->planar)
-		stride = round_up(width, 16);
-	else
-		stride = round_up((width * cc->bpp) >> 3, 8);
-
-	pix->width = width;
+	pix->width = mbus->width;
 	pix->height = mbus->height;
 	pix->pixelformat = cc->fourcc;
 	pix->colorspace = mbus->colorspace;
@@ -622,19 +563,7 @@ int imx_media_mbus_fmt_to_pix_fmt(struct v4l2_pix_format *pix,
 	pix->quantization = mbus->quantization;
 	pix->field = mbus->field;
 	pix->bytesperline = stride;
-	pix->sizeimage = cc->planar ? ((stride * pix->height * cc->bpp) >> 3) :
-			 stride * pix->height;
-
-	/*
-	 * set capture compose rectangle, which is fixed to the
-	 * source subdevice mbus format.
-	 */
-	if (compose) {
-		compose->left = 0;
-		compose->top = 0;
-		compose->width = mbus->width;
-		compose->height = mbus->height;
-	}
+	pix->sizeimage = (pix->width * pix->height * cc->bpp) >> 3;
 
 	return 0;
 }
@@ -647,10 +576,12 @@ int imx_media_mbus_fmt_to_ipu_image(struct ipu_image *image,
 
 	memset(image, 0, sizeof(*image));
 
-	ret = imx_media_mbus_fmt_to_pix_fmt(&image->pix, &image->rect,
-					    mbus, NULL);
+	ret = imx_media_mbus_fmt_to_pix_fmt(&image->pix, mbus, NULL);
 	if (ret)
 		return ret;
+
+	image->rect.width = mbus->width;
+	image->rect.height = mbus->height;
 
 	return 0;
 }
@@ -715,20 +646,20 @@ void imx_media_grp_id_to_sd_name(char *sd_name, int sz, u32 grp_id, int ipu_id)
 	int id;
 
 	switch (grp_id) {
-	case IMX_MEDIA_GRP_ID_IPU_CSI0...IMX_MEDIA_GRP_ID_IPU_CSI1:
-		id = (grp_id >> IMX_MEDIA_GRP_ID_IPU_CSI_BIT) - 1;
+	case IMX_MEDIA_GRP_ID_CSI0...IMX_MEDIA_GRP_ID_CSI1:
+		id = (grp_id >> IMX_MEDIA_GRP_ID_CSI_BIT) - 1;
 		snprintf(sd_name, sz, "ipu%d_csi%d", ipu_id + 1, id);
 		break;
-	case IMX_MEDIA_GRP_ID_IPU_VDIC:
+	case IMX_MEDIA_GRP_ID_VDIC:
 		snprintf(sd_name, sz, "ipu%d_vdic", ipu_id + 1);
 		break;
-	case IMX_MEDIA_GRP_ID_IPU_IC_PRP:
+	case IMX_MEDIA_GRP_ID_IC_PRP:
 		snprintf(sd_name, sz, "ipu%d_ic_prp", ipu_id + 1);
 		break;
-	case IMX_MEDIA_GRP_ID_IPU_IC_PRPENC:
+	case IMX_MEDIA_GRP_ID_IC_PRPENC:
 		snprintf(sd_name, sz, "ipu%d_ic_prpenc", ipu_id + 1);
 		break;
-	case IMX_MEDIA_GRP_ID_IPU_IC_PRPVF:
+	case IMX_MEDIA_GRP_ID_IC_PRPVF:
 		snprintf(sd_name, sz, "ipu%d_ic_prpvf", ipu_id + 1);
 		break;
 	default:
@@ -737,35 +668,38 @@ void imx_media_grp_id_to_sd_name(char *sd_name, int sz, u32 grp_id, int ipu_id)
 }
 EXPORT_SYMBOL_GPL(imx_media_grp_id_to_sd_name);
 
-struct v4l2_subdev *
-imx_media_find_subdev_by_fwnode(struct imx_media_dev *imxmd,
-				struct fwnode_handle *fwnode)
+struct imx_media_subdev *
+imx_media_find_subdev_by_sd(struct imx_media_dev *imxmd,
+			    struct v4l2_subdev *sd)
 {
-	struct v4l2_subdev *sd;
+	struct imx_media_subdev *imxsd;
+	int i;
 
-	list_for_each_entry(sd, &imxmd->v4l2_dev.subdevs, list) {
-		if (sd->fwnode == fwnode)
-			return sd;
+	for (i = 0; i < imxmd->num_subdevs; i++) {
+		imxsd = &imxmd->subdev[i];
+		if (sd == imxsd->sd)
+			return imxsd;
 	}
 
-	return NULL;
+	return ERR_PTR(-ENODEV);
 }
-EXPORT_SYMBOL_GPL(imx_media_find_subdev_by_fwnode);
+EXPORT_SYMBOL_GPL(imx_media_find_subdev_by_sd);
 
-struct v4l2_subdev *
-imx_media_find_subdev_by_devname(struct imx_media_dev *imxmd,
-				 const char *devname)
+struct imx_media_subdev *
+imx_media_find_subdev_by_id(struct imx_media_dev *imxmd, u32 grp_id)
 {
-	struct v4l2_subdev *sd;
+	struct imx_media_subdev *imxsd;
+	int i;
 
-	list_for_each_entry(sd, &imxmd->v4l2_dev.subdevs, list) {
-		if (!strcmp(devname, dev_name(sd->dev)))
-			return sd;
+	for (i = 0; i < imxmd->num_subdevs; i++) {
+		imxsd = &imxmd->subdev[i];
+		if (imxsd->sd && imxsd->sd->grp_id == grp_id)
+			return imxsd;
 	}
 
-	return NULL;
+	return ERR_PTR(-ENODEV);
 }
-EXPORT_SYMBOL_GPL(imx_media_find_subdev_by_devname);
+EXPORT_SYMBOL_GPL(imx_media_find_subdev_by_id);
 
 /*
  * Adds a video device to the master video device list. This is called by
@@ -774,21 +708,32 @@ EXPORT_SYMBOL_GPL(imx_media_find_subdev_by_devname);
 int imx_media_add_video_device(struct imx_media_dev *imxmd,
 			       struct imx_media_video_dev *vdev)
 {
+	int vdev_idx, ret = 0;
+
 	mutex_lock(&imxmd->mutex);
 
-	list_add_tail(&vdev->list, &imxmd->vdev_list);
+	vdev_idx = imxmd->num_vdevs;
+	if (vdev_idx >= IMX_MEDIA_MAX_VDEVS) {
+		dev_err(imxmd->md.dev,
+			"%s: too many video devices! can't add %s\n",
+			__func__, vdev->vfd->name);
+		ret = -ENOSPC;
+		goto out;
+	}
 
+	imxmd->vdev[vdev_idx] = vdev;
+	imxmd->num_vdevs++;
+out:
 	mutex_unlock(&imxmd->mutex);
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(imx_media_add_video_device);
 
 /*
- * Search upstream/downstream for a subdevice in the current pipeline
+ * Search upstream or downstream for a subdevice in the current pipeline
  * with given grp_id, starting from start_entity. Returns the subdev's
- * source/sink pad that it was reached from. If grp_id is zero, just
- * returns the nearest source/sink pad to start_entity. Must be called
- * with mdev->graph_mutex held.
+ * source/sink pad that it was reached from. Must be called with
+ * mdev->graph_mutex held.
  */
 static struct media_pad *
 find_pipeline_pad(struct imx_media_dev *imxmd,
@@ -811,16 +756,11 @@ find_pipeline_pad(struct imx_media_dev *imxmd,
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
 			continue;
 
-		if (grp_id != 0) {
-			sd = media_entity_to_v4l2_subdev(pad->entity);
-			if (sd->grp_id & grp_id)
-				return pad;
-
-			return find_pipeline_pad(imxmd, pad->entity,
-						 grp_id, upstream);
-		} else {
+		sd = media_entity_to_v4l2_subdev(pad->entity);
+		if (sd->grp_id & grp_id)
 			return pad;
-		}
+
+		return find_pipeline_pad(imxmd, pad->entity, grp_id, upstream);
 	}
 
 	return NULL;
@@ -849,6 +789,7 @@ find_upstream_subdev(struct imx_media_dev *imxmd,
 	return pad ? media_entity_to_v4l2_subdev(pad->entity) : NULL;
 }
 
+
 /*
  * Find the upstream mipi-csi2 virtual channel reached from the given
  * start entity in the current pipeline.
@@ -873,30 +814,11 @@ int imx_media_find_mipi_csi2_channel(struct imx_media_dev *imxmd,
 EXPORT_SYMBOL_GPL(imx_media_find_mipi_csi2_channel);
 
 /*
- * Find a source pad reached upstream from the given start entity in
- * the current pipeline. Must be called with mdev->graph_mutex held.
- */
-struct media_pad *
-imx_media_find_upstream_pad(struct imx_media_dev *imxmd,
-			    struct media_entity *start_entity,
-			    u32 grp_id)
-{
-	struct media_pad *pad;
-
-	pad = find_pipeline_pad(imxmd, start_entity, grp_id, true);
-	if (!pad)
-		return ERR_PTR(-ENODEV);
-
-	return pad;
-}
-EXPORT_SYMBOL_GPL(imx_media_find_upstream_pad);
-
-/*
  * Find a subdev reached upstream from the given start entity in
  * the current pipeline.
  * Must be called with mdev->graph_mutex held.
  */
-struct v4l2_subdev *
+struct imx_media_subdev *
 imx_media_find_upstream_subdev(struct imx_media_dev *imxmd,
 			       struct media_entity *start_entity,
 			       u32 grp_id)
@@ -907,9 +829,32 @@ imx_media_find_upstream_subdev(struct imx_media_dev *imxmd,
 	if (!sd)
 		return ERR_PTR(-ENODEV);
 
-	return sd;
+	return imx_media_find_subdev_by_sd(imxmd, sd);
 }
 EXPORT_SYMBOL_GPL(imx_media_find_upstream_subdev);
+
+struct imx_media_subdev *
+__imx_media_find_sensor(struct imx_media_dev *imxmd,
+			struct media_entity *start_entity)
+{
+	return imx_media_find_upstream_subdev(imxmd, start_entity,
+					      IMX_MEDIA_GRP_ID_SENSOR);
+}
+EXPORT_SYMBOL_GPL(__imx_media_find_sensor);
+
+struct imx_media_subdev *
+imx_media_find_sensor(struct imx_media_dev *imxmd,
+		      struct media_entity *start_entity)
+{
+	struct imx_media_subdev *sensor;
+
+	mutex_lock(&imxmd->md.graph_mutex);
+	sensor = __imx_media_find_sensor(imxmd, start_entity);
+	mutex_unlock(&imxmd->md.graph_mutex);
+
+	return sensor;
+}
+EXPORT_SYMBOL_GPL(imx_media_find_sensor);
 
 /*
  * Turn current pipeline streaming on/off starting from entity.

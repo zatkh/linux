@@ -1,15 +1,24 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Generic FB driver for TFT LCD displays
  *
  * Copyright (C) 2013 Noralf Tronnes
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/vmalloc.h>
-#include <linux/gpio/consumer.h>
+#include <linux/gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/delay.h>
 
@@ -521,7 +530,7 @@ static int flexfb_verify_gpios_dc(struct fbtft_par *par)
 {
 	fbtft_par_dbg(DEBUG_VERIFY_GPIOS, par, "%s()\n", __func__);
 
-	if (!par->gpio.dc) {
+	if (par->gpio.dc < 0) {
 		dev_err(par->info->device,
 			"Missing info about 'dc' gpio. Aborting.\n");
 		return -EINVAL;
@@ -537,22 +546,22 @@ static int flexfb_verify_gpios_db(struct fbtft_par *par)
 
 	fbtft_par_dbg(DEBUG_VERIFY_GPIOS, par, "%s()\n", __func__);
 
-	if (!par->gpio.dc) {
+	if (par->gpio.dc < 0) {
 		dev_err(par->info->device, "Missing info about 'dc' gpio. Aborting.\n");
 		return -EINVAL;
 	}
-	if (!par->gpio.wr) {
+	if (par->gpio.wr < 0) {
 		dev_err(par->info->device, "Missing info about 'wr' gpio. Aborting.\n");
 		return -EINVAL;
 	}
-	if (latched && !par->gpio.latch) {
+	if (latched && (par->gpio.latch < 0)) {
 		dev_err(par->info->device, "Missing info about 'latch' gpio. Aborting.\n");
 		return -EINVAL;
 	}
 	if (latched)
 		num_db = buswidth / 2;
 	for (i = 0; i < num_db; i++) {
-		if (!par->gpio.db[i]) {
+		if (par->gpio.db[i] < 0) {
 			dev_err(par->info->device,
 				"Missing info about 'db%02d' gpio. Aborting.\n",
 				i);
@@ -679,27 +688,22 @@ static int flexfb_probe_common(struct spi_device *sdev,
 			if (par->spi->master->bits_per_word_mask
 			    & SPI_BPW_MASK(9)) {
 				par->spi->bits_per_word = 9;
-				break;
+			} else {
+				dev_warn(dev,
+					"9-bit SPI not available, emulating using 8-bit.\n");
+				/* allocate buffer with room for dc bits */
+				par->extra = devm_kzalloc(par->info->device,
+						par->txbuf.len + (par->txbuf.len / 8) + 8,
+						GFP_KERNEL);
+				if (!par->extra) {
+					ret = -ENOMEM;
+					goto out_release;
+				}
+				par->fbtftops.write = fbtft_write_spi_emulate_9;
 			}
-
-			dev_warn(dev,
-				 "9-bit SPI not available, emulating using 8-bit.\n");
-			/* allocate buffer with room for dc bits */
-			par->extra = devm_kzalloc(par->info->device,
-						  par->txbuf.len
-						  + (par->txbuf.len / 8) + 8,
-						  GFP_KERNEL);
-			if (!par->extra) {
-				ret = -ENOMEM;
-				goto out_release;
-			}
-			par->fbtftops.write = fbtft_write_spi_emulate_9;
-
 			break;
 		default:
-			dev_err(dev,
-				"argument 'buswidth': %d is not supported with SPI.\n",
-				buswidth);
+			dev_err(dev, "argument 'buswidth': %d is not supported with SPI.\n", buswidth);
 			return -EINVAL;
 		}
 	} else {

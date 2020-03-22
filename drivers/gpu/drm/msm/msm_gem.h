@@ -41,8 +41,6 @@ struct msm_gem_vma {
 	uint64_t iova;
 	struct msm_gem_address_space *aspace;
 	struct list_head list;    /* node in msm_gem_object::vmas */
-	bool mapped;
-	int inuse;
 };
 
 struct msm_gem_object {
@@ -93,8 +91,6 @@ struct msm_gem_object {
 	 */
 	struct drm_mm_node *vram_node;
 	struct mutex lock; /* Protects resources associated with bo */
-
-	char name[32]; /* Identifier to print for the debugfs files */
 };
 #define to_msm_bo(x) container_of(x, struct msm_gem_object, base)
 
@@ -142,19 +138,14 @@ void msm_gem_vunmap(struct drm_gem_object *obj, enum msm_gem_lock subclass);
 struct msm_gem_submit {
 	struct drm_device *dev;
 	struct msm_gpu *gpu;
-	struct list_head node;   /* node in ring submit list */
+	struct list_head node;   /* node in gpu submit_list */
 	struct list_head bo_list;
 	struct ww_acquire_ctx ticket;
-	uint32_t seqno;		/* Sequence number of the submit on the ring */
 	struct dma_fence *fence;
-	struct msm_gpu_submitqueue *queue;
 	struct pid *pid;    /* submitting process */
 	bool valid;         /* true if no cmdstream patching needed */
-	bool in_rb;         /* "sudo" mode, copy cmds into RB */
-	struct msm_ringbuffer *ring;
 	unsigned int nr_cmds;
 	unsigned int nr_bos;
-	u32 ident;	   /* A "identifier" for the submit for logging */
 	struct {
 		uint32_t type;
 		uint32_t size;  /* in dwords */

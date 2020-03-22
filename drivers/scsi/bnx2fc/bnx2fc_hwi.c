@@ -1866,6 +1866,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 		rc = -1;
 		goto out;
 	}
+	memset(hba->task_ctx_bd_tbl, 0, PAGE_SIZE);
 
 	/*
 	 * Allocate task_ctx which is an array of pointers pointing to
@@ -1903,6 +1904,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 			rc = -1;
 			goto out3;
 		}
+		memset(hba->task_ctx[i], 0, PAGE_SIZE);
 		addr = (u64)hba->task_ctx_dma[i];
 		task_ctx_bdt->hi = cpu_to_le32((u64)addr >> 32);
 		task_ctx_bdt->lo = cpu_to_le32((u32)addr);
@@ -2031,23 +2033,28 @@ static int bnx2fc_allocate_hash_table(struct bnx2fc_hba *hba)
 	}
 
 	for (i = 0; i < segment_count; ++i) {
-		hba->hash_tbl_segments[i] = dma_alloc_coherent(&hba->pcidev->dev,
-							       BNX2FC_HASH_TBL_CHUNK_SIZE,
-							       &dma_segment_array[i],
-							       GFP_KERNEL);
+		hba->hash_tbl_segments[i] =
+			dma_alloc_coherent(&hba->pcidev->dev,
+					   BNX2FC_HASH_TBL_CHUNK_SIZE,
+					   &dma_segment_array[i],
+					   GFP_KERNEL);
 		if (!hba->hash_tbl_segments[i]) {
 			printk(KERN_ERR PFX "hash segment alloc failed\n");
 			goto cleanup_dma;
 		}
+		memset(hba->hash_tbl_segments[i], 0,
+		       BNX2FC_HASH_TBL_CHUNK_SIZE);
 	}
 
-	hba->hash_tbl_pbl = dma_alloc_coherent(&hba->pcidev->dev, PAGE_SIZE,
+	hba->hash_tbl_pbl = dma_alloc_coherent(&hba->pcidev->dev,
+					       PAGE_SIZE,
 					       &hba->hash_tbl_pbl_dma,
 					       GFP_KERNEL);
 	if (!hba->hash_tbl_pbl) {
 		printk(KERN_ERR PFX "hash table pbl alloc failed\n");
 		goto cleanup_dma;
 	}
+	memset(hba->hash_tbl_pbl, 0, PAGE_SIZE);
 
 	pbl = hba->hash_tbl_pbl;
 	for (i = 0; i < segment_count; ++i) {
@@ -2112,6 +2119,7 @@ int bnx2fc_setup_fw_resc(struct bnx2fc_hba *hba)
 		bnx2fc_free_fw_resc(hba);
 		return -ENOMEM;
 	}
+	memset(hba->t2_hash_tbl_ptr, 0x00, mem_size);
 
 	mem_size = BNX2FC_NUM_MAX_SESS *
 				sizeof(struct fcoe_t2_hash_table_entry);
@@ -2123,6 +2131,7 @@ int bnx2fc_setup_fw_resc(struct bnx2fc_hba *hba)
 		bnx2fc_free_fw_resc(hba);
 		return -ENOMEM;
 	}
+	memset(hba->t2_hash_tbl, 0x00, mem_size);
 	for (i = 0; i < BNX2FC_NUM_MAX_SESS; i++) {
 		addr = (unsigned long) hba->t2_hash_tbl_dma +
 			 ((i+1) * sizeof(struct fcoe_t2_hash_table_entry));
@@ -2139,7 +2148,8 @@ int bnx2fc_setup_fw_resc(struct bnx2fc_hba *hba)
 		return -ENOMEM;
 	}
 
-	hba->stats_buffer = dma_alloc_coherent(&hba->pcidev->dev, PAGE_SIZE,
+	hba->stats_buffer = dma_alloc_coherent(&hba->pcidev->dev,
+					       PAGE_SIZE,
 					       &hba->stats_buf_dma,
 					       GFP_KERNEL);
 	if (!hba->stats_buffer) {
@@ -2147,6 +2157,7 @@ int bnx2fc_setup_fw_resc(struct bnx2fc_hba *hba)
 		bnx2fc_free_fw_resc(hba);
 		return -ENOMEM;
 	}
+	memset(hba->stats_buffer, 0x00, PAGE_SIZE);
 
 	return 0;
 }

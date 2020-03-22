@@ -108,6 +108,7 @@ reqsk_alloc(const struct request_sock_ops *ops, struct sock *sk_listener,
 
 static inline void reqsk_free(struct request_sock *req)
 {
+	/* temporary debugging */
 	WARN_ON_ONCE(refcount_read(&req->rsk_refcnt) != 0);
 
 	req->rsk_ops->destructor(req);
@@ -149,8 +150,6 @@ struct fastopen_queue {
 	spinlock_t	lock;
 	int		qlen;		/* # of pending (TCP_SYN_RECV) reqs */
 	int		max_qlen;	/* != 0 iff TFO is currently enabled */
-
-	struct tcp_fastopen_context __rcu *ctx; /* cipher context for cookie */
 };
 
 /** struct request_sock_queue - queue of request_socks

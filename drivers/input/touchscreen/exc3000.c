@@ -53,9 +53,9 @@ static void exc3000_report_slots(struct input_dev *input,
 	}
 }
 
-static void exc3000_timer(struct timer_list *t)
+static void exc3000_timer(unsigned long d)
 {
-	struct exc3000_data *data = from_timer(data, t, timer);
+	struct exc3000_data *data = (void *)d;
 
 	input_mt_sync_frame(data->input);
 	input_sync(data->input);
@@ -160,7 +160,7 @@ static int exc3000_probe(struct i2c_client *client,
 		return -ENOMEM;
 
 	data->client = client;
-	timer_setup(&data->timer, exc3000_timer, 0);
+	setup_timer(&data->timer, exc3000_timer, (unsigned long)data);
 
 	input = devm_input_allocate_device(&client->dev);
 	if (!input)

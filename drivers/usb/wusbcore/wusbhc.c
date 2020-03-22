@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Wireless USB Host Controller
  * sysfs glue, wusbcore module support and life cycle management
@@ -6,6 +5,21 @@
  *
  * Copyright (C) 2005-2006 Intel Corporation
  * Inaky Perez-Gonzalez <inaky.perez-gonzalez@intel.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
  *
  * Creation/destruction of wusbhc is split in two parts; that that
  * doesn't require the HCD to be added (wusbhc_{create,destroy}) and
@@ -80,13 +94,17 @@ static ssize_t wusb_chid_show(struct device *dev,
 {
 	struct wusbhc *wusbhc = usbhc_dev_to_wusbhc(dev);
 	const struct wusb_ckhdid *chid;
+	ssize_t result = 0;
 
 	if (wusbhc->wuie_host_info != NULL)
 		chid = &wusbhc->wuie_host_info->CHID;
 	else
 		chid = &wusb_ckhdid_zero;
 
-	return sprintf(buf, "%16ph\n", chid->data);
+	result += ckhdid_printf(buf, PAGE_SIZE, chid);
+	result += sprintf(buf + result, "\n");
+
+	return result;
 }
 
 /*

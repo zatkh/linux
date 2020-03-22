@@ -15,8 +15,6 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/rpmsg.h>
-#include <linux/of.h>
-
 #include <linux/soc/qcom/wcnss_ctrl.h>
 #include <linux/platform_device.h>
 
@@ -28,6 +26,7 @@
 struct btqcomsmd {
 	struct hci_dev *hdev;
 
+	bdaddr_t bdaddr;
 	struct rpmsg_endpoint *acl_channel;
 	struct rpmsg_endpoint *cmd_channel;
 };
@@ -64,7 +63,6 @@ static int btqcomsmd_cmd_callback(struct rpmsg_device *rpdev, void *data,
 {
 	struct btqcomsmd *btq = priv;
 
-	btq->hdev->stat.byte_rx += count;
 	return btqcomsmd_recv(btq->hdev, HCI_EVENT_PKT, data, count);
 }
 
@@ -76,21 +74,12 @@ static int btqcomsmd_send(struct hci_dev *hdev, struct sk_buff *skb)
 	switch (hci_skb_pkt_type(skb)) {
 	case HCI_ACLDATA_PKT:
 		ret = rpmsg_send(btq->acl_channel, skb->data, skb->len);
-		if (ret) {
-			hdev->stat.err_tx++;
-			break;
-		}
 		hdev->stat.acl_tx++;
 		hdev->stat.byte_tx += skb->len;
 		break;
 	case HCI_COMMAND_PKT:
 		ret = rpmsg_send(btq->cmd_channel, skb->data, skb->len);
-		if (ret) {
-			hdev->stat.err_tx++;
-			break;
-		}
 		hdev->stat.cmd_tx++;
-		hdev->stat.byte_tx += skb->len;
 		break;
 	default:
 		ret = -EILSEQ;
@@ -115,17 +104,32 @@ static int btqcomsmd_close(struct hci_dev *hdev)
 
 static int btqcomsmd_setup(struct hci_dev *hdev)
 {
+	struct btqcomsmd *btq = hci_get_drvdata(hdev);
 	struct sk_buff *skb;
+	int err;
 
 	skb = __hci_cmd_sync(hdev, HCI_OP_RESET, 0, NULL, HCI_INIT_TIMEOUT);
 	if (IS_ERR(skb))
 		return PTR_ERR(skb);
 	kfree_skb(skb);
 
-	/* Devices do not have persistent storage for BD address. Retrieve
-	 * it from the firmware node property.
+	/* Devices do not have persistent storage for BD address. If no
+	 * BD address has been retrieved during probe, mark the device
+	 * as having an invalid BD address.
 	 */
-	set_bit(HCI_QUIRK_USE_BDADDR_PROPERTY, &hdev->quirks);
+	if (!bacmp(&btq->bdaddr, BDADDR_ANY)) {
+		set_bit(HCI_QUIRK_INVALID_BDADDR, &hdev->quirks);
+		return 0;
+	}
+
+	/* When setting a configured BD address fails, mark the device
+	 * as having an invalid BD address.
+	 */
+	err = qca_set_bdaddr_rome(hdev, &btq->bdaddr);
+	if (err) {
+		set_bit(HCI_QUIRK_INVALID_BDADDR, &hdev->quirks);
+		return 0;
+	}
 
 	return 0;
 }

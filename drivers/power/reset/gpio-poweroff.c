@@ -19,15 +19,11 @@
 #include <linux/of_platform.h>
 #include <linux/module.h>
 
-#define DEFAULT_TIMEOUT_MS 3000
 /*
  * Hold configuration here, cannot be more than one instance of the driver
  * since pm_power_off itself is global.
  */
 static struct gpio_desc *reset_gpio;
-static u32 timeout = DEFAULT_TIMEOUT_MS;
-static u32 active_delay = 100;
-static u32 inactive_delay = 100;
 
 static void gpio_poweroff_do_poweroff(void)
 {
@@ -35,17 +31,16 @@ static void gpio_poweroff_do_poweroff(void)
 
 	/* drive it active, also inactive->active edge */
 	gpiod_direction_output(reset_gpio, 1);
-	mdelay(active_delay);
-
+	mdelay(100);
 	/* drive inactive, also active->inactive edge */
-	gpiod_set_value_cansleep(reset_gpio, 0);
-	mdelay(inactive_delay);
+	gpiod_set_value(reset_gpio, 0);
+	mdelay(100);
 
 	/* drive it active, also inactive->active edge */
-	gpiod_set_value_cansleep(reset_gpio, 1);
+	gpiod_set_value(reset_gpio, 1);
 
 	/* give it some time */
-	mdelay(timeout);
+	mdelay(3000);
 
 	WARN_ON(1);
 }
@@ -54,29 +49,33 @@ static int gpio_poweroff_probe(struct platform_device *pdev)
 {
 	bool input = false;
 	enum gpiod_flags flags;
+	bool force = false;
+	bool export = false;
 
 	/* If a pm_power_off function has already been added, leave it alone */
-	if (pm_power_off != NULL) {
+	force = of_property_read_bool(pdev->dev.of_node, "force");
+	if (!force && (pm_power_off != NULL)) {
 		dev_err(&pdev->dev,
 			"%s: pm_power_off function already registered",
 		       __func__);
 		return -EBUSY;
 	}
 
-	input = device_property_read_bool(&pdev->dev, "input");
+	input = of_property_read_bool(pdev->dev.of_node, "input");
 	if (input)
 		flags = GPIOD_IN;
 	else
 		flags = GPIOD_OUT_LOW;
 
-	device_property_read_u32(&pdev->dev, "active-delay-ms", &active_delay);
-	device_property_read_u32(&pdev->dev, "inactive-delay-ms",
-				 &inactive_delay);
-	device_property_read_u32(&pdev->dev, "timeout-ms", &timeout);
-
 	reset_gpio = devm_gpiod_get(&pdev->dev, NULL, flags);
 	if (IS_ERR(reset_gpio))
 		return PTR_ERR(reset_gpio);
+
+	export = of_property_read_bool(pdev->dev.of_node, "export");
+	if (export) {
+		gpiod_export(reset_gpio, false);
+		gpiod_export_link(&pdev->dev, "poweroff-gpio", reset_gpio);
+	}
 
 	pm_power_off = &gpio_poweroff_do_poweroff;
 	return 0;
@@ -86,6 +85,8 @@ static int gpio_poweroff_remove(struct platform_device *pdev)
 {
 	if (pm_power_off == &gpio_poweroff_do_poweroff)
 		pm_power_off = NULL;
+
+	gpiod_unexport(reset_gpio);
 
 	return 0;
 }

@@ -732,7 +732,7 @@ static void snd_es1371_codec_wait(struct snd_ac97 *ac97)
 
 static void snd_es1371_adc_rate(struct ensoniq * ensoniq, unsigned int rate)
 {
-	unsigned int n, truncm, freq;
+	unsigned int n, truncm, freq, result;
 
 	mutex_lock(&ensoniq->src_mutex);
 	n = rate / 3000;
@@ -740,6 +740,7 @@ static void snd_es1371_adc_rate(struct ensoniq * ensoniq, unsigned int rate)
 		n--;
 	truncm = (21 * n - 1) | 1;
 	freq = ((48000UL << 15) / rate) * n;
+	result = (48000UL << 15) / (freq / n);
 	if (rate >= 24000) {
 		if (truncm > 239)
 			truncm = 239;
@@ -1902,8 +1903,10 @@ static void snd_ensoniq_proc_read(struct snd_info_entry *entry,
 
 static void snd_ensoniq_proc_init(struct ensoniq *ensoniq)
 {
-	snd_card_ro_proc_new(ensoniq->card, "audiopci", ensoniq,
-			     snd_ensoniq_proc_read);
+	struct snd_info_entry *entry;
+
+	if (! snd_card_proc_new(ensoniq->card, "audiopci", &entry))
+		snd_info_set_text_ops(entry, ensoniq, snd_ensoniq_proc_read);
 }
 
 /*
@@ -2035,6 +2038,9 @@ static int snd_ensoniq_suspend(struct device *dev)
 	
 	snd_power_change_state(card, SNDRV_CTL_POWER_D3hot);
 
+	snd_pcm_suspend_all(ensoniq->pcm1);
+	snd_pcm_suspend_all(ensoniq->pcm2);
+	
 #ifdef CHIP1371	
 	snd_ac97_suspend(ensoniq->u.es1371.ac97);
 #else
@@ -2387,7 +2393,7 @@ static int snd_audiopci_probe(struct pci_dev *pci,
 	static int dev;
 	struct snd_card *card;
 	struct ensoniq *ensoniq;
-	int err;
+	int err, pcm_devs[2];
 
 	if (dev >= SNDRV_CARDS)
 		return -ENODEV;
@@ -2407,6 +2413,7 @@ static int snd_audiopci_probe(struct pci_dev *pci,
 	}
 	card->private_data = ensoniq;
 
+	pcm_devs[0] = 0; pcm_devs[1] = 1;
 #ifdef CHIP1370
 	if ((err = snd_ensoniq_1370_mixer(ensoniq)) < 0) {
 		snd_card_free(card);

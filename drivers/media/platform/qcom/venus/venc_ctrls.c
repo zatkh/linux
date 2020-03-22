@@ -30,60 +30,10 @@
 #define AT_SLICE_BOUNDARY	\
 	V4L2_MPEG_VIDEO_H264_LOOP_FILTER_MODE_DISABLED_AT_SLICE_BOUNDARY
 
-static int venc_calc_bpframes(u32 gop_size, u32 conseq_b, u32 *bf, u32 *pf)
-{
-	u32 half = (gop_size - 1) >> 1;
-	u32 b, p, ratio;
-	bool found = false;
-
-	if (!gop_size)
-		return -EINVAL;
-
-	*bf = *pf = 0;
-
-	if (!conseq_b) {
-		*pf = gop_size -  1;
-		return 0;
-	}
-
-	b = p = half;
-
-	for (; b <= gop_size - 1; b++, p--) {
-		if (b % p)
-			continue;
-
-		ratio = b / p;
-
-		if (ratio == conseq_b) {
-			found = true;
-			break;
-		}
-
-		if (ratio > conseq_b)
-			break;
-	}
-
-	if (!found)
-		return -EINVAL;
-
-	if (b + p + 1 != gop_size)
-		return -EINVAL;
-
-	*bf = b;
-	*pf = p;
-
-	return 0;
-}
-
 static int venc_op_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct venus_inst *inst = ctrl_to_inst(ctrl);
 	struct venc_controls *ctr = &inst->controls.enc;
-	struct hfi_enable en = { .enable = 1 };
-	struct hfi_bitrate brate;
-	u32 bframes;
-	u32 ptype;
-	int ret;
 
 	switch (ctrl->id) {
 	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
@@ -91,19 +41,6 @@ static int venc_op_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_MPEG_VIDEO_BITRATE:
 		ctr->bitrate = ctrl->val;
-		mutex_lock(&inst->lock);
-		if (inst->streamon_out && inst->streamon_cap) {
-			ptype = HFI_PROPERTY_CONFIG_VENC_TARGET_BITRATE;
-			brate.bitrate = ctr->bitrate;
-			brate.layer_id = 0;
-
-			ret = hfi_session_set_property(inst, ptype, &brate);
-			if (ret) {
-				mutex_unlock(&inst->lock);
-				return ret;
-			}
-		}
-		mutex_unlock(&inst->lock);
 		break;
 	case V4L2_CID_MPEG_VIDEO_BITRATE_PEAK:
 		ctr->bitrate_peak = ctrl->val;
@@ -117,7 +54,7 @@ static int venc_op_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_H264_PROFILE:
 		ctr->profile.h264 = ctrl->val;
 		break;
-	case V4L2_CID_MPEG_VIDEO_VP8_PROFILE:
+	case V4L2_CID_MPEG_VIDEO_VPX_PROFILE:
 		ctr->profile.vpx = ctrl->val;
 		break;
 	case V4L2_CID_MPEG_VIDEO_MPEG4_LEVEL:
@@ -165,11 +102,6 @@ static int venc_op_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_CYCLIC_INTRA_REFRESH_MB:
 		break;
 	case V4L2_CID_MPEG_VIDEO_GOP_SIZE:
-		ret = venc_calc_bpframes(ctrl->val, ctr->num_b_frames, &bframes,
-					 &ctr->num_p_frames);
-		if (ret)
-			return ret;
-
 		ctr->gop_size = ctrl->val;
 		break;
 	case V4L2_CID_MPEG_VIDEO_H264_I_PERIOD:
@@ -182,25 +114,7 @@ static int venc_op_s_ctrl(struct v4l2_ctrl *ctrl)
 		ctr->vp8_max_qp = ctrl->val;
 		break;
 	case V4L2_CID_MPEG_VIDEO_B_FRAMES:
-		ret = venc_calc_bpframes(ctr->gop_size, ctrl->val, &bframes,
-					 &ctr->num_p_frames);
-		if (ret)
-			return ret;
-
-		ctr->num_b_frames = bframes;
-		break;
-	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
-		mutex_lock(&inst->lock);
-		if (inst->streamon_out && inst->streamon_cap) {
-			ptype = HFI_PROPERTY_CONFIG_VENC_REQUEST_SYNC_FRAME;
-			ret = hfi_session_set_property(inst, ptype, &en);
-
-			if (ret) {
-				mutex_unlock(&inst->lock);
-				return ret;
-			}
-		}
-		mutex_unlock(&inst->lock);
+		ctr->num_b_frames = ctrl->val;
 		break;
 	default:
 		return -EINVAL;
@@ -217,7 +131,7 @@ int venc_ctrl_init(struct venus_inst *inst)
 {
 	int ret;
 
-	ret = v4l2_ctrl_handler_init(&inst->ctrl_handler, 28);
+	ret = v4l2_ctrl_handler_init(&inst->ctrl_handler, 27);
 	if (ret)
 		return ret;
 
@@ -277,11 +191,6 @@ int venc_ctrl_init(struct venus_inst *inst)
 		V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES,
 		0, V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE);
 
-	v4l2_ctrl_new_std_menu(&inst->ctrl_handler, &venc_ctrl_ops,
-		V4L2_CID_MPEG_VIDEO_VP8_PROFILE,
-		V4L2_MPEG_VIDEO_VP8_PROFILE_3,
-		0, V4L2_MPEG_VIDEO_VP8_PROFILE_0);
-
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_BITRATE, BITRATE_MIN, BITRATE_MAX,
 		BITRATE_STEP, BITRATE_DEFAULT);
@@ -289,6 +198,9 @@ int venc_ctrl_init(struct venus_inst *inst)
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_BITRATE_PEAK, BITRATE_MIN, BITRATE_MAX,
 		BITRATE_STEP, BITRATE_DEFAULT_PEAK);
+
+	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
+		V4L2_CID_MPEG_VIDEO_VPX_PROFILE, 0, 3, 1, 0);
 
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_H264_I_FRAME_QP, 1, 51, 1, 26);
@@ -324,7 +236,7 @@ int venc_ctrl_init(struct venus_inst *inst)
 		0, INTRA_REFRESH_MBS_MAX, 1, 0);
 
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
-		V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0, (1 << 16) - 1, 1, 30);
+		V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0, (1 << 16) - 1, 1, 12);
 
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_VPX_MIN_QP, 1, 128, 1, 1);
@@ -337,9 +249,6 @@ int venc_ctrl_init(struct venus_inst *inst)
 
 	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
 		V4L2_CID_MPEG_VIDEO_H264_I_PERIOD, 0, (1 << 16) - 1, 1, 0);
-
-	v4l2_ctrl_new_std(&inst->ctrl_handler, &venc_ctrl_ops,
-			  V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME, 0, 0, 0, 0);
 
 	ret = inst->ctrl_handler.error;
 	if (ret)

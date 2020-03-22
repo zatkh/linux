@@ -111,6 +111,12 @@ void mmc_retune_hold(struct mmc_host *host)
 	host->hold_retune += 1;
 }
 
+void mmc_retune_hold_now(struct mmc_host *host)
+{
+	host->retune_now = 0;
+	host->hold_retune += 1;
+}
+
 void mmc_retune_release(struct mmc_host *host)
 {
 	if (host->hold_retune)
@@ -118,7 +124,6 @@ void mmc_retune_release(struct mmc_host *host)
 	else
 		WARN_ON(1);
 }
-EXPORT_SYMBOL(mmc_retune_release);
 
 int mmc_retune(struct mmc_host *host)
 {
@@ -143,6 +148,9 @@ int mmc_retune(struct mmc_host *host)
 			goto out;
 
 		return_to_hs400 = true;
+
+		if (host->ops->prepare_hs400_tuning)
+			host->ops->prepare_hs400_tuning(host, &host->ios);
 	}
 
 	err = mmc_execute_tuning(host->card);
@@ -157,9 +165,9 @@ out:
 	return err;
 }
 
-static void mmc_retune_timer(struct timer_list *t)
+static void mmc_retune_timer(unsigned long data)
 {
-	struct mmc_host *host = from_timer(host, t, retune_timer);
+	struct mmc_host *host = (struct mmc_host *)data;
 
 	mmc_retune_needed(host);
 }
@@ -176,7 +184,7 @@ static void mmc_retune_timer(struct timer_list *t)
 int mmc_of_parse(struct mmc_host *host)
 {
 	struct device *dev = host->parent;
-	u32 bus_width, drv_type, cd_debounce_delay_ms;
+	u32 bus_width;
 	int ret;
 	bool cd_cap_invert, cd_gpio_invert = false;
 	bool ro_cap_invert, ro_gpio_invert = false;
@@ -194,7 +202,7 @@ int mmc_of_parse(struct mmc_host *host)
 	switch (bus_width) {
 	case 8:
 		host->caps |= MMC_CAP_8_BIT_DATA;
-		/* fall through - Hosts capable of 8-bit can also do 4 bits */
+		/* Hosts capable of 8-bit transfers can also do 4 bits */
 	case 4:
 		host->caps |= MMC_CAP_4_BIT_DATA;
 		break;
@@ -227,16 +235,11 @@ int mmc_of_parse(struct mmc_host *host)
 	} else {
 		cd_cap_invert = device_property_read_bool(dev, "cd-inverted");
 
-		if (device_property_read_u32(dev, "cd-debounce-delay-ms",
-					     &cd_debounce_delay_ms))
-			cd_debounce_delay_ms = 200;
-
 		if (device_property_read_bool(dev, "broken-cd"))
 			host->caps |= MMC_CAP_NEEDS_POLL;
 
-		ret = mmc_gpiod_request_cd(host, "cd", 0, false,
-					   cd_debounce_delay_ms * 1000,
-					   &cd_gpio_invert);
+		ret = mmc_gpiod_request_cd(host, "cd", 0, true,
+					   0, &cd_gpio_invert);
 		if (!ret)
 			dev_info(host->parent, "Got CD GPIO\n");
 		else if (ret != -ENOENT && ret != -ENOSYS)
@@ -260,7 +263,7 @@ int mmc_of_parse(struct mmc_host *host)
 	/* Parse Write Protection */
 	ro_cap_invert = device_property_read_bool(dev, "wp-inverted");
 
-	ret = mmc_gpiod_request_ro(host, "wp", 0, 0, &ro_gpio_invert);
+	ret = mmc_gpiod_request_ro(host, "wp", 0, false, 0, &ro_gpio_invert);
 	if (!ret)
 		dev_info(host->parent, "Got WP GPIO\n");
 	else if (ret != -ENOENT && ret != -ENOSYS)
@@ -323,15 +326,6 @@ int mmc_of_parse(struct mmc_host *host)
 	if (device_property_read_bool(dev, "no-mmc"))
 		host->caps2 |= MMC_CAP2_NO_MMC;
 
-	/* Must be after "non-removable" check */
-	if (device_property_read_u32(dev, "fixed-emmc-driver-type", &drv_type) == 0) {
-		if (host->caps & MMC_CAP_NONREMOVABLE)
-			host->fixed_drv_type = drv_type;
-		else
-			dev_err(host->parent,
-				"can't use fixed driver type, media is removable\n");
-	}
-
 	host->dsr_req = !device_property_read_u32(dev, "dsr", &host->dsr);
 	if (host->dsr_req && (host->dsr & ~0xffff)) {
 		dev_err(host->parent,
@@ -340,57 +334,10 @@ int mmc_of_parse(struct mmc_host *host)
 		host->dsr_req = 0;
 	}
 
-	device_property_read_u32(dev, "post-power-on-delay-ms",
-				 &host->ios.power_delay_ms);
-
 	return mmc_pwrseq_alloc(host);
 }
 
 EXPORT_SYMBOL(mmc_of_parse);
-
-/**
- * mmc_of_parse_voltage - return mask of supported voltages
- * @np: The device node need to be parsed.
- * @mask: mask of voltages available for MMC/SD/SDIO
- *
- * Parse the "voltage-ranges" DT property, returning zero if it is not
- * found, negative errno if the voltage-range specification is invalid,
- * or one if the voltage-range is specified and successfully parsed.
- */
-int mmc_of_parse_voltage(struct device_node *np, u32 *mask)
-{
-	const u32 *voltage_ranges;
-	int num_ranges, i;
-
-	voltage_ranges = of_get_property(np, "voltage-ranges", &num_ranges);
-	num_ranges = num_ranges / sizeof(*voltage_ranges) / 2;
-	if (!voltage_ranges) {
-		pr_debug("%pOF: voltage-ranges unspecified\n", np);
-		return 0;
-	}
-	if (!num_ranges) {
-		pr_err("%pOF: voltage-ranges empty\n", np);
-		return -EINVAL;
-	}
-
-	for (i = 0; i < num_ranges; i++) {
-		const int j = i * 2;
-		u32 ocr_mask;
-
-		ocr_mask = mmc_vddrange_to_ocrmask(
-				be32_to_cpu(voltage_ranges[j]),
-				be32_to_cpu(voltage_ranges[j + 1]));
-		if (!ocr_mask) {
-			pr_err("%pOF: voltage-range #%d is invalid\n",
-				np, i);
-			return -EINVAL;
-		}
-		*mask |= ocr_mask;
-	}
-
-	return 1;
-}
-EXPORT_SYMBOL(mmc_of_parse_voltage);
 
 /**
  *	mmc_alloc_host - initialise the per-host structure.
@@ -403,15 +350,30 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 {
 	int err;
 	struct mmc_host *host;
+	int id;
 
 	host = kzalloc(sizeof(struct mmc_host) + extra, GFP_KERNEL);
 	if (!host)
 		return NULL;
 
+	/* If OF aliases exist, start dynamic assignment after highest */
+	id = of_alias_get_highest_id("mmc");
+	id = (id < 0) ? 0 : id + 1;
+
+	/* If this devices has OF node, maybe it has an alias */
+	if (dev->of_node) {
+		int of_id = of_alias_get_id(dev->of_node, "mmc");
+
+		if (of_id < 0)
+			dev_warn(dev, "/aliases ID not available\n");
+		else
+			id = of_id;
+	}
+
 	/* scanning will be enabled when we're ready */
 	host->rescan_disable = 1;
 
-	err = ida_simple_get(&mmc_host_ida, 0, 0, GFP_KERNEL);
+	err = ida_simple_get(&mmc_host_ida, id, 0, GFP_KERNEL);
 	if (err < 0) {
 		kfree(host);
 		return NULL;
@@ -438,7 +400,7 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	init_waitqueue_head(&host->wq);
 	INIT_DELAYED_WORK(&host->detect, mmc_rescan);
 	INIT_DELAYED_WORK(&host->sdio_irq_work, sdio_irq_work);
-	timer_setup(&host->retune_timer, mmc_retune_timer, 0);
+	setup_timer(&host->retune_timer, mmc_retune_timer, (unsigned long)host);
 
 	/*
 	 * By default, hosts do not support SGIO or large requests.
@@ -450,9 +412,6 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	host->max_req_size = PAGE_SIZE;
 	host->max_blk_size = 512;
 	host->max_blk_count = PAGE_SIZE / 512;
-
-	host->fixed_drv_type = -EINVAL;
-	host->ios.power_delay_ms = 10;
 
 	return host;
 }

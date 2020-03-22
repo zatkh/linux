@@ -44,27 +44,19 @@ int __cifs_calc_signature(struct smb_rqst *rqst,
 	int rc;
 	struct kvec *iov = rqst->rq_iov;
 	int n_vec = rqst->rq_nvec;
-	int is_smb2 = server->vals->header_preamble_size == 0;
 
-	/* iov[0] is actual data and not the rfc1002 length for SMB2+ */
-	if (is_smb2) {
-		if (iov[0].iov_len <= 4)
-			return -EIO;
-		i = 0;
-	} else {
-		if (n_vec < 2 || iov[0].iov_len != 4)
-			return -EIO;
-		i = 1; /* skip rfc1002 length */
-	}
+	if (n_vec < 2 || iov[0].iov_len != 4)
+		return -EIO;
 
-	for (; i < n_vec; i++) {
+	for (i = 1; i < n_vec; i++) {
 		if (iov[i].iov_len == 0)
 			continue;
 		if (iov[i].iov_base == NULL) {
 			cifs_dbg(VFS, "null iovec entry\n");
 			return -EIO;
 		}
-
+		if (i == 1 && iov[1].iov_len <= 4)
+			break; /* nothing to sign or corrupt header */
 		rc = crypto_shash_update(shash,
 					 iov[i].iov_base, iov[i].iov_len);
 		if (rc) {
@@ -76,20 +68,13 @@ int __cifs_calc_signature(struct smb_rqst *rqst,
 
 	/* now hash over the rq_pages array */
 	for (i = 0; i < rqst->rq_npages; i++) {
-		void *kaddr;
-		unsigned int len, offset;
+		void *kaddr = kmap(rqst->rq_pages[i]);
+		size_t len = rqst->rq_pagesz;
 
-		rqst_page_get_length(rqst, i, &len, &offset);
+		if (i == rqst->rq_npages - 1)
+			len = rqst->rq_tailsz;
 
-		kaddr = (char *) kmap(rqst->rq_pages[i]) + offset;
-
-		rc = crypto_shash_update(shash, kaddr, len);
-		if (rc) {
-			cifs_dbg(VFS, "%s: Could not update with payload\n",
-				 __func__);
-			kunmap(rqst->rq_pages[i]);
-			return rc;
-		}
+		crypto_shash_update(shash, kaddr, len);
 
 		kunmap(rqst->rq_pages[i]);
 	}
@@ -224,7 +209,7 @@ int cifs_verify_signature(struct smb_rqst *rqst,
 	if (cifs_pdu->Command == SMB_COM_LOCKING_ANDX) {
 		struct smb_com_lock_req *pSMB =
 			(struct smb_com_lock_req *)cifs_pdu;
-		if (pSMB->LockType & LOCKING_ANDX_OPLOCK_RELEASE)
+	    if (pSMB->LockType & LOCKING_ANDX_OPLOCK_RELEASE)
 			return 0;
 	}
 
@@ -304,17 +289,12 @@ int setup_ntlm_response(struct cifs_ses *ses, const struct nls_table *nls_cp)
 int calc_lanman_hash(const char *password, const char *cryptkey, bool encrypt,
 			char *lnm_session_key)
 {
-	int i, len;
+	int i;
 	int rc;
 	char password_with_pad[CIFS_ENCPWD_SIZE] = {0};
 
-	if (password) {
-		for (len = 0; len < CIFS_ENCPWD_SIZE; len++)
-			if (!password[len])
-				break;
-
-		memcpy(password_with_pad, password, len);
-	}
+	if (password)
+		strncpy(password_with_pad, password, CIFS_ENCPWD_SIZE);
 
 	if (!encrypt && global_secflags & CIFSSEC_MAY_PLNTXT) {
 		memcpy(lnm_session_key, password_with_pad,
@@ -463,7 +443,7 @@ find_timestamp(struct cifs_ses *ses)
 	unsigned char *blobptr;
 	unsigned char *blobend;
 	struct ntlmssp2_name *attrptr;
-	struct timespec64 ts;
+	struct timespec ts;
 
 	if (!ses->auth_key.len || !ses->auth_key.response)
 		return 0;
@@ -488,7 +468,7 @@ find_timestamp(struct cifs_ses *ses)
 		blobptr += attrsize; /* advance attr value */
 	}
 
-	ktime_get_real_ts64(&ts);
+	ktime_get_real_ts(&ts);
 	return cpu_to_le64(cifs_UnixTimeToNT(ts));
 }
 

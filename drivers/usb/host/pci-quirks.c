@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * This file contains code to reset and initialize USB host controllers.
  * Some of it includes work-arounds for PCI hardware and BIOS quirks.
@@ -783,9 +782,15 @@ static void quirk_usb_handoff_ohci(struct pci_dev *pdev)
 	/* disable interrupts */
 	writel((u32) ~0, base + OHCI_INTRDISABLE);
 
-	/* Go into the USB_RESET state, preserving RWC (and possibly IR) */
-	writel(control & OHCI_CTRL_MASK, base + OHCI_CONTROL);
-	readl(base + OHCI_CONTROL);
+	/* Reset the USB bus, if the controller isn't already in RESET */
+	if (control & OHCI_HCFS) {
+		/* Go into RESET, preserving RWC (and possibly IR) */
+		writel(control & OHCI_CTRL_MASK, base + OHCI_CONTROL);
+		readl(base + OHCI_CONTROL);
+
+		/* drive bus reset for at least 50 ms (7.1.7.5) */
+		msleep(50);
+	}
 
 	/* software reset of the controller, preserving HcFmInterval */
 	if (!no_fminterval)
@@ -945,7 +950,7 @@ static void quirk_usb_disable_ehci(struct pci_dev *pdev)
 			ehci_bios_handoff(pdev, op_reg_base, cap, offset);
 			break;
 		case 0: /* Illegal reserved cap, set cap=0 so we exit */
-			cap = 0; /* fall through */
+			cap = 0; /* then fallthrough... */
 		default:
 			dev_warn(&pdev->dev,
 				 "EHCI: unrecognized capability %02x\n",
@@ -1262,3 +1267,23 @@ static void quirk_usb_early_handoff(struct pci_dev *pdev)
 }
 DECLARE_PCI_FIXUP_CLASS_FINAL(PCI_ANY_ID, PCI_ANY_ID,
 			PCI_CLASS_SERIAL_USB, 8, quirk_usb_early_handoff);
+
+bool usb_xhci_needs_pci_reset(struct pci_dev *pdev)
+{
+	/*
+	 * Our dear uPD72020{1,2} friend only partially resets when
+	 * asked to via the XHCI interface, and may end up doing DMA
+	 * at the wrong addresses, as it keeps the top 32bit of some
+	 * addresses from its previous programming under obscure
+	 * circumstances.
+	 * Give it a good wack at probe time. Unfortunately, this
+	 * needs to happen before we've had a chance to discover any
+	 * quirk, or the system will be in a rather bad state.
+	 */
+	if (pdev->vendor == PCI_VENDOR_ID_RENESAS &&
+	    (pdev->device == 0x0014 || pdev->device == 0x0015))
+		return true;
+
+	return false;
+}
+EXPORT_SYMBOL_GPL(usb_xhci_needs_pci_reset);

@@ -48,7 +48,7 @@
 static DEFINE_IDA(platform_omap_ssi_ida);
 
 #ifdef CONFIG_DEBUG_FS
-static int ssi_regs_show(struct seq_file *m, void *p __maybe_unused)
+static int ssi_debug_show(struct seq_file *m, void *p __maybe_unused)
 {
 	struct hsi_controller *ssi = m->private;
 	struct omap_ssi_controller *omap_ssi = hsi_controller_drvdata(ssi);
@@ -63,7 +63,7 @@ static int ssi_regs_show(struct seq_file *m, void *p __maybe_unused)
 	return 0;
 }
 
-static int ssi_gdd_regs_show(struct seq_file *m, void *p __maybe_unused)
+static int ssi_debug_gdd_show(struct seq_file *m, void *p __maybe_unused)
 {
 	struct hsi_controller *ssi = m->private;
 	struct omap_ssi_controller *omap_ssi = hsi_controller_drvdata(ssi);
@@ -117,8 +117,29 @@ static int ssi_gdd_regs_show(struct seq_file *m, void *p __maybe_unused)
 	return 0;
 }
 
-DEFINE_SHOW_ATTRIBUTE(ssi_regs);
-DEFINE_SHOW_ATTRIBUTE(ssi_gdd_regs);
+static int ssi_regs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ssi_debug_show, inode->i_private);
+}
+
+static int ssi_gdd_regs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ssi_debug_gdd_show, inode->i_private);
+}
+
+static const struct file_operations ssi_regs_fops = {
+	.open		= ssi_regs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static const struct file_operations ssi_gdd_regs_fops = {
+	.open		= ssi_gdd_regs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int ssi_debug_add_ctrl(struct hsi_controller *ssi)
 {
@@ -313,7 +334,7 @@ static int ssi_clk_event(struct notifier_block *nb, unsigned long event,
 	case POST_RATE_CHANGE:
 		dev_dbg(&ssi->device, "post rate change (%lu -> %lu)\n",
 			clk_data->old_rate, clk_data->new_rate);
-		omap_ssi->fck_rate = DIV_ROUND_CLOSEST(clk_data->new_rate, 1000); /* kHz */
+		omap_ssi->fck_rate = DIV_ROUND_CLOSEST(clk_data->new_rate, 1000); /* KHz */
 
 		for (i = 0; i < ssi->num_ports; i++) {
 			omap_port = omap_ssi->port[i];
@@ -446,9 +467,9 @@ static int ssi_hw_init(struct hsi_controller *ssi)
 	}
 	/* Resetting GDD */
 	writel_relaxed(SSI_SWRESET, omap_ssi->gdd + SSI_GDD_GRST_REG);
-	/* Get FCK rate in kHz */
+	/* Get FCK rate in KHz */
 	omap_ssi->fck_rate = DIV_ROUND_CLOSEST(ssi_get_clk_rate(ssi), 1000);
-	dev_dbg(&ssi->device, "SSI fck rate %lu kHz\n", omap_ssi->fck_rate);
+	dev_dbg(&ssi->device, "SSI fck rate %lu KHz\n", omap_ssi->fck_rate);
 
 	writel_relaxed(SSI_CLK_AUTOGATING_ON, omap_ssi->sys + SSI_GDD_GCR_REG);
 	omap_ssi->gdd_gcr = SSI_CLK_AUTOGATING_ON;

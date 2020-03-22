@@ -8,7 +8,7 @@
  * and the first 5.5 bytes of the IPv6 addresses are the same (in this example
  * that means both hosts are in the same datacenter).
  *
- * Use "bpftool cgroup attach $cg sock_ops $prog" to load this BPF program.
+ * Use load_sock_ops to load this BPF program.
  */
 
 #include <uapi/linux/bpf.h>
@@ -38,10 +38,8 @@ int bpf_synrto(struct bpf_sock_ops *skops)
 	 * if neither port numberis 55601
 	 */
 	if (bpf_ntohl(skops->remote_port) != 55601 &&
-	    skops->local_port != 55601) {
-		skops->reply = -1;
-		return 1;
-	}
+	    skops->local_port != 55601)
+		return -1;
 
 	op = (int) skops->op;
 

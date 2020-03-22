@@ -2,13 +2,13 @@
 #ifndef __PERF_CALLCHAIN_H
 #define __PERF_CALLCHAIN_H
 
+#include "../perf.h"
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include "event.h"
-#include "map_symbol.h"
+#include "map.h"
+#include "symbol.h"
 #include "branch.h"
-
-struct map;
 
 #define HELP_PAD "\t\t\t\t"
 
@@ -118,14 +118,13 @@ struct callchain_list {
 		bool		has_children;
 	};
 	u64			branch_count;
-	u64			from_count;
 	u64			predicted_count;
 	u64			abort_count;
 	u64			cycles_count;
 	u64			iter_count;
 	u64			iter_cycles;
 	struct branch_type_stat brtype_stat;
-	const char		*srcline;
+	char		       *srcline;
 	struct list_head	list;
 };
 
@@ -139,7 +138,6 @@ struct callchain_cursor_node {
 	u64				ip;
 	struct map			*map;
 	struct symbol			*sym;
-	const char			*srcline;
 	bool				branch;
 	struct branch_flags		branch_flags;
 	u64				branch_from;
@@ -188,13 +186,25 @@ int callchain_append(struct callchain_root *root,
 int callchain_merge(struct callchain_cursor *cursor,
 		    struct callchain_root *dst, struct callchain_root *src);
 
-void callchain_cursor_reset(struct callchain_cursor *cursor);
+/*
+ * Initialize a cursor before adding entries inside, but keep
+ * the previously allocated entries as a cache.
+ */
+static inline void callchain_cursor_reset(struct callchain_cursor *cursor)
+{
+	struct callchain_cursor_node *node;
+
+	cursor->nr = 0;
+	cursor->last = &cursor->first;
+
+	for (node = cursor->first; node != NULL; node = node->next)
+		map__zput(node->map);
+}
 
 int callchain_cursor_append(struct callchain_cursor *cursor, u64 ip,
 			    struct map *map, struct symbol *sym,
 			    bool branch, struct branch_flags *flags,
-			    int nr_loop_iter, u64 iter_cycles, u64 branch_from,
-			    const char *srcline);
+			    int nr_loop_iter, u64 iter_cycles, u64 branch_from);
 
 /* Close a cursor writing session. Initialize for the reader */
 static inline void callchain_cursor_commit(struct callchain_cursor *cursor)

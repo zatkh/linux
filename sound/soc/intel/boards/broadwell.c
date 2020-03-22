@@ -21,7 +21,6 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/pcm_params.h>
-#include <sound/soc-acpi.h>
 
 #include "../common/sst-dsp.h"
 #include "../haswell/sst-haswell-ipc.h"
@@ -79,7 +78,7 @@ static const struct snd_soc_dapm_route broadwell_rt286_map[] = {
 
 static int broadwell_rt286_codec_init(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_soc_component *component = rtd->codec_dai->component;
+	struct snd_soc_codec *codec = rtd->codec;
 	int ret = 0;
 	ret = snd_soc_card_jack_new(rtd->card, "Headset",
 		SND_JACK_HEADSET | SND_JACK_BTN_0, &broadwell_headset,
@@ -87,7 +86,7 @@ static int broadwell_rt286_codec_init(struct snd_soc_pcm_runtime *rtd)
 	if (ret)
 		return ret;
 
-	rt286_mic_detect(component, &broadwell_headset);
+	rt286_mic_detect(codec, &broadwell_headset);
 	return 0;
 }
 
@@ -133,8 +132,7 @@ static const struct snd_soc_ops broadwell_rt286_ops = {
 
 static int broadwell_rtd_init(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd, DRV_NAME);
-	struct sst_pdata *pdata = dev_get_platdata(component->dev);
+	struct sst_pdata *pdata = dev_get_platdata(rtd->platform->dev);
 	struct sst_hsw *broadwell = pdata->dsp;
 	int ret;
 
@@ -193,7 +191,7 @@ static struct snd_soc_dai_link broadwell_rt286_dais[] = {
 		.stream_name = "Loopback",
 		.cpu_dai_name = "Loopback Pin",
 		.platform_name = "haswell-pcm-audio",
-		.dynamic = 1,
+		.dynamic = 0,
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST, SND_SOC_DPCM_TRIGGER_POST},
@@ -224,11 +222,12 @@ static struct snd_soc_dai_link broadwell_rt286_dais[] = {
 static int broadwell_suspend(struct snd_soc_card *card){
 	struct snd_soc_component *component;
 
-	for_each_card_components(card, component) {
+	list_for_each_entry(component, &card->component_dev_list, card_list) {
 		if (!strcmp(component->name, "i2c-INT343A:00")) {
+			struct snd_soc_codec *codec = snd_soc_component_to_codec(component);
 
-			dev_dbg(component->dev, "disabling jack detect before going to suspend.\n");
-			rt286_mic_detect(component, NULL);
+			dev_dbg(codec->dev, "disabling jack detect before going to suspend.\n");
+			rt286_mic_detect(codec, NULL);
 			break;
 		}
 	}
@@ -238,11 +237,12 @@ static int broadwell_suspend(struct snd_soc_card *card){
 static int broadwell_resume(struct snd_soc_card *card){
 	struct snd_soc_component *component;
 
-	for_each_card_components(card, component) {
+	list_for_each_entry(component, &card->component_dev_list, card_list) {
 		if (!strcmp(component->name, "i2c-INT343A:00")) {
+			struct snd_soc_codec *codec = snd_soc_component_to_codec(component);
 
-			dev_dbg(component->dev, "enabling jack detect for resume.\n");
-			rt286_mic_detect(component, &broadwell_headset);
+			dev_dbg(codec->dev, "enabling jack detect for resume.\n");
+			rt286_mic_detect(codec, &broadwell_headset);
 			break;
 		}
 	}
@@ -268,22 +268,7 @@ static struct snd_soc_card broadwell_rt286 = {
 
 static int broadwell_audio_probe(struct platform_device *pdev)
 {
-	struct snd_soc_acpi_mach *mach;
-	const char *platform_name = NULL;
-	int ret;
-
 	broadwell_rt286.dev = &pdev->dev;
-
-	/* override plaform name, if required */
-	mach = (&pdev->dev)->platform_data;
-	if (mach) /* extra check since legacy does not pass parameters */
-		platform_name = mach->mach_params.platform;
-
-	ret = snd_soc_fixup_dai_links_platform_name(&broadwell_rt286,
-						    platform_name);
-	if (ret)
-		return ret;
-
 	return devm_snd_soc_register_card(&pdev->dev, &broadwell_rt286);
 }
 

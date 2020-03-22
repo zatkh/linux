@@ -14,13 +14,14 @@ struct tcf_sample {
 	struct psample_group __rcu *psample_group;
 	u32 psample_group_num;
 	struct list_head tcfm_list;
+	struct rcu_head rcu;
 };
 #define to_sample(a) ((struct tcf_sample *)a)
 
 static inline bool is_tcf_sample(const struct tc_action *a)
 {
 #ifdef CONFIG_NET_CLS_ACT
-	return a->ops && a->ops->id == TCA_ID_SAMPLE;
+	return a->ops && a->ops->type == TCA_ACT_SAMPLE;
 #else
 	return false;
 #endif

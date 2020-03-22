@@ -789,6 +789,7 @@ static int ofdpa_flow_tbl_add(struct ofdpa_port *ofdpa_port,
 			       ofdpa_flags_nowait(flags),
 			       ofdpa_cmd_flow_tbl_add,
 			       found, NULL, NULL);
+	return 0;
 }
 
 static int ofdpa_flow_tbl_del(struct ofdpa_port *ofdpa_port,
@@ -1833,10 +1834,10 @@ static void ofdpa_port_fdb_learn_work(struct work_struct *work)
 	rtnl_lock();
 	if (learned && removing)
 		call_switchdev_notifiers(SWITCHDEV_FDB_DEL_TO_BRIDGE,
-					 lw->ofdpa_port->dev, &info.info, NULL);
+					 lw->ofdpa_port->dev, &info.info);
 	else if (learned && !removing)
 		call_switchdev_notifiers(SWITCHDEV_FDB_ADD_TO_BRIDGE,
-					 lw->ofdpa_port->dev, &info.info, NULL);
+					 lw->ofdpa_port->dev, &info.info);
 	rtnl_unlock();
 
 	kfree(work);
@@ -1982,9 +1983,9 @@ err_out:
 	return err;
 }
 
-static void ofdpa_fdb_cleanup(struct timer_list *t)
+static void ofdpa_fdb_cleanup(unsigned long data)
 {
-	struct ofdpa *ofdpa = from_timer(ofdpa, t, fdb_cleanup_timer);
+	struct ofdpa *ofdpa = (struct ofdpa *)data;
 	struct ofdpa_port *ofdpa_port;
 	struct ofdpa_fdb_tbl_entry *entry;
 	struct hlist_node *tmp;
@@ -2367,7 +2368,8 @@ static int ofdpa_init(struct rocker *rocker)
 	hash_init(ofdpa->neigh_tbl);
 	spin_lock_init(&ofdpa->neigh_tbl_lock);
 
-	timer_setup(&ofdpa->fdb_cleanup_timer, ofdpa_fdb_cleanup, 0);
+	setup_timer(&ofdpa->fdb_cleanup_timer, ofdpa_fdb_cleanup,
+		    (unsigned long) ofdpa);
 	mod_timer(&ofdpa->fdb_cleanup_timer, jiffies);
 
 	ofdpa->ageing_time = BR_DEFAULT_AGEING_TIME;
@@ -2509,6 +2511,16 @@ static int ofdpa_port_attr_bridge_flags_set(struct rocker_port *rocker_port,
 		ofdpa_port->brport_flags = orig_flags;
 
 	return err;
+}
+
+static int
+ofdpa_port_attr_bridge_flags_get(const struct rocker_port *rocker_port,
+				 unsigned long *p_brport_flags)
+{
+	const struct ofdpa_port *ofdpa_port = rocker_port->wpriv;
+
+	*p_brport_flags = ofdpa_port->brport_flags;
+	return 0;
 }
 
 static int
@@ -2813,6 +2825,7 @@ struct rocker_world_ops rocker_ofdpa_ops = {
 	.port_stop = ofdpa_port_stop,
 	.port_attr_stp_state_set = ofdpa_port_attr_stp_state_set,
 	.port_attr_bridge_flags_set = ofdpa_port_attr_bridge_flags_set,
+	.port_attr_bridge_flags_get = ofdpa_port_attr_bridge_flags_get,
 	.port_attr_bridge_flags_support_get = ofdpa_port_attr_bridge_flags_support_get,
 	.port_attr_bridge_ageing_time_set = ofdpa_port_attr_bridge_ageing_time_set,
 	.port_obj_vlan_add = ofdpa_port_obj_vlan_add,

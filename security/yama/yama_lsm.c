@@ -206,7 +206,7 @@ static void yama_ptracer_del(struct task_struct *tracer,
  * yama_task_free - check for task_pid to remove from exception list
  * @task: task being removed
  */
-static void yama_task_free(struct task_struct *task)
+void yama_task_free(struct task_struct *task)
 {
 	yama_ptracer_del(task, task);
 }
@@ -222,7 +222,7 @@ static void yama_task_free(struct task_struct *task)
  * Return 0 on success, -ve on error.  -ENOSYS is returned when Yama
  * does not handle the given option.
  */
-static int yama_task_prctl(int option, unsigned long arg2, unsigned long arg3,
+int yama_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 			   unsigned long arg4, unsigned long arg5)
 {
 	int rc = -ENOSYS;
@@ -250,10 +250,15 @@ static int yama_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 		} else {
 			struct task_struct *tracer;
 
-			tracer = find_get_task_by_vpid(arg2);
-			if (!tracer) {
+			rcu_read_lock();
+			tracer = find_task_by_vpid(arg2);
+			if (tracer)
+				get_task_struct(tracer);
+			else
 				rc = -EINVAL;
-			} else {
+			rcu_read_unlock();
+
+			if (tracer) {
 				rc = yama_ptracer_add(tracer, myself);
 				put_task_struct(tracer);
 			}
@@ -368,9 +373,7 @@ static int yama_ptrace_access_check(struct task_struct *child,
 			break;
 		case YAMA_SCOPE_RELATIONAL:
 			rcu_read_lock();
-			if (!pid_alive(child))
-				rc = -EPERM;
-			if (!rc && !task_is_descendant(current, child) &&
+			if (!task_is_descendant(current, child) &&
 			    !ptracer_exception_found(current, child) &&
 			    !ns_capable(__task_cred(child)->user_ns, CAP_SYS_PTRACE))
 				rc = -EPERM;
@@ -401,7 +404,7 @@ static int yama_ptrace_access_check(struct task_struct *child,
  *
  * Returns 0 if following the ptrace is allowed, -ve on error.
  */
-static int yama_ptrace_traceme(struct task_struct *parent)
+int yama_ptrace_traceme(struct task_struct *parent)
 {
 	int rc = 0;
 
@@ -452,7 +455,7 @@ static int yama_dointvec_minmax(struct ctl_table *table, int write,
 static int zero;
 static int max_scope = YAMA_SCOPE_NO_ATTACH;
 
-static struct ctl_path yama_sysctl_path[] = {
+struct ctl_path yama_sysctl_path[] = {
 	{ .procname = "kernel", },
 	{ .procname = "yama", },
 	{ }
@@ -479,15 +482,9 @@ static void __init yama_init_sysctl(void)
 static inline void yama_init_sysctl(void) { }
 #endif /* CONFIG_SYSCTL */
 
-static int __init yama_init(void)
+void __init yama_add_hooks(void)
 {
 	pr_info("Yama: becoming mindful.\n");
 	security_add_hooks(yama_hooks, ARRAY_SIZE(yama_hooks), "yama");
 	yama_init_sysctl();
-	return 0;
 }
-
-DEFINE_LSM(yama) = {
-	.name = "yama",
-	.init = yama_init,
-};

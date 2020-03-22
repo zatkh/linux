@@ -107,31 +107,25 @@ static s32
 brcmf_fil_cmd_data(struct brcmf_if *ifp, u32 cmd, void *data, u32 len, bool set)
 {
 	struct brcmf_pub *drvr = ifp->drvr;
-	s32 err, fwerr;
+	s32 err;
 
 	if (drvr->bus_if->state != BRCMF_BUS_UP) {
-		bphy_err(drvr, "bus is down. we have nothing to do.\n");
+		brcmf_err("bus is down. we have nothing to do.\n");
 		return -EIO;
 	}
 
 	if (data != NULL)
 		len = min_t(uint, len, BRCMF_DCMD_MAXLEN);
 	if (set)
-		err = brcmf_proto_set_dcmd(drvr, ifp->ifidx, cmd,
-					   data, len, &fwerr);
+		err = brcmf_proto_set_dcmd(drvr, ifp->ifidx, cmd, data, len);
 	else
-		err = brcmf_proto_query_dcmd(drvr, ifp->ifidx, cmd,
-					     data, len, &fwerr);
+		err = brcmf_proto_query_dcmd(drvr, ifp->ifidx, cmd, data, len);
 
-	if (err) {
-		brcmf_dbg(FIL, "Failed: error=%d\n", err);
-	} else if (fwerr < 0) {
-		brcmf_dbg(FIL, "Firmware error: %s (%d)\n",
-			  brcmf_fil_get_errstr((u32)(-fwerr)), fwerr);
-		err = -EBADE;
-	}
-	if (ifp->fwil_fwerr)
-		return fwerr;
+	if (err >= 0)
+		return 0;
+
+	brcmf_dbg(FIL, "Failed: %s (%d)\n",
+		  brcmf_fil_get_errstr((u32)(-err)), err);
 
 	return err;
 }
@@ -242,7 +236,7 @@ brcmf_fil_iovar_data_set(struct brcmf_if *ifp, char *name, const void *data,
 					 buflen, true);
 	} else {
 		err = -EPERM;
-		bphy_err(drvr, "Creating iovar failed\n");
+		brcmf_err("Creating iovar failed\n");
 	}
 
 	mutex_unlock(&drvr->proto_block);
@@ -268,7 +262,7 @@ brcmf_fil_iovar_data_get(struct brcmf_if *ifp, char *name, void *data,
 			memcpy(data, drvr->proto_buf, len);
 	} else {
 		err = -EPERM;
-		bphy_err(drvr, "Creating iovar failed\n");
+		brcmf_err("Creating iovar failed\n");
 	}
 
 	brcmf_dbg(FIL, "ifidx=%d, name=%s, len=%d\n", ifp->ifidx, name, len);
@@ -366,7 +360,7 @@ brcmf_fil_bsscfg_data_set(struct brcmf_if *ifp, char *name,
 					 buflen, true);
 	} else {
 		err = -EPERM;
-		bphy_err(drvr, "Creating bsscfg failed\n");
+		brcmf_err("Creating bsscfg failed\n");
 	}
 
 	mutex_unlock(&drvr->proto_block);
@@ -392,7 +386,7 @@ brcmf_fil_bsscfg_data_get(struct brcmf_if *ifp, char *name,
 			memcpy(data, drvr->proto_buf, len);
 	} else {
 		err = -EPERM;
-		bphy_err(drvr, "Creating bsscfg failed\n");
+		brcmf_err("Creating bsscfg failed\n");
 	}
 	brcmf_dbg(FIL, "ifidx=%d, bsscfgidx=%d, name=%s, len=%d\n", ifp->ifidx,
 		  ifp->bsscfgidx, name, len);

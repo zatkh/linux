@@ -36,11 +36,25 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <asm/unaligned.h>
-#include <linux/kernel.h>
 #include "ecryptfs_kernel.h"
 
 #define DECRYPT		0
 #define ENCRYPT		1
+
+/**
+ * ecryptfs_to_hex
+ * @dst: Buffer to take hex character representation of contents of
+ *       src; must be at least of size (src_size * 2)
+ * @src: Buffer to be converted to a hex string representation
+ * @src_size: number of bytes to convert
+ */
+void ecryptfs_to_hex(char *dst, char *src, size_t src_size)
+{
+	int x;
+
+	for (x = 0; x < src_size; x++)
+		sprintf(&dst[x * 2], "%.2x", (unsigned char)src[x]);
+}
 
 /**
  * ecryptfs_from_hex
@@ -610,8 +624,7 @@ int ecryptfs_init_crypt_ctx(struct ecryptfs_crypt_stat *crypt_stat)
 				full_alg_name);
 		goto out_free;
 	}
-	crypto_skcipher_set_flags(crypt_stat->tfm,
-				  CRYPTO_TFM_REQ_FORBID_WEAK_KEYS);
+	crypto_skcipher_set_flags(crypt_stat->tfm, CRYPTO_TFM_REQ_WEAK_KEY);
 	rc = 0;
 out_free:
 	kfree(full_alg_name);
@@ -886,7 +899,8 @@ static int ecryptfs_process_flags(struct ecryptfs_crypt_stat *crypt_stat,
 	u32 flags;
 
 	flags = get_unaligned_be32(page_virt);
-	for (i = 0; i < ARRAY_SIZE(ecryptfs_flag_map); i++)
+	for (i = 0; i < ((sizeof(ecryptfs_flag_map)
+			  / sizeof(struct ecryptfs_flag_map_elem))); i++)
 		if (flags & ecryptfs_flag_map[i].file_flag) {
 			crypt_stat->flags |= ecryptfs_flag_map[i].local_flag;
 		} else
@@ -923,7 +937,8 @@ void ecryptfs_write_crypt_stat_flags(char *page_virt,
 	u32 flags = 0;
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(ecryptfs_flag_map); i++)
+	for (i = 0; i < ((sizeof(ecryptfs_flag_map)
+			  / sizeof(struct ecryptfs_flag_map_elem))); i++)
 		if (crypt_stat->flags & ecryptfs_flag_map[i].local_flag)
 			flags |= ecryptfs_flag_map[i].file_flag;
 	/* Version is in top 8 bits of the 32-bit flag vector */
@@ -1419,6 +1434,8 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 	page_virt = kmem_cache_alloc(ecryptfs_header_cache, GFP_USER);
 	if (!page_virt) {
 		rc = -ENOMEM;
+		printk(KERN_ERR "%s: Unable to allocate page_virt\n",
+		       __func__);
 		goto out;
 	}
 	rc = ecryptfs_read_lower(page_virt, 0, crypt_stat->extent_size,
@@ -1505,6 +1522,9 @@ ecryptfs_encrypt_filename(struct ecryptfs_filename *filename,
 		filename->encrypted_filename =
 			kmalloc(filename->encrypted_filename_size, GFP_KERNEL);
 		if (!filename->encrypted_filename) {
+			printk(KERN_ERR "%s: Out of memory whilst attempting "
+			       "to kmalloc [%zd] bytes\n", __func__,
+			       filename->encrypted_filename_size);
 			rc = -ENOMEM;
 			goto out;
 		}
@@ -1591,7 +1611,7 @@ ecryptfs_process_key_cipher(struct crypto_skcipher **key_tfm,
 		       "[%s]; rc = [%d]\n", full_alg_name, rc);
 		goto out;
 	}
-	crypto_skcipher_set_flags(*key_tfm, CRYPTO_TFM_REQ_FORBID_WEAK_KEYS);
+	crypto_skcipher_set_flags(*key_tfm, CRYPTO_TFM_REQ_WEAK_KEY);
 	if (*key_size == 0)
 		*key_size = crypto_skcipher_default_keysize(*key_tfm);
 	get_random_bytes(dummy_key, *key_size);
@@ -1649,10 +1669,12 @@ ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
 	BUG_ON(!mutex_is_locked(&key_tfm_list_mutex));
 
 	tmp_tfm = kmem_cache_alloc(ecryptfs_key_tfm_cache, GFP_KERNEL);
-	if (key_tfm)
+	if (key_tfm != NULL)
 		(*key_tfm) = tmp_tfm;
 	if (!tmp_tfm) {
 		rc = -ENOMEM;
+		printk(KERN_ERR "Error attempting to allocate from "
+		       "ecryptfs_key_tfm_cache\n");
 		goto out;
 	}
 	mutex_init(&tmp_tfm->key_tfm_mutex);
@@ -1668,7 +1690,7 @@ ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
 		       "cipher with name = [%s]; rc = [%d]\n",
 		       tmp_tfm->cipher_name, rc);
 		kmem_cache_free(ecryptfs_key_tfm_cache, tmp_tfm);
-		if (key_tfm)
+		if (key_tfm != NULL)
 			(*key_tfm) = NULL;
 		goto out;
 	}
@@ -1859,7 +1881,7 @@ ecryptfs_decode_from_filename(unsigned char *dst, size_t *dst_size,
 	size_t src_byte_offset = 0;
 	size_t dst_byte_offset = 0;
 
-	if (!dst) {
+	if (dst == NULL) {
 		(*dst_size) = ecryptfs_max_decoded_size(src_size);
 		goto out;
 	}
@@ -1927,6 +1949,9 @@ int ecryptfs_encrypt_and_encode_filename(
 
 		filename = kzalloc(sizeof(*filename), GFP_KERNEL);
 		if (!filename) {
+			printk(KERN_ERR "%s: Out of memory whilst attempting "
+			       "to kzalloc [%zd] bytes\n", __func__,
+			       sizeof(*filename));
 			rc = -ENOMEM;
 			goto out;
 		}
@@ -1955,6 +1980,9 @@ int ecryptfs_encrypt_and_encode_filename(
 				 + encoded_name_no_prefix_size);
 		(*encoded_name) = kmalloc((*encoded_name_size) + 1, GFP_KERNEL);
 		if (!(*encoded_name)) {
+			printk(KERN_ERR "%s: Out of memory whilst attempting "
+			       "to kzalloc [%zd] bytes\n", __func__,
+			       (*encoded_name_size));
 			rc = -ENOMEM;
 			kfree(filename->encrypted_filename);
 			kfree(filename);
@@ -2054,6 +2082,9 @@ int ecryptfs_decode_and_decrypt_filename(char **plaintext_name,
 					      name, name_size);
 		decoded_name = kmalloc(decoded_name_size, GFP_KERNEL);
 		if (!decoded_name) {
+			printk(KERN_ERR "%s: Out of memory whilst attempting "
+			       "to kmalloc [%zd] bytes\n", __func__,
+			       decoded_name_size);
 			rc = -ENOMEM;
 			goto out;
 		}

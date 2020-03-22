@@ -21,7 +21,7 @@
 #include <linux/slab.h>
 #include <linux/dvb/frontend.h>
 
-#include <media/dvb_frontend.h>
+#include "dvb_frontend.h"
 #include "zl10039.h"
 
 static int debug;
@@ -288,9 +288,8 @@ struct dvb_frontend *zl10039_attach(struct dvb_frontend *fe,
 	state->id = state->id & 0x0f;
 	switch (state->id) {
 	case ID_ZL10039:
-		strscpy(fe->ops.tuner_ops.info.name,
-			"Zarlink ZL10039 DVB-S tuner",
-			sizeof(fe->ops.tuner_ops.info.name));
+		strcpy(fe->ops.tuner_ops.info.name,
+			"Zarlink ZL10039 DVB-S tuner");
 		break;
 	default:
 		dprintk("Chip ID=%x does not match a known type\n", state->id);

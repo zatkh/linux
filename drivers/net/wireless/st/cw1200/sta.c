@@ -1123,7 +1123,7 @@ int cw1200_setup_mac(struct cw1200_common *priv)
 	 *
 	 * NOTE2: RSSI based reports have been switched to RCPI, since
 	 * FW has a bug and RSSI reported values are not stable,
-	 * what can lead to signal level oscilations in user-end applications
+	 * what can leads to signal level oscilations in user-end applications
 	 */
 	struct wsm_rcpi_rssi_threshold threshold = {
 		.rssiRcpiMode = WSM_RCPI_RSSI_THRESHOLD_ENABLE |
@@ -2112,9 +2112,10 @@ void cw1200_multicast_stop_work(struct work_struct *work)
 	}
 }
 
-void cw1200_mcast_timeout(struct timer_list *t)
+void cw1200_mcast_timeout(unsigned long arg)
 {
-	struct cw1200_common *priv = from_timer(priv, t, mcast_timeout);
+	struct cw1200_common *priv =
+		(struct cw1200_common *)arg;
 
 	wiphy_warn(priv->hw->wiphy,
 		   "Multicast delivery timeout.\n");

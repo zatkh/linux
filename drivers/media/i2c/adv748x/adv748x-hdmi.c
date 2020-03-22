@@ -1,8 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * Driver for Analog Devices ADV748X HDMI receiver and Component Processor (CP)
  *
  * Copyright (C) 2017 Renesas Electronics Corp.
+ *
+ * This program is free software; you can redistribute  it and/or modify it
+ * under  the terms of  the GNU General  Public License as published by the
+ * Free Software Foundation;  either version 2 of the  License, or (at your
+ * option) any later version.
  */
 
 #include <linux/module.h>
@@ -358,7 +362,7 @@ static int adv748x_hdmi_s_stream(struct v4l2_subdev *sd, int enable)
 
 	mutex_lock(&state->mutex);
 
-	ret = adv748x_tx_power(hdmi->tx, enable);
+	ret = adv748x_txa_power(state, enable);
 	if (ret)
 		goto done;
 
@@ -398,6 +402,8 @@ static int adv748x_hdmi_propagate_pixelrate(struct adv748x_hdmi *hdmi)
 {
 	struct v4l2_subdev *tx;
 	struct v4l2_dv_timings timings;
+	struct v4l2_bt_timings *bt = &timings.bt;
+	unsigned int fps;
 
 	tx = adv748x_get_remote_sd(&hdmi->pads[ADV748X_HDMI_SOURCE]);
 	if (!tx)
@@ -405,7 +411,11 @@ static int adv748x_hdmi_propagate_pixelrate(struct adv748x_hdmi *hdmi)
 
 	adv748x_hdmi_query_dv_timings(&hdmi->sd, &timings);
 
-	return adv748x_csi2_set_pixelrate(tx, timings.bt.pixelclock);
+	fps = DIV_ROUND_CLOSEST_ULL(bt->pixelclock,
+				    V4L2_DV_BT_FRAME_WIDTH(bt) *
+				    V4L2_DV_BT_FRAME_HEIGHT(bt));
+
+	return adv748x_csi2_set_pixelrate(tx, bt->width * bt->height * fps);
 }
 
 static int adv748x_hdmi_enum_mbus_code(struct v4l2_subdev *sd,

@@ -393,10 +393,10 @@ static void rtllib_send_beacon(struct rtllib_device *ieee)
 }
 
 
-static void rtllib_send_beacon_cb(struct timer_list *t)
+static void rtllib_send_beacon_cb(unsigned long _ieee)
 {
 	struct rtllib_device *ieee =
-		from_timer(ieee, t, beacon_timer);
+		(struct rtllib_device *) _ieee;
 	unsigned long flags;
 
 	spin_lock_irqsave(&ieee->beacon_lock, flags);
@@ -564,7 +564,7 @@ out:
 
 	if (ieee->state >= RTLLIB_LINKED) {
 		if (IS_DOT11D_ENABLE(ieee))
-			dot11d_scan_complete(ieee);
+			DOT11D_ScanComplete(ieee);
 	}
 	mutex_unlock(&ieee->scan_mutex);
 
@@ -623,7 +623,7 @@ static void rtllib_softmac_scan_wq(void *data)
 
 out:
 	if (IS_DOT11D_ENABLE(ieee))
-		dot11d_scan_complete(ieee);
+		DOT11D_ScanComplete(ieee);
 	ieee->current_network.channel = last_channel;
 
 out1:
@@ -1427,11 +1427,9 @@ static void rtllib_associate_abort(struct rtllib_device *ieee)
 	spin_unlock_irqrestore(&ieee->lock, flags);
 }
 
-static void rtllib_associate_abort_cb(struct timer_list *t)
+static void rtllib_associate_abort_cb(unsigned long dev)
 {
-	struct rtllib_device *dev = from_timer(dev, t, associate_timer);
-
-	rtllib_associate_abort(dev);
+	rtllib_associate_abort((struct rtllib_device *) dev);
 }
 
 static void rtllib_associate_step1(struct rtllib_device *ieee, u8 *daddr)
@@ -1680,19 +1678,19 @@ inline void rtllib_softmac_new_net(struct rtllib_device *ieee,
 		   (ssidbroad && !ssidset) || (!ssidbroad && ssidset))) ||
 		   (!apset && ssidset && ssidbroad && ssidmatch) ||
 		   (ieee->is_roaming && ssidset && ssidbroad && ssidmatch)) {
-			/* Save the essid so that if it is hidden, it is
-			 * replaced with the essid provided by the user.
+			/* if the essid is hidden replace it with the
+			 * essid provided by the user.
 			 */
 			if (!ssidbroad) {
-				memcpy(tmp_ssid, ieee->current_network.ssid,
-				       ieee->current_network.ssid_len);
+				strncpy(tmp_ssid, ieee->current_network.ssid,
+					IW_ESSID_MAX_SIZE);
 				tmp_ssid_len = ieee->current_network.ssid_len;
 			}
 			memcpy(&ieee->current_network, net,
-				sizeof(ieee->current_network));
+			       sizeof(struct rtllib_network));
 			if (!ssidbroad) {
-				memcpy(ieee->current_network.ssid, tmp_ssid,
-				       tmp_ssid_len);
+				strncpy(ieee->current_network.ssid, tmp_ssid,
+					IW_ESSID_MAX_SIZE);
 				ieee->current_network.ssid_len = tmp_ssid_len;
 			}
 			netdev_info(ieee->dev,
@@ -1968,7 +1966,7 @@ void rtllib_sta_ps_send_pspoll_frame(struct rtllib_device *ieee)
 
 static short rtllib_sta_ps_sleep(struct rtllib_device *ieee, u64 *time)
 {
-	int timeout;
+	int timeout = ieee->ps_timeout;
 	u8 dtim;
 	struct rt_pwr_save_ctrl *pPSC = &(ieee->PowerSaveControl);
 
@@ -2627,7 +2625,7 @@ static void rtllib_start_ibss_wq(void *data)
 	/* the network definitively is not here.. create a new cell */
 	if (ieee->state == RTLLIB_NOLINK) {
 		netdev_info(ieee->dev, "creating new IBSS cell\n");
-		ieee->current_network.channel = ieee->bss_start_channel;
+		ieee->current_network.channel = ieee->IbssStartChnl;
 		if (!ieee->wap_set)
 			eth_random_addr(ieee->current_network.bssid);
 
@@ -2719,7 +2717,7 @@ static void rtllib_start_bss(struct rtllib_device *ieee)
 	unsigned long flags;
 
 	if (IS_DOT11D_ENABLE(ieee) && !IS_COUNTRY_IE_VALID(ieee)) {
-		if (!ieee->global_domain)
+		if (!ieee->bGlobalDomain)
 			return;
 	}
 	/* check if we have already found the net we
@@ -2759,7 +2757,7 @@ void rtllib_disassociate(struct rtllib_device *ieee)
 	if (ieee->data_hard_stop)
 		ieee->data_hard_stop(ieee->dev);
 	if (IS_DOT11D_ENABLE(ieee))
-		dot11d_reset(ieee);
+		Dot11d_Reset(ieee);
 	ieee->state = RTLLIB_NOLINK;
 	ieee->is_set_key = false;
 	ieee->wap_set = 0;
@@ -2813,9 +2811,8 @@ exit:
 
 static struct sk_buff *rtllib_get_beacon_(struct rtllib_device *ieee)
 {
-	static const u8 broadcast_addr[] = {
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff
-	};
+	const u8 broadcast_addr[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
 	struct sk_buff *skb;
 	struct rtllib_probe_response *b;
 
@@ -2974,8 +2971,8 @@ void rtllib_softmac_init(struct rtllib_device *ieee)
 	ieee->state = RTLLIB_NOLINK;
 	for (i = 0; i < 5; i++)
 		ieee->seq_ctrl[i] = 0;
-	ieee->dot11d_info = kzalloc(sizeof(struct rt_dot11d_info), GFP_ATOMIC);
-	if (!ieee->dot11d_info)
+	ieee->pDot11dInfo = kzalloc(sizeof(struct rt_dot11d_info), GFP_ATOMIC);
+	if (!ieee->pDot11dInfo)
 		netdev_err(ieee->dev, "Can't alloc memory for DOT11D\n");
 	ieee->LinkDetectInfo.SlotIndex = 0;
 	ieee->LinkDetectInfo.SlotNum = 2;
@@ -3014,9 +3011,13 @@ void rtllib_softmac_init(struct rtllib_device *ieee)
 
 	ieee->tx_pending.txb = NULL;
 
-	timer_setup(&ieee->associate_timer, rtllib_associate_abort_cb, 0);
+	setup_timer(&ieee->associate_timer,
+		    rtllib_associate_abort_cb,
+		    (unsigned long) ieee);
 
-	timer_setup(&ieee->beacon_timer, rtllib_send_beacon_cb, 0);
+	setup_timer(&ieee->beacon_timer,
+		    rtllib_send_beacon_cb,
+		    (unsigned long) ieee);
 
 	INIT_DELAYED_WORK_RSL(&ieee->link_change_wq,
 			      (void *)rtllib_link_change_wq, ieee);
@@ -3049,8 +3050,8 @@ void rtllib_softmac_init(struct rtllib_device *ieee)
 void rtllib_softmac_free(struct rtllib_device *ieee)
 {
 	mutex_lock(&ieee->wx_mutex);
-	kfree(ieee->dot11d_info);
-	ieee->dot11d_info = NULL;
+	kfree(ieee->pDot11dInfo);
+	ieee->pDot11dInfo = NULL;
 	del_timer_sync(&ieee->associate_timer);
 
 	cancel_delayed_work_sync(&ieee->associate_retry_wq);

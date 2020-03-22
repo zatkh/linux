@@ -9,6 +9,5 @@ Security Documentation
    IMA-templates
    keys/index
    LSM
-   SCTP
    self-protection
    tpm/index

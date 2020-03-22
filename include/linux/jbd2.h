@@ -575,7 +575,6 @@ struct transaction_s
 	enum {
 		T_RUNNING,
 		T_LOCKED,
-		T_SWITCH,
 		T_FLUSH,
 		T_COMMIT,
 		T_COMMIT_DFLUSH,
@@ -663,13 +662,13 @@ struct transaction_s
 
 	/*
 	 * Number of outstanding updates running on this transaction
-	 * [none]
+	 * [t_handle_lock]
 	 */
 	atomic_t		t_updates;
 
 	/*
 	 * Number of buffers reserved for use by all handles in this transaction
-	 * handle but not yet modified. [none]
+	 * handle but not yet modified. [t_handle_lock]
 	 */
 	atomic_t		t_outstanding_credits;
 
@@ -691,7 +690,7 @@ struct transaction_s
 	ktime_t			t_start_time;
 
 	/*
-	 * How many handles used this transaction? [none]
+	 * How many handles used this transaction? [t_handle_lock]
 	 */
 	atomic_t		t_handle_count;
 
@@ -1473,7 +1472,6 @@ int jbd2_log_start_commit(journal_t *journal, tid_t tid);
 int __jbd2_log_start_commit(journal_t *journal, tid_t tid);
 int jbd2_journal_start_commit(journal_t *journal, tid_t *tid);
 int jbd2_log_wait_commit(journal_t *journal, tid_t tid);
-int jbd2_transaction_committed(journal_t *journal, tid_t tid);
 int jbd2_complete_transaction(journal_t *journal, tid_t tid);
 int jbd2_log_do_checkpoint(journal_t *journal);
 int jbd2_trans_will_send_data_barrier(journal_t *journal, tid_t tid);

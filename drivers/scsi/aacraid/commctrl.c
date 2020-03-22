@@ -41,6 +41,7 @@
 #include <linux/blkdev.h>
 #include <linux/delay.h> /* ssleep prototype */
 #include <linux/kthread.h>
+#include <linux/semaphore.h>
 #include <linux/uaccess.h>
 #include <scsi/scsi_host.h>
 
@@ -202,7 +203,7 @@ static int open_getadapter_fib(struct aac_dev * dev, void __user *arg)
 		/*
 		 *	Initialize the mutex used to wait for the next AIF.
 		 */
-		init_completion(&fibctx->completion);
+		sema_init(&fibctx->wait_sem, 0);
 		fibctx->wait = 0;
 		/*
 		 *	Initialize the fibs and set the count of fibs on
@@ -334,7 +335,7 @@ return_fib:
 			ssleep(1);
 		}
 		if (f.wait) {
-			if (wait_for_completion_interruptible(&fibctx->completion) < 0) {
+			if(down_interruptible(&fibctx->wait_sem) < 0) {
 				status = -ERESTARTSYS;
 			} else {
 				/* Lock again and retry */
@@ -844,7 +845,7 @@ static int aac_send_raw_srb(struct aac_dev* dev, void __user * arg)
 					rcode = -EINVAL;
 					goto cleanup;
 				}
-				p = kmalloc(sg_count[i], GFP_KERNEL);
+				p = kmalloc(sg_count[i], GFP_KERNEL|GFP_DMA32);
 				if (!p) {
 					dprintk((KERN_DEBUG"aacraid: Could not allocate SG buffer - size = %d buffer number %d of %d\n",
 						sg_count[i], i, usg->count));
@@ -885,7 +886,7 @@ static int aac_send_raw_srb(struct aac_dev* dev, void __user * arg)
 					rcode = -EINVAL;
 					goto cleanup;
 				}
-				p = kmalloc(sg_count[i], GFP_KERNEL);
+				p = kmalloc(sg_count[i], GFP_KERNEL|GFP_DMA32);
 				if (!p) {
 					dprintk((KERN_DEBUG"aacraid: Could not allocate SG buffer - size = %d buffer number %d of %d\n",
 					  sg_count[i], i, upsg->count));
@@ -1051,16 +1052,12 @@ static int aac_send_reset_adapter(struct aac_dev *dev, void __user *arg)
 	if (copy_from_user((void *)&reset, arg, sizeof(struct aac_reset_iop)))
 		return -EFAULT;
 
-	dev->adapter_shutdown = 1;
-
-	mutex_unlock(&dev->ioctl_mutex);
 	retval = aac_reset_adapter(dev, 0, reset.reset_type);
-	mutex_lock(&dev->ioctl_mutex);
-
 	return retval;
+
 }
 
-int aac_do_ioctl(struct aac_dev *dev, unsigned int cmd, void __user *arg)
+int aac_do_ioctl(struct aac_dev * dev, int cmd, void __user *arg)
 {
 	int status;
 

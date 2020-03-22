@@ -3,7 +3,7 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/memblock.h>
+#include <linux/bootmem.h>
 #include <linux/stacktrace.h>
 #include <linux/page_owner.h>
 #include <linux/jump_label.h>
@@ -20,9 +20,9 @@
 #define PAGE_OWNER_STACK_DEPTH (16)
 
 struct page_owner {
-	unsigned short order;
-	short last_migrate_reason;
+	unsigned int order;
 	gfp_t gfp_mask;
+	int last_migrate_reason;
 	depot_stack_handle_t handle;
 };
 
@@ -35,7 +35,7 @@ static depot_stack_handle_t early_handle;
 
 static void init_early_allocated_pages(void);
 
-static int __init early_page_owner_param(char *buf)
+static int early_page_owner_param(char *buf)
 {
 	if (!buf)
 		return -EINVAL;
@@ -351,7 +351,6 @@ print_page_owner(char __user *buf, size_t count, unsigned long pfn,
 		.skip = 0
 	};
 
-	count = min_t(size_t, count, PAGE_SIZE);
 	kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
@@ -529,9 +528,14 @@ read_page_owner(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 {
-	unsigned long pfn = zone->zone_start_pfn;
-	unsigned long end_pfn = zone_end_pfn(zone);
+	struct page *page;
+	struct page_ext *page_ext;
+	unsigned long pfn = zone->zone_start_pfn, block_end_pfn;
+	unsigned long end_pfn = pfn + zone->spanned_pages;
 	unsigned long count = 0;
+
+	/* Scan block by block. First and last block may be incomplete */
+	pfn = zone->zone_start_pfn;
 
 	/*
 	 * Walk the zone in pageblock_nr_pages steps. If a page block spans
@@ -539,8 +543,6 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 	 * not matter as the mixed block count will still be correct
 	 */
 	for (; pfn < end_pfn; ) {
-		unsigned long block_end_pfn;
-
 		if (!pfn_valid(pfn)) {
 			pfn = ALIGN(pfn + 1, MAX_ORDER_NR_PAGES);
 			continue;
@@ -549,10 +551,9 @@ static void init_pages_in_zone(pg_data_t *pgdat, struct zone *zone)
 		block_end_pfn = ALIGN(pfn + 1, pageblock_nr_pages);
 		block_end_pfn = min(block_end_pfn, end_pfn);
 
-		for (; pfn < block_end_pfn; pfn++) {
-			struct page *page;
-			struct page_ext *page_ext;
+		page = pfn_to_page(pfn);
 
+		for (; pfn < block_end_pfn; pfn++) {
 			if (!pfn_valid_within(pfn))
 				continue;
 
@@ -615,6 +616,7 @@ static void init_early_allocated_pages(void)
 {
 	pg_data_t *pgdat;
 
+	drain_all_pages(NULL);
 	for_each_online_pgdat(pgdat)
 		init_zones_in_node(pgdat);
 }
@@ -625,13 +627,17 @@ static const struct file_operations proc_page_owner_operations = {
 
 static int __init pageowner_init(void)
 {
+	struct dentry *dentry;
+
 	if (!static_branch_unlikely(&page_owner_inited)) {
 		pr_info("page_owner is disabled\n");
 		return 0;
 	}
 
-	debugfs_create_file("page_owner", 0400, NULL, NULL,
-			    &proc_page_owner_operations);
+	dentry = debugfs_create_file("page_owner", S_IRUSR, NULL,
+			NULL, &proc_page_owner_operations);
+	if (IS_ERR(dentry))
+		return PTR_ERR(dentry);
 
 	return 0;
 }

@@ -29,25 +29,10 @@ void __check_vmalloc_seq(struct mm_struct *mm);
 #ifdef CONFIG_CPU_HAS_ASID
 
 void check_and_switch_context(struct mm_struct *mm, struct task_struct *tsk);
-void udom_check_and_switch_context(struct mm_struct *mm, struct task_struct *tsk);
-
 static inline int
 init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
 	atomic64_set(&mm->context.id, 0);
-
-
-#ifdef CONFIG_EXTENDED_LSM_DIFC
-		/* pkey 0 is the default and allocated implicitly */
-		mm->context.udom_allocation_map = 0xf;
-		/* -1 means unallocated or invalid */
-		mm->context.execute_only_udom = -1;
-		mm->context.read_only_udom = -1;
-		mm->context.write_only_udom = -1;
-
-	
-#endif
-
 	return 0;
 }
 
@@ -84,26 +69,6 @@ static inline void check_and_switch_context(struct mm_struct *mm,
 		cpu_switch_mm(mm->pgd, mm);
 }
 
-
-static inline void udom_check_and_switch_context(struct mm_struct *mm,
-					    struct task_struct *tsk)
-{
-	if (unlikely(mm->context.vmalloc_seq != init_mm.context.vmalloc_seq))
-		__check_vmalloc_seq(mm);
-
-	if (irqs_disabled())
-		/*
-		 * cpu_switch_mm() needs to flush the VIVT caches. To avoid
-		 * high interrupt latencies, defer the call and continue
-		 * running with the old mm. Since we only support UP systems
-		 * on non-ASID CPUs, the old mm will remain valid until the
-		 * finish_arch_post_lock_switch() call.
-		 */
-		mm->context.switch_pending = 1;
-	else
-		cpu_switch_mm(mm->pgd_smv[tsk->smv_id], mm);
-}
-
 #ifndef MODULE
 #define finish_arch_post_lock_switch \
 	finish_arch_post_lock_switch
@@ -133,17 +98,6 @@ static inline void finish_arch_post_lock_switch(void)
 static inline int
 init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
-
-#ifdef CONFIG_EXTENDED_LSM_DIFC
-		/* pkey 0 is the default and allocated implicitly */
-		mm->context.udom_allocation_map = 0xf;
-		/* -1 means unallocated or invalid */
-		mm->context.execute_only_udom = -1;
-		mm->context.read_only_udom = -1;
-		mm->context.write_only_udom = -1;
-	
-#endif
-
 	return 0;
 }
 
@@ -191,17 +145,7 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 		__flush_icache_all();
 
 	if (!cpumask_test_and_set_cpu(cpu, mm_cpumask(next)) || prev != next) {
-
-		#ifdef CONFIG_SW_UDOM
-			if (next->using_smv && tsk->smv_id != MAIN_THREAD) 
-				udom_check_and_switch_context(next, tsk);
-			else
-				check_and_switch_context(next, tsk);
-		
-		#else		
-			check_and_switch_context(next, tsk);
-		#endif
-
+		check_and_switch_context(next, tsk);
 		if (cache_is_vivt())
 			cpumask_clear_cpu(cpu, mm_cpumask(prev));
 	}

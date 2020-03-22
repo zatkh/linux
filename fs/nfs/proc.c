@@ -99,8 +99,7 @@ nfs_proc_get_root(struct nfs_server *server, struct nfs_fh *fhandle,
  */
 static int
 nfs_proc_getattr(struct nfs_server *server, struct nfs_fh *fhandle,
-		struct nfs_fattr *fattr, struct nfs4_label *label,
-		struct inode *inode)
+		struct nfs_fattr *fattr, struct nfs4_label *label)
 {
 	struct rpc_message msg = {
 		.rpc_proc	= &nfs_procedures[NFSPROC_GETATTR],
@@ -227,17 +226,9 @@ static void nfs_free_createdata(const struct nfs_createdata *data)
 	kfree(data);
 }
 
-#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 		int flags)
-#else
-static int
-nfs_proc_create(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
-		int flags, void* label)
-#endif
-
-
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -264,18 +255,9 @@ out:
 /*
  * In NFSv2, mknod is grafted onto the create call.
  */
-
-
-#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
 	       dev_t rdev)
-#else
-static int
-nfs_proc_mknod(struct inode *dir, struct dentry *dentry, struct iattr *sattr,
-	       dev_t rdev, void* label)
-#endif
-
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -318,11 +300,11 @@ out:
 }
   
 static int
-nfs_proc_remove(struct inode *dir, struct dentry *dentry)
+nfs_proc_remove(struct inode *dir, const struct qstr *name)
 {
 	struct nfs_removeargs arg = {
 		.fh = NFS_FH(dir),
-		.name = dentry->d_name,
+		.name = *name,
 	};
 	struct rpc_message msg = { 
 		.rpc_proc = &nfs_procedures[NFSPROC_REMOVE],
@@ -330,7 +312,7 @@ nfs_proc_remove(struct inode *dir, struct dentry *dentry)
 	};
 	int			status;
 
-	dprintk("NFS call  remove %pd2\n",dentry);
+	dprintk("NFS call  remove %s\n", name->name);
 	status = rpc_call_sync(NFS_CLIENT(dir), &msg, 0);
 	nfs_mark_for_revalidate(dir);
 
@@ -339,9 +321,7 @@ nfs_proc_remove(struct inode *dir, struct dentry *dentry)
 }
 
 static void
-nfs_proc_unlink_setup(struct rpc_message *msg,
-		struct dentry *dentry,
-		struct inode *inode)
+nfs_proc_unlink_setup(struct rpc_message *msg, struct inode *dir)
 {
 	msg->rpc_proc = &nfs_procedures[NFSPROC_REMOVE];
 }
@@ -358,9 +338,7 @@ static int nfs_proc_unlink_done(struct rpc_task *task, struct inode *dir)
 }
 
 static void
-nfs_proc_rename_setup(struct rpc_message *msg,
-		struct dentry *old_dentry,
-		struct dentry *new_dentry)
+nfs_proc_rename_setup(struct rpc_message *msg, struct inode *dir)
 {
 	msg->rpc_proc = &nfs_procedures[NFSPROC_RENAME];
 }
@@ -452,15 +430,8 @@ out:
 	return status;
 }
 
-#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nfs_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr)
-#else
-static int
-nfs_proc_mkdir(struct inode *dir, struct dentry *dentry, struct iattr *sattr, void* label)
-#endif
-
-
 {
 	struct nfs_createdata *data;
 	struct rpc_message msg = {
@@ -514,7 +485,7 @@ nfs_proc_rmdir(struct inode *dir, const struct qstr *name)
  * from nfs_readdir by calling the decode_entry function directly.
  */
 static int
-nfs_proc_readdir(struct dentry *dentry, const struct cred *cred,
+nfs_proc_readdir(struct dentry *dentry, struct rpc_cred *cred,
 		 u64 cookie, struct page **pages, unsigned int count, bool plus)
 {
 	struct inode		*dir = d_inode(dentry);
@@ -645,8 +616,7 @@ static int nfs_write_done(struct rpc_task *task, struct nfs_pgio_header *hdr)
 }
 
 static void nfs_proc_write_setup(struct nfs_pgio_header *hdr,
-				 struct rpc_message *msg,
-				 struct rpc_clnt **clnt)
+				 struct rpc_message *msg)
 {
 	/* Note: NFSv2 ignores @stable and always uses NFS_FILE_SYNC */
 	hdr->args.stable = NFS_FILE_SYNC;
@@ -659,8 +629,7 @@ static void nfs_proc_commit_rpc_prepare(struct rpc_task *task, struct nfs_commit
 }
 
 static void
-nfs_proc_commit_setup(struct nfs_commit_data *data, struct rpc_message *msg,
-			struct rpc_clnt **clnt)
+nfs_proc_commit_setup(struct nfs_commit_data *data, struct rpc_message *msg)
 {
 	BUG();
 }
@@ -699,6 +668,12 @@ out_einval:
 
 static int nfs_have_delegation(struct inode *inode, fmode_t flags)
 {
+	return 0;
+}
+
+static int nfs_return_delegation(struct inode *inode)
+{
+	nfs_wb_all(inode);
 	return 0;
 }
 
@@ -766,6 +741,7 @@ const struct nfs_rpc_ops nfs_v2_clientops = {
 	.lock_check_bounds = nfs_lock_check_bounds,
 	.close_context	= nfs_close_context,
 	.have_delegation = nfs_have_delegation,
+	.return_delegation = nfs_return_delegation,
 	.alloc_client	= nfs_alloc_client,
 	.init_client	= nfs_init_client,
 	.free_client	= nfs_free_client,

@@ -1,8 +1,16 @@
-// SPDX-License-Identifier: GPL-2.0+
 /*
  * i.MX drm driver - parallel display implementation
  *
  * Copyright (C) 2012 Sascha Hauer, Pengutronix
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version 2
+ * of the License, or (at your option) any later version.
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/component.h>
@@ -10,9 +18,9 @@
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_crtc_helper.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_probe_helper.h>
 #include <linux/videodev2.h>
 #include <video/of_display_timing.h>
 
@@ -55,7 +63,7 @@ static int imx_pd_connector_get_modes(struct drm_connector *connector)
 	}
 
 	if (imxpd->edid) {
-		drm_connector_update_edid_property(connector, imxpd->edid);
+		drm_mode_connector_update_edid_property(connector, imxpd->edid);
 		num_modes = drm_add_edid_modes(connector, imxpd->edid);
 	}
 
@@ -175,7 +183,7 @@ static int imx_pd_register(struct drm_device *drm,
 				&imx_pd_connector_helper_funcs);
 		drm_connector_init(drm, &imxpd->connector,
 				   &imx_pd_connector_funcs,
-				   DRM_MODE_CONNECTOR_DPI);
+				   DRM_MODE_CONNECTOR_VGA);
 	}
 
 	if (imxpd->panel)
@@ -189,7 +197,7 @@ static int imx_pd_register(struct drm_device *drm,
 			return ret;
 		}
 	} else {
-		drm_connector_attach_encoder(&imxpd->connector, encoder);
+		drm_mode_connector_attach_encoder(&imxpd->connector, encoder);
 	}
 
 	return 0;

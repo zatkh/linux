@@ -9,7 +9,7 @@ and booting a kernel.
 
 On some systems, hot-plug tests could hang forever waiting for cpu and
 memory to be ready to be offlined. A special hot-plug target is created
-to run the full range of hot-plug tests. In default mode, hot-plug tests run
+to run full range of hot-plug tests. In default mode, hot-plug tests run
 in safe mode with a limited scope. In limited mode, cpu-hotplug test is
 run on a single cpu as opposed to all hotplug capable cpus, and memory
 hotplug test is run on 2% of hotplug capable memory instead of 10%.
@@ -31,17 +31,6 @@ To build and run the tests with a single command, use::
 
 Note that some tests will require root privileges.
 
-Build and run from user specific object directory (make O=dir)::
-
-  $ make O=/tmp/kselftest kselftest
-
-Build and run KBUILD_OUTPUT directory (make KBUILD_OUTPUT=)::
-
-  $ make KBUILD_OUTPUT=/tmp/kselftest kselftest
-
-The above commands run the tests and print pass/fail summary to make it
-easier to understand the test results. Please find the detailed individual
-test results for each test in /tmp/testname file(s).
 
 Running a subset of selftests
 =============================
@@ -57,20 +46,9 @@ You can specify multiple tests to build and run::
 
   $  make TARGETS="size timers" kselftest
 
-Build and run from user specific object directory (make O=dir)::
-
-  $ make O=/tmp/kselftest TARGETS="size timers" kselftest
-
-Build and run KBUILD_OUTPUT directory (make KBUILD_OUTPUT=)::
-
-  $ make KBUILD_OUTPUT=/tmp/kselftest TARGETS="size timers" kselftest
-
-The above commands run the tests and print pass/fail summary to make it
-easier to understand the test results. Please find the detailed individual
-test results for each test in /tmp/testname file(s).
-
 See the top-level tools/testing/selftests/Makefile for the list of all
 possible targets.
+
 
 Running the full range hotplug selftests
 ========================================
@@ -89,9 +67,9 @@ Note that some tests will require root privileges.
 Install selftests
 =================
 
-You can use the kselftest_install.sh tool to install selftests in the
-default location, which is tools/testing/selftests/kselftest, or in a
-user specified location.
+You can use kselftest_install.sh tool installs selftests in default
+location which is tools/testing/selftests/kselftest or a user specified
+location.
 
 To install selftests in default location::
 
@@ -109,7 +87,7 @@ Running installed selftests
 Kselftest install as well as the Kselftest tarball provide a script
 named "run_kselftest.sh" to run the tests.
 
-You can simply do the following to run the installed Kselftests. Please
+You can simply do the following to run the installed Kselftests. Please
 note some tests will require root privileges::
 
    $ cd kselftest
@@ -135,31 +113,13 @@ Contributing new tests (details)
  * Use TEST_GEN_XXX if such binaries or files are generated during
    compiling.
 
-   TEST_PROGS, TEST_GEN_PROGS mean it is the executable tested by
+   TEST_PROGS, TEST_GEN_PROGS mean it is the excutable tested by
    default.
-
-   TEST_CUSTOM_PROGS should be used by tests that require custom build
-   rules and prevent common build rule use.
-
-   TEST_PROGS are for test shell scripts. Please ensure shell script has
-   its exec bit set. Otherwise, lib.mk run_tests will generate a warning.
-
-   TEST_CUSTOM_PROGS and TEST_PROGS will be run by common run_tests.
 
    TEST_PROGS_EXTENDED, TEST_GEN_PROGS_EXTENDED mean it is the
    executable which is not tested by default.
    TEST_FILES, TEST_GEN_FILES mean it is the file which is used by
    test.
-
- * First use the headers inside the kernel source and/or git repo, and then the
-   system headers.  Headers for the kernel release as opposed to headers
-   installed by the distro on the system should be the primary focus to be able
-   to find regressions.
-
- * If a test needs specific kernel config options enabled, add a config file in
-   the test directory to enable them.
-
-   e.g: tools/testing/selftests/android/config
 
 Test Harness
 ============

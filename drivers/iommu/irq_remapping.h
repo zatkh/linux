@@ -64,7 +64,8 @@ struct irq_remap_ops {
 
 extern struct irq_remap_ops intel_irq_remap_ops;
 extern struct irq_remap_ops amd_iommu_irq_ops;
-extern struct irq_remap_ops hyperv_irq_remap_ops;
+
+extern void ir_ack_apic_edge(struct irq_data *data);
 
 #else  /* CONFIG_IRQ_REMAP */
 

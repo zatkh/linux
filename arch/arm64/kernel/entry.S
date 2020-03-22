@@ -18,7 +18,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/arm-smccc.h>
 #include <linux/init.h>
 #include <linux/linkage.h>
 
@@ -41,9 +40,19 @@
  * Context tracking subsystem.  Used to instrument transitions
  * between user and kernel mode.
  */
-	.macro ct_user_exit
+	.macro ct_user_exit, syscall = 0
 #ifdef CONFIG_CONTEXT_TRACKING
 	bl	context_tracking_user_exit
+	.if \syscall == 1
+	/*
+	 * Save/restore needed during syscalls.  Restore syscall arguments from
+	 * the values already saved on stack during kernel_entry.
+	 */
+	ldp	x0, x1, [sp]
+	ldp	x2, x3, [sp, #S_X2]
+	ldp	x4, x5, [sp, #S_X4]
+	ldp	x6, x7, [sp, #S_X6]
+	.endif
 #endif
 	.endm
 
@@ -51,12 +60,6 @@
 #ifdef CONFIG_CONTEXT_TRACKING
 	bl	context_tracking_user_enter
 #endif
-	.endm
-
-	.macro	clear_gp_regs
-	.irp	n,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-	mov	x\n, xzr
-	.endr
 	.endm
 
 /*
@@ -134,26 +137,6 @@ alternative_else_nop_endif
 	add	\dst, \dst, #(\sym - .entry.tramp.text)
 	.endm
 
-	// This macro corrupts x0-x3. It is the caller's duty
-	// to save/restore them if required.
-	.macro	apply_ssbd, state, tmp1, tmp2
-#ifdef CONFIG_ARM64_SSBD
-alternative_cb	arm64_enable_wa2_handling
-	b	.L__asm_ssbd_skip\@
-alternative_cb_end
-	ldr_this_cpu	\tmp2, arm64_ssbd_callback_required, \tmp1
-	cbz	\tmp2,	.L__asm_ssbd_skip\@
-	ldr	\tmp2, [tsk, #TSK_TI_FLAGS]
-	tbnz	\tmp2, #TIF_SSBD, .L__asm_ssbd_skip\@
-	mov	w0, #ARM_SMCCC_ARCH_WORKAROUND_2
-	mov	w1, #\state
-alternative_cb	arm64_update_smccc_conduit
-	nop					// Patched to SMC/HVC #0
-alternative_cb_end
-.L__asm_ssbd_skip\@:
-#endif
-	.endm
-
 	.macro	kernel_entry, el, regsize = 64
 	.if	\regsize == 32
 	mov	w0, w0				// zero upper 32 bits of x0
@@ -175,17 +158,15 @@ alternative_cb_end
 	stp	x28, x29, [sp, #16 * 14]
 
 	.if	\el == 0
-	clear_gp_regs
 	mrs	x21, sp_el0
 	ldr_this_cpu	tsk, __entry_task, x20	// Ensure MDSCR_EL1.SS is clear,
 	ldr	x19, [tsk, #TSK_TI_FLAGS]	// since we can unmask debug
 	disable_step_tsk x19, x20		// exceptions when scheduling.
 
-	apply_ssbd 1, x22, x23
-
+	mov	x29, xzr			// fp pointed to user-space
 	.else
 	add	x21, sp, #S_FRAME_SIZE
-	get_current_task tsk
+	get_thread_info tsk
 	/* Save the task's original addr_limit and set USER_DS */
 	ldr	x20, [tsk, #TSK_TI_ADDR_LIMIT]
 	str	x20, [sp, #S_ORIG_ADDR_LIMIT]
@@ -249,12 +230,6 @@ alternative_else_nop_endif
 	msr	sp_el0, tsk
 	.endif
 
-	/* Save pmr */
-alternative_if ARM64_HAS_IRQ_PRIO_MASKING
-	mrs_s	x20, SYS_ICC_PMR_EL1
-	str	x20, [sp, #S_PMR_SAVE]
-alternative_else_nop_endif
-
 	/*
 	 * Registers that may be useful after this macro is invoked:
 	 *
@@ -266,22 +241,12 @@ alternative_else_nop_endif
 
 	.macro	kernel_exit, el
 	.if	\el != 0
-	disable_daif
-
 	/* Restore the task's original addr_limit. */
 	ldr	x20, [sp, #S_ORIG_ADDR_LIMIT]
 	str	x20, [tsk, #TSK_TI_ADDR_LIMIT]
 
 	/* No need to restore UAO, it will be restored from SPSR_EL1 */
 	.endif
-
-	/* Restore pmr */
-alternative_if ARM64_HAS_IRQ_PRIO_MASKING
-	ldr	x20, [sp, #S_PMR_SAVE]
-	msr_s	SYS_ICC_PMR_EL1, x20
-	/* Ensure priority change is seen by redistributor */
-	dsb	sy
-alternative_else_nop_endif
 
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
 	.if	\el == 0
@@ -336,7 +301,6 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
-	apply_ssbd 0, x0, x1
 	.endif
 
 	msr	elr_el1, x21			// set up the return data
@@ -373,7 +337,6 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 	.else
 	eret
 	.endif
-	sb
 	.endm
 
 	.macro	irq_stack_entry
@@ -406,7 +369,17 @@ alternative_insn eret, nop, ARM64_UNMAP_KERNEL_AT_EL0
 	mov	sp, x19
 	.endm
 
-/* GPRs used by entry code */
+/*
+ * These are the registers used in the syscall handler, and allow us to
+ * have in theory up to 7 arguments to a function - x0 to x6.
+ *
+ * x7 is reserved for the system call number in 32-bit mode.
+ */
+wsc_nr	.req	w25		// number of system calls
+xsc_nr	.req	x25		// number of system calls (zero-extended)
+wscno	.req	w26		// syscall number
+xscno	.req	x26		// syscall number (zero-extended)
+stbl	.req	x27		// syscall table pointer
 tsk	.req	x28		// current thread_info
 
 /*
@@ -437,18 +410,18 @@ ENTRY(vectors)
 	kernel_ventry	1, sync				// Synchronous EL1h
 	kernel_ventry	1, irq				// IRQ EL1h
 	kernel_ventry	1, fiq_invalid			// FIQ EL1h
-	kernel_ventry	1, error			// Error EL1h
+	kernel_ventry	1, error_invalid		// Error EL1h
 
 	kernel_ventry	0, sync				// Synchronous 64-bit EL0
 	kernel_ventry	0, irq				// IRQ 64-bit EL0
 	kernel_ventry	0, fiq_invalid			// FIQ 64-bit EL0
-	kernel_ventry	0, error			// Error 64-bit EL0
+	kernel_ventry	0, error_invalid		// Error 64-bit EL0
 
 #ifdef CONFIG_COMPAT
 	kernel_ventry	0, sync_compat, 32		// Synchronous 32-bit EL0
 	kernel_ventry	0, irq_compat, 32		// IRQ 32-bit EL0
 	kernel_ventry	0, fiq_invalid_compat, 32	// FIQ 32-bit EL0
-	kernel_ventry	0, error_compat, 32		// Error 32-bit EL0
+	kernel_ventry	0, error_invalid_compat, 32	// Error 32-bit EL0
 #else
 	kernel_ventry	0, sync_invalid, 32		// Synchronous 32-bit EL0
 	kernel_ventry	0, irq_invalid, 32		// IRQ 32-bit EL0
@@ -517,6 +490,10 @@ ENDPROC(el0_error_invalid)
 el0_fiq_invalid_compat:
 	inv_entry 0, BAD_FIQ, 32
 ENDPROC(el0_fiq_invalid_compat)
+
+el0_error_invalid_compat:
+	inv_entry 0, BAD_ERROR, 32
+ENDPROC(el0_error_invalid_compat)
 #endif
 
 el1_sync_invalid:
@@ -568,18 +545,24 @@ el1_da:
 	 * Data abort handling
 	 */
 	mrs	x3, far_el1
-	inherit_daif	pstate=x23, tmp=x2
+	enable_dbg
+	// re-enable interrupts if they were enabled in the aborted context
+	tbnz	x23, #7, 1f			// PSR_I_BIT
+	enable_irq
+1:
 	clear_address_tag x0, x3
 	mov	x2, sp				// struct pt_regs
 	bl	do_mem_abort
 
+	// disable interrupts before pulling preserved data off the stack
+	disable_irq
 	kernel_exit 1
 el1_sp_pc:
 	/*
 	 * Stack or PC alignment exception handling
 	 */
 	mrs	x0, far_el1
-	inherit_daif	pstate=x23, tmp=x2
+	enable_dbg
 	mov	x2, sp
 	bl	do_sp_pc_abort
 	ASM_BUG()
@@ -587,10 +570,10 @@ el1_undef:
 	/*
 	 * Undefined instruction
 	 */
-	inherit_daif	pstate=x23, tmp=x2
+	enable_dbg
 	mov	x0, sp
 	bl	do_undefinstr
-	kernel_exit 1
+	ASM_BUG()
 el1_dbg:
 	/*
 	 * Debug exception handling
@@ -604,7 +587,7 @@ el1_dbg:
 	kernel_exit 1
 el1_inv:
 	// TODO: add support for undefined instructions in kernel mode
-	inherit_daif	pstate=x23, tmp=x2
+	enable_dbg
 	mov	x0, sp
 	mov	x2, x1
 	mov	x1, #BAD_SYNC
@@ -615,53 +598,35 @@ ENDPROC(el1_sync)
 	.align	6
 el1_irq:
 	kernel_entry 1
-	enable_da_f
+	enable_dbg
 #ifdef CONFIG_TRACE_IRQFLAGS
-#ifdef CONFIG_ARM64_PSEUDO_NMI
-alternative_if ARM64_HAS_IRQ_PRIO_MASKING
-	ldr	x20, [sp, #S_PMR_SAVE]
-alternative_else
-	mov	x20, #GIC_PRIO_IRQON
-alternative_endif
-	cmp	x20, #GIC_PRIO_IRQOFF
-	/* Irqs were disabled, don't trace */
-	b.ls	1f
-#endif
 	bl	trace_hardirqs_off
-1:
 #endif
 
 	irq_handler
 
 #ifdef CONFIG_PREEMPT
-	ldr	x24, [tsk, #TSK_TI_PREEMPT]	// get preempt count
-alternative_if ARM64_HAS_IRQ_PRIO_MASKING
-	/*
-	 * DA_F were cleared at start of handling. If anything is set in DAIF,
-	 * we come back from an NMI, so skip preemption
-	 */
-	mrs	x0, daif
-	orr	x24, x24, x0
-alternative_else_nop_endif
-	cbnz	x24, 1f				// preempt count != 0 || NMI return path
-	bl	preempt_schedule_irq		// irq en/disable is done inside
+	ldr	w24, [tsk, #TSK_TI_PREEMPT]	// get preempt count
+	cbnz	w24, 1f				// preempt count != 0
+	ldr	x0, [tsk, #TSK_TI_FLAGS]	// get flags
+	tbz	x0, #TIF_NEED_RESCHED, 1f	// needs rescheduling?
+	bl	el1_preempt
 1:
 #endif
 #ifdef CONFIG_TRACE_IRQFLAGS
-#ifdef CONFIG_ARM64_PSEUDO_NMI
-	/*
-	 * if IRQs were disabled when we received the interrupt, we have an NMI
-	 * and we are not re-enabling interrupt upon eret. Skip tracing.
-	 */
-	cmp	x20, #GIC_PRIO_IRQOFF
-	b.ls	1f
-#endif
 	bl	trace_hardirqs_on
-1:
 #endif
-
 	kernel_exit 1
 ENDPROC(el1_irq)
+
+#ifdef CONFIG_PREEMPT
+el1_preempt:
+	mov	x24, lr
+1:	bl	preempt_schedule_irq		// irq en/disable is done inside
+	ldr	x0, [tsk, #TSK_TI_FLAGS]	// get new tasks TI_FLAGS
+	tbnz	x0, #TIF_NEED_RESCHED, 1b	// needs rescheduling?
+	ret	x24
+#endif
 
 /*
  * EL0 mode handlers.
@@ -679,12 +644,9 @@ el0_sync:
 	b.eq	el0_ia
 	cmp	x24, #ESR_ELx_EC_FP_ASIMD	// FP/ASIMD access
 	b.eq	el0_fpsimd_acc
-	cmp	x24, #ESR_ELx_EC_SVE		// SVE access
-	b.eq	el0_sve_acc
 	cmp	x24, #ESR_ELx_EC_FP_EXC64	// FP/ASIMD exception
 	b.eq	el0_fpsimd_exc
 	cmp	x24, #ESR_ELx_EC_SYS64		// configurable trap
-	ccmp	x24, #ESR_ELx_EC_WFx, #4, ne
 	b.eq	el0_sys
 	cmp	x24, #ESR_ELx_EC_SP_ALIGN	// stack alignment exception
 	b.eq	el0_sp_pc
@@ -717,9 +679,9 @@ el0_sync_compat:
 	cmp	x24, #ESR_ELx_EC_UNKNOWN	// unknown exception in EL0
 	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP15_32	// CP15 MRC/MCR trap
-	b.eq	el0_cp15
+	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP15_64	// CP15 MRRC/MCRR trap
-	b.eq	el0_cp15
+	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP14_MR	// CP14 MRC/MCR trap
 	b.eq	el0_undef
 	cmp	x24, #ESR_ELx_EC_CP14_LS	// CP14 LDC/STC trap
@@ -730,29 +692,18 @@ el0_sync_compat:
 	b.ge	el0_dbg
 	b	el0_inv
 el0_svc_compat:
-	mov	x0, sp
-	bl	el0_svc_compat_handler
-	b	ret_to_user
+	/*
+	 * AArch32 syscall handling
+	 */
+	adrp	stbl, compat_sys_call_table	// load compat syscall table pointer
+	mov	wscno, w7			// syscall number in w7 (r7)
+	mov     wsc_nr, #__NR_compat_syscalls
+	b	el0_svc_naked
 
 	.align	6
 el0_irq_compat:
 	kernel_entry 0, 32
 	b	el0_irq_naked
-
-el0_error_compat:
-	kernel_entry 0, 32
-	b	el0_error_naked
-
-el0_cp15:
-	/*
-	 * Trapped CP15 (MRC, MCR, MRRC, MCRR) instructions
-	 */
-	enable_daif
-	ct_user_exit
-	mov	x0, x25
-	mov	x1, sp
-	bl	do_cp15instr
-	b	ret_to_user
 #endif
 
 el0_da:
@@ -760,7 +711,8 @@ el0_da:
 	 * Data abort handling
 	 */
 	mrs	x26, far_el1
-	enable_daif
+	// enable interrupts before calling the main handler
+	enable_dbg_and_irq
 	ct_user_exit
 	clear_address_tag x0, x26
 	mov	x1, x25
@@ -772,7 +724,7 @@ el0_ia:
 	 * Instruction abort handling
 	 */
 	mrs	x26, far_el1
-	enable_da_f
+	enable_dbg
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_off
 #endif
@@ -786,27 +738,17 @@ el0_fpsimd_acc:
 	/*
 	 * Floating Point or Advanced SIMD access
 	 */
-	enable_daif
+	enable_dbg
 	ct_user_exit
 	mov	x0, x25
 	mov	x1, sp
 	bl	do_fpsimd_acc
 	b	ret_to_user
-el0_sve_acc:
-	/*
-	 * Scalable Vector Extension access
-	 */
-	enable_daif
-	ct_user_exit
-	mov	x0, x25
-	mov	x1, sp
-	bl	do_sve_acc
-	b	ret_to_user
 el0_fpsimd_exc:
 	/*
-	 * Floating Point, Advanced SIMD or SVE exception
+	 * Floating Point or Advanced SIMD exception
 	 */
-	enable_daif
+	enable_dbg
 	ct_user_exit
 	mov	x0, x25
 	mov	x1, sp
@@ -817,7 +759,7 @@ el0_sp_pc:
 	 * Stack or PC alignment exception handling
 	 */
 	mrs	x26, far_el1
-	enable_da_f
+	enable_dbg
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_off
 #endif
@@ -831,7 +773,8 @@ el0_undef:
 	/*
 	 * Undefined instruction
 	 */
-	enable_daif
+	// enable interrupts before calling the main handler
+	enable_dbg_and_irq
 	ct_user_exit
 	mov	x0, sp
 	bl	do_undefinstr
@@ -840,7 +783,7 @@ el0_sys:
 	/*
 	 * System instructions, for trapped cache maintenance instructions
 	 */
-	enable_daif
+	enable_dbg_and_irq
 	ct_user_exit
 	mov	x0, x25
 	mov	x1, sp
@@ -855,11 +798,11 @@ el0_dbg:
 	mov	x1, x25
 	mov	x2, sp
 	bl	do_debug_exception
-	enable_daif
+	enable_dbg
 	ct_user_exit
 	b	ret_to_user
 el0_inv:
-	enable_daif
+	enable_dbg
 	ct_user_exit
 	mov	x0, sp
 	mov	x1, #BAD_SYNC
@@ -872,7 +815,7 @@ ENDPROC(el0_sync)
 el0_irq:
 	kernel_entry 0
 el0_irq_naked:
-	enable_da_f
+	enable_dbg
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_off
 #endif
@@ -891,26 +834,23 @@ el0_irq_naked:
 	b	ret_to_user
 ENDPROC(el0_irq)
 
-el1_error:
-	kernel_entry 1
-	mrs	x1, esr_el1
-	enable_dbg
-	mov	x0, sp
-	bl	do_serror
-	kernel_exit 1
-ENDPROC(el1_error)
-
-el0_error:
-	kernel_entry 0
-el0_error_naked:
-	mrs	x1, esr_el1
-	enable_dbg
-	mov	x0, sp
-	bl	do_serror
-	enable_daif
-	ct_user_exit
-	b	ret_to_user
-ENDPROC(el0_error)
+/*
+ * This is the fast syscall return path.  We do as little as possible here,
+ * and this includes saving x0 back into the kernel stack.
+ */
+ret_fast_syscall:
+	disable_irq				// disable interrupts
+	str	x0, [sp, #S_X0]			// returned x0
+	ldr	x1, [tsk, #TSK_TI_FLAGS]	// re-check for syscall tracing
+	and	x2, x1, #_TIF_SYSCALL_WORK
+	cbnz	x2, ret_fast_syscall_trace
+	and	x2, x1, #_TIF_WORK_MASK
+	cbnz	x2, work_pending
+	enable_step_tsk x1, x2
+	kernel_exit 0
+ret_fast_syscall_trace:
+	enable_irq				// enable interrupts
+	b	__sys_trace_return_skipped	// we already saved x0
 
 /*
  * Ok, we need to do extra processing, enter the slow path.
@@ -927,15 +867,12 @@ work_pending:
  * "slow" syscall return path.
  */
 ret_to_user:
-	disable_daif
+	disable_irq				// disable interrupts
 	ldr	x1, [tsk, #TSK_TI_FLAGS]
 	and	x2, x1, #_TIF_WORK_MASK
 	cbnz	x2, work_pending
 finish_ret_to_user:
 	enable_step_tsk x1, x2
-#ifdef CONFIG_GCC_PLUGIN_STACKLEAK
-	bl	stackleak_erase
-#endif
 	kernel_exit 0
 ENDPROC(ret_to_user)
 
@@ -944,10 +881,64 @@ ENDPROC(ret_to_user)
  */
 	.align	6
 el0_svc:
+	adrp	stbl, sys_call_table		// load syscall table pointer
+	mov	wscno, w8			// syscall number in w8
+	mov	wsc_nr, #__NR_syscalls
+el0_svc_naked:					// compat entry point
+	stp	x0, xscno, [sp, #S_ORIG_X0]	// save the original x0 and syscall number
+	enable_dbg_and_irq
+	ct_user_exit 1
+
+	ldr	x16, [tsk, #TSK_TI_FLAGS]	// check for syscall hooks
+	tst	x16, #_TIF_SYSCALL_WORK
+	b.ne	__sys_trace
+	cmp     wscno, wsc_nr			// check upper syscall limit
+	b.hs	ni_sys
+	mask_nospec64 xscno, xsc_nr, x19	// enforce bounds for syscall number
+	ldr	x16, [stbl, xscno, lsl #3]	// address in the syscall table
+	blr	x16				// call sys_* routine
+	b	ret_fast_syscall
+ni_sys:
 	mov	x0, sp
-	bl	el0_svc_handler
-	b	ret_to_user
+	bl	do_ni_syscall
+	b	ret_fast_syscall
 ENDPROC(el0_svc)
+
+	/*
+	 * This is the really slow path.  We're going to be doing context
+	 * switches, and waiting for our parent to respond.
+	 */
+__sys_trace:
+	cmp     wscno, #NO_SYSCALL		// user-issued syscall(-1)?
+	b.ne	1f
+	mov	x0, #-ENOSYS			// set default errno if so
+	str	x0, [sp, #S_X0]
+1:	mov	x0, sp
+	bl	syscall_trace_enter
+	cmp	w0, #NO_SYSCALL			// skip the syscall?
+	b.eq	__sys_trace_return_skipped
+	mov	wscno, w0			// syscall number (possibly new)
+	mov	x1, sp				// pointer to regs
+	cmp	wscno, wsc_nr			// check upper syscall limit
+	b.hs	__ni_sys_trace
+	ldp	x0, x1, [sp]			// restore the syscall args
+	ldp	x2, x3, [sp, #S_X2]
+	ldp	x4, x5, [sp, #S_X4]
+	ldp	x6, x7, [sp, #S_X6]
+	ldr	x16, [stbl, xscno, lsl #3]	// address in the syscall table
+	blr	x16				// call sys_* routine
+
+__sys_trace_return:
+	str	x0, [sp, #S_X0]			// save returned x0
+__sys_trace_return_skipped:
+	mov	x0, sp
+	bl	syscall_trace_exit
+	b	ret_to_user
+
+__ni_sys_trace:
+	mov	x0, sp
+	bl	do_ni_syscall
+	b	__sys_trace_return
 
 	.popsection				// .entry.text
 
@@ -959,7 +950,7 @@ ENDPROC(el0_svc)
 
 	.macro tramp_map_kernel, tmp
 	mrs	\tmp, ttbr1_el1
-	add	\tmp, \tmp, #(PAGE_SIZE + RESERVED_TTBR0_SIZE)
+	sub	\tmp, \tmp, #(SWAPPER_DIR_SIZE + RESERVED_TTBR0_SIZE)
 	bic	\tmp, \tmp, #USER_ASID_FLAG
 	msr	ttbr1_el1, \tmp
 #ifdef CONFIG_QCOM_FALKOR_ERRATUM_1003
@@ -978,7 +969,7 @@ alternative_else_nop_endif
 
 	.macro tramp_unmap_kernel, tmp
 	mrs	\tmp, ttbr1_el1
-	sub	\tmp, \tmp, #(PAGE_SIZE + RESERVED_TTBR0_SIZE)
+	add	\tmp, \tmp, #(SWAPPER_DIR_SIZE + RESERVED_TTBR0_SIZE)
 	orr	\tmp, \tmp, #USER_ASID_FLAG
 	msr	ttbr1_el1, \tmp
 	/*
@@ -1025,7 +1016,6 @@ alternative_insn isb, nop, ARM64_WORKAROUND_QCOM_FALKOR_E1003
 	mrs	x30, far_el1
 	.endif
 	eret
-	sb
 	.endm
 
 	.align	11
@@ -1062,6 +1052,14 @@ __entry_tramp_data_start:
 	.popsection				// .rodata
 #endif /* CONFIG_RANDOMIZE_BASE */
 #endif /* CONFIG_UNMAP_KERNEL_AT_EL0 */
+
+/*
+ * Special system call wrappers.
+ */
+ENTRY(sys_rt_sigreturn_wrapper)
+	mov	x0, sp
+	b	sys_rt_sigreturn
+ENDPROC(sys_rt_sigreturn_wrapper)
 
 /*
  * Register switch for AArch64. The callee-saved registers need to be saved
@@ -1104,184 +1102,7 @@ ENTRY(ret_from_fork)
 	cbz	x19, 1f				// not a kernel thread
 	mov	x0, x20
 	blr	x19
-1:	get_current_task tsk
+1:	get_thread_info tsk
 	b	ret_to_user
 ENDPROC(ret_from_fork)
 NOKPROBE(ret_from_fork)
-
-#ifdef CONFIG_ARM_SDE_INTERFACE
-
-#include <asm/sdei.h>
-#include <uapi/linux/arm_sdei.h>
-
-.macro sdei_handler_exit exit_mode
-	/* On success, this call never returns... */
-	cmp	\exit_mode, #SDEI_EXIT_SMC
-	b.ne	99f
-	smc	#0
-	b	.
-99:	hvc	#0
-	b	.
-.endm
-
-#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-/*
- * The regular SDEI entry point may have been unmapped along with the rest of
- * the kernel. This trampoline restores the kernel mapping to make the x1 memory
- * argument accessible.
- *
- * This clobbers x4, __sdei_handler() will restore this from firmware's
- * copy.
- */
-.ltorg
-.pushsection ".entry.tramp.text", "ax"
-ENTRY(__sdei_asm_entry_trampoline)
-	mrs	x4, ttbr1_el1
-	tbz	x4, #USER_ASID_BIT, 1f
-
-	tramp_map_kernel tmp=x4
-	isb
-	mov	x4, xzr
-
-	/*
-	 * Use reg->interrupted_regs.addr_limit to remember whether to unmap
-	 * the kernel on exit.
-	 */
-1:	str	x4, [x1, #(SDEI_EVENT_INTREGS + S_ORIG_ADDR_LIMIT)]
-
-#ifdef CONFIG_RANDOMIZE_BASE
-	adr	x4, tramp_vectors + PAGE_SIZE
-	add	x4, x4, #:lo12:__sdei_asm_trampoline_next_handler
-	ldr	x4, [x4]
-#else
-	ldr	x4, =__sdei_asm_handler
-#endif
-	br	x4
-ENDPROC(__sdei_asm_entry_trampoline)
-NOKPROBE(__sdei_asm_entry_trampoline)
-
-/*
- * Make the exit call and restore the original ttbr1_el1
- *
- * x0 & x1: setup for the exit API call
- * x2: exit_mode
- * x4: struct sdei_registered_event argument from registration time.
- */
-ENTRY(__sdei_asm_exit_trampoline)
-	ldr	x4, [x4, #(SDEI_EVENT_INTREGS + S_ORIG_ADDR_LIMIT)]
-	cbnz	x4, 1f
-
-	tramp_unmap_kernel	tmp=x4
-
-1:	sdei_handler_exit exit_mode=x2
-ENDPROC(__sdei_asm_exit_trampoline)
-NOKPROBE(__sdei_asm_exit_trampoline)
-	.ltorg
-.popsection		// .entry.tramp.text
-#ifdef CONFIG_RANDOMIZE_BASE
-.pushsection ".rodata", "a"
-__sdei_asm_trampoline_next_handler:
-	.quad	__sdei_asm_handler
-.popsection		// .rodata
-#endif /* CONFIG_RANDOMIZE_BASE */
-#endif /* CONFIG_UNMAP_KERNEL_AT_EL0 */
-
-/*
- * Software Delegated Exception entry point.
- *
- * x0: Event number
- * x1: struct sdei_registered_event argument from registration time.
- * x2: interrupted PC
- * x3: interrupted PSTATE
- * x4: maybe clobbered by the trampoline
- *
- * Firmware has preserved x0->x17 for us, we must save/restore the rest to
- * follow SMC-CC. We save (or retrieve) all the registers as the handler may
- * want them.
- */
-ENTRY(__sdei_asm_handler)
-	stp     x2, x3, [x1, #SDEI_EVENT_INTREGS + S_PC]
-	stp     x4, x5, [x1, #SDEI_EVENT_INTREGS + 16 * 2]
-	stp     x6, x7, [x1, #SDEI_EVENT_INTREGS + 16 * 3]
-	stp     x8, x9, [x1, #SDEI_EVENT_INTREGS + 16 * 4]
-	stp     x10, x11, [x1, #SDEI_EVENT_INTREGS + 16 * 5]
-	stp     x12, x13, [x1, #SDEI_EVENT_INTREGS + 16 * 6]
-	stp     x14, x15, [x1, #SDEI_EVENT_INTREGS + 16 * 7]
-	stp     x16, x17, [x1, #SDEI_EVENT_INTREGS + 16 * 8]
-	stp     x18, x19, [x1, #SDEI_EVENT_INTREGS + 16 * 9]
-	stp     x20, x21, [x1, #SDEI_EVENT_INTREGS + 16 * 10]
-	stp     x22, x23, [x1, #SDEI_EVENT_INTREGS + 16 * 11]
-	stp     x24, x25, [x1, #SDEI_EVENT_INTREGS + 16 * 12]
-	stp     x26, x27, [x1, #SDEI_EVENT_INTREGS + 16 * 13]
-	stp     x28, x29, [x1, #SDEI_EVENT_INTREGS + 16 * 14]
-	mov	x4, sp
-	stp     lr, x4, [x1, #SDEI_EVENT_INTREGS + S_LR]
-
-	mov	x19, x1
-
-#ifdef CONFIG_VMAP_STACK
-	/*
-	 * entry.S may have been using sp as a scratch register, find whether
-	 * this is a normal or critical event and switch to the appropriate
-	 * stack for this CPU.
-	 */
-	ldrb	w4, [x19, #SDEI_EVENT_PRIORITY]
-	cbnz	w4, 1f
-	ldr_this_cpu dst=x5, sym=sdei_stack_normal_ptr, tmp=x6
-	b	2f
-1:	ldr_this_cpu dst=x5, sym=sdei_stack_critical_ptr, tmp=x6
-2:	mov	x6, #SDEI_STACK_SIZE
-	add	x5, x5, x6
-	mov	sp, x5
-#endif
-
-	/*
-	 * We may have interrupted userspace, or a guest, or exit-from or
-	 * return-to either of these. We can't trust sp_el0, restore it.
-	 */
-	mrs	x28, sp_el0
-	ldr_this_cpu	dst=x0, sym=__entry_task, tmp=x1
-	msr	sp_el0, x0
-
-	/* If we interrupted the kernel point to the previous stack/frame. */
-	and     x0, x3, #0xc
-	mrs     x1, CurrentEL
-	cmp     x0, x1
-	csel	x29, x29, xzr, eq	// fp, or zero
-	csel	x4, x2, xzr, eq		// elr, or zero
-
-	stp	x29, x4, [sp, #-16]!
-	mov	x29, sp
-
-	add	x0, x19, #SDEI_EVENT_INTREGS
-	mov	x1, x19
-	bl	__sdei_handler
-
-	msr	sp_el0, x28
-	/* restore regs >x17 that we clobbered */
-	mov	x4, x19         // keep x4 for __sdei_asm_exit_trampoline
-	ldp	x28, x29, [x4, #SDEI_EVENT_INTREGS + 16 * 14]
-	ldp	x18, x19, [x4, #SDEI_EVENT_INTREGS + 16 * 9]
-	ldp	lr, x1, [x4, #SDEI_EVENT_INTREGS + S_LR]
-	mov	sp, x1
-
-	mov	x1, x0			// address to complete_and_resume
-	/* x0 = (x0 <= 1) ? EVENT_COMPLETE:EVENT_COMPLETE_AND_RESUME */
-	cmp	x0, #1
-	mov_q	x2, SDEI_1_0_FN_SDEI_EVENT_COMPLETE
-	mov_q	x3, SDEI_1_0_FN_SDEI_EVENT_COMPLETE_AND_RESUME
-	csel	x0, x2, x3, ls
-
-	ldr_l	x2, sdei_exit_mode
-
-alternative_if_not ARM64_UNMAP_KERNEL_AT_EL0
-	sdei_handler_exit exit_mode=x2
-alternative_else_nop_endif
-
-#ifdef CONFIG_UNMAP_KERNEL_AT_EL0
-	tramp_alias	dst=x5, sym=__sdei_asm_exit_trampoline
-	br	x5
-#endif
-ENDPROC(__sdei_asm_handler)
-NOKPROBE(__sdei_asm_handler)
-#endif /* CONFIG_ARM_SDE_INTERFACE */

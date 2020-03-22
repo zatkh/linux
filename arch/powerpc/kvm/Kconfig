@@ -22,7 +22,6 @@ config KVM
 	select PREEMPT_NOTIFIERS
 	select ANON_INODES
 	select HAVE_KVM_EVENTFD
-	select HAVE_KVM_VCPU_ASYNC_IOCTL
 	select SRCU
 	select KVM_VFIO
 	select IRQ_BYPASS_MANAGER
@@ -204,6 +203,6 @@ config KVM_XIVE
 	default y
 	depends on KVM_XICS && PPC_XIVE_NATIVE && KVM_BOOK3S_HV_POSSIBLE
 
-source "drivers/vhost/Kconfig"
+source drivers/vhost/Kconfig
 
 endif # VIRTUALIZATION

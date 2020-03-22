@@ -11,7 +11,6 @@
 #include <linux/stop_machine.h>
 #include <linux/slab.h>
 #include <linux/kdebug.h>
-#include <linux/kprobes.h>
 #include <asm/text-patching.h>
 #include <asm/alternative.h>
 #include <asm/sections.h>
@@ -223,10 +222,6 @@ void __init arch_init_ideal_nops(void)
 		}
 		break;
 
-	case X86_VENDOR_HYGON:
-		ideal_nops = p6_nops;
-		return;
-
 	case X86_VENDOR_AMD:
 		if (boot_cpu_data.x86 > 0xf) {
 			ideal_nops = p6_nops;
@@ -292,7 +287,7 @@ recompute_jump(struct alt_instr *a, u8 *orig_insn, u8 *repl_insn, u8 *insnbuf)
 	tgt_rip  = next_rip + o_dspl;
 	n_dspl = tgt_rip - orig_insn;
 
-	DPRINTK("target RIP: %px, new_displ: 0x%x", tgt_rip, n_dspl);
+	DPRINTK("target RIP: %p, new_displ: 0x%x", tgt_rip, n_dspl);
 
 	if (tgt_rip - orig_insn >= 0) {
 		if (n_dspl - 2 <= 127)
@@ -349,7 +344,7 @@ static void __init_or_module noinline optimize_nops(struct alt_instr *a, u8 *ins
 	add_nops(instr + (a->instrlen - a->padlen), a->padlen);
 	local_irq_restore(flags);
 
-	DUMP_BYTES(instr, a->instrlen, "%px: [%d:%d) optimized NOPs: ",
+	DUMP_BYTES(instr, a->instrlen, "%p: [%d:%d) optimized NOPs: ",
 		   instr, a->instrlen - a->padlen, a->padlen);
 }
 
@@ -370,7 +365,7 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 	u8 *instr, *replacement;
 	u8 insnbuf[MAX_PATCH_LEN];
 
-	DPRINTK("alt table %px, -> %px", start, end);
+	DPRINTK("alt table %p -> %p", start, end);
 	/*
 	 * The scan order should be from start to end. A later scanned
 	 * alternative code can overwrite previously scanned alternative code.
@@ -394,14 +389,14 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 			continue;
 		}
 
-		DPRINTK("feat: %d*32+%d, old: (%pS (%px) len: %d), repl: (%px, len: %d), pad: %d",
+		DPRINTK("feat: %d*32+%d, old: (%p, len: %d), repl: (%p, len: %d), pad: %d",
 			a->cpuid >> 5,
 			a->cpuid & 0x1f,
-			instr, instr, a->instrlen,
+			instr, a->instrlen,
 			replacement, a->replacementlen, a->padlen);
 
-		DUMP_BYTES(instr, a->instrlen, "%px: old_insn: ", instr);
-		DUMP_BYTES(replacement, a->replacementlen, "%px: rpl_insn: ", replacement);
+		DUMP_BYTES(instr, a->instrlen, "%p: old_insn: ", instr);
+		DUMP_BYTES(replacement, a->replacementlen, "%p: rpl_insn: ", replacement);
 
 		memcpy(insnbuf, replacement, a->replacementlen);
 		insnbuf_sz = a->replacementlen;
@@ -427,7 +422,7 @@ void __init_or_module noinline apply_alternatives(struct alt_instr *start,
 				 a->instrlen - a->replacementlen);
 			insnbuf_sz += a->instrlen - a->replacementlen;
 		}
-		DUMP_BYTES(insnbuf, insnbuf_sz, "%px: final_insn: ", instr);
+		DUMP_BYTES(insnbuf, insnbuf_sz, "%p: final_insn: ", instr);
 
 		text_poke_early(instr, insnbuf, insnbuf_sz);
 	}
@@ -439,6 +434,7 @@ static void alternatives_smp_lock(const s32 *start, const s32 *end,
 {
 	const s32 *poff;
 
+	mutex_lock(&text_mutex);
 	for (poff = start; poff < end; poff++) {
 		u8 *ptr = (u8 *)poff + *poff;
 
@@ -448,6 +444,7 @@ static void alternatives_smp_lock(const s32 *start, const s32 *end,
 		if (*ptr == 0x3e)
 			text_poke(ptr, ((unsigned char []){0xf0}), 1);
 	}
+	mutex_unlock(&text_mutex);
 }
 
 static void alternatives_smp_unlock(const s32 *start, const s32 *end,
@@ -455,6 +452,7 @@ static void alternatives_smp_unlock(const s32 *start, const s32 *end,
 {
 	const s32 *poff;
 
+	mutex_lock(&text_mutex);
 	for (poff = start; poff < end; poff++) {
 		u8 *ptr = (u8 *)poff + *poff;
 
@@ -464,6 +462,7 @@ static void alternatives_smp_unlock(const s32 *start, const s32 *end,
 		if (*ptr == 0xf0)
 			text_poke(ptr, ((unsigned char []){0x3E}), 1);
 	}
+	mutex_unlock(&text_mutex);
 }
 
 struct smp_alt_module {
@@ -482,7 +481,8 @@ struct smp_alt_module {
 	struct list_head next;
 };
 static LIST_HEAD(smp_alt_modules);
-static bool uniproc_patched = false;	/* protected by text_mutex */
+static DEFINE_MUTEX(smp_alt);
+static bool uniproc_patched = false;	/* protected by smp_alt */
 
 void __init_or_module alternatives_smp_module_add(struct module *mod,
 						  char *name,
@@ -491,7 +491,7 @@ void __init_or_module alternatives_smp_module_add(struct module *mod,
 {
 	struct smp_alt_module *smp;
 
-	mutex_lock(&text_mutex);
+	mutex_lock(&smp_alt);
 	if (!uniproc_patched)
 		goto unlock;
 
@@ -518,14 +518,14 @@ void __init_or_module alternatives_smp_module_add(struct module *mod,
 smp_unlock:
 	alternatives_smp_unlock(locks, locks_end, text, text_end);
 unlock:
-	mutex_unlock(&text_mutex);
+	mutex_unlock(&smp_alt);
 }
 
 void __init_or_module alternatives_smp_module_del(struct module *mod)
 {
 	struct smp_alt_module *item;
 
-	mutex_lock(&text_mutex);
+	mutex_lock(&smp_alt);
 	list_for_each_entry(item, &smp_alt_modules, next) {
 		if (mod != item->mod)
 			continue;
@@ -533,7 +533,7 @@ void __init_or_module alternatives_smp_module_del(struct module *mod)
 		kfree(item);
 		break;
 	}
-	mutex_unlock(&text_mutex);
+	mutex_unlock(&smp_alt);
 }
 
 void alternatives_enable_smp(void)
@@ -543,7 +543,7 @@ void alternatives_enable_smp(void)
 	/* Why bother if there are no other CPUs? */
 	BUG_ON(num_possible_cpus() == 1);
 
-	mutex_lock(&text_mutex);
+	mutex_lock(&smp_alt);
 
 	if (uniproc_patched) {
 		pr_info("switching to SMP code\n");
@@ -555,21 +555,16 @@ void alternatives_enable_smp(void)
 					      mod->text, mod->text_end);
 		uniproc_patched = false;
 	}
-	mutex_unlock(&text_mutex);
+	mutex_unlock(&smp_alt);
 }
 
-/*
- * Return 1 if the address range is reserved for SMP-alternatives.
- * Must hold text_mutex.
- */
+/* Return 1 if the address range is reserved for smp-alternatives */
 int alternatives_text_reserved(void *start, void *end)
 {
 	struct smp_alt_module *mod;
 	const s32 *poff;
 	u8 *text_start = start;
 	u8 *text_end = end;
-
-	lockdep_assert_held(&text_mutex);
 
 	list_for_each_entry(mod, &smp_alt_modules, next) {
 		if (mod->text > text_end || mod->text_end < text_start)
@@ -599,7 +594,7 @@ void __init_or_module apply_paravirt(struct paravirt_patch_site *start,
 		BUG_ON(p->len > MAX_PATCH_LEN);
 		/* prep the buffer with the original instructions */
 		memcpy(insnbuf, p->instr, p->len);
-		used = pv_ops.init.patch(p->instrtype, insnbuf,
+		used = pv_init_ops.patch(p->instrtype, p->clobbers, insnbuf,
 					 (unsigned long)p->instr, p->len);
 
 		BUG_ON(used > p->len);
@@ -673,7 +668,6 @@ void *__init_or_module text_poke_early(void *addr, const void *opcode,
 	local_irq_save(flags);
 	memcpy(addr, opcode, len);
 	local_irq_restore(flags);
-	sync_core();
 	/* Could also do a CLFLUSH here to speed up CPU recovery; but
 	   that causes hangs on some VIA CPUs. */
 	return addr;
@@ -689,6 +683,8 @@ void *__init_or_module text_poke_early(void *addr, const void *opcode,
  * It means the size must be writable atomically and the address must be aligned
  * in a way that permits an atomic write. It also makes sure we fit on a single
  * page.
+ *
+ * Note: Must be called under text_mutex.
  */
 void *text_poke(void *addr, const void *opcode, size_t len)
 {
@@ -696,14 +692,6 @@ void *text_poke(void *addr, const void *opcode, size_t len)
 	char *vaddr;
 	struct page *pages[2];
 	int i;
-
-	/*
-	 * While boot memory allocator is runnig we cannot use struct
-	 * pages as they are not yet initialized.
-	 */
-	BUG_ON(!after_bootmem);
-
-	lockdep_assert_held(&text_mutex);
 
 	if (!core_kernel_text((unsigned long)addr)) {
 		pages[0] = vmalloc_to_page(addr);
@@ -765,8 +753,8 @@ int poke_int3_handler(struct pt_regs *regs)
 	regs->ip = (unsigned long) bp_int3_handler;
 
 	return 1;
+
 }
-NOKPROBE_SYMBOL(poke_int3_handler);
 
 /**
  * text_poke_bp() -- update instructions on live kernel on SMP
@@ -787,6 +775,8 @@ NOKPROBE_SYMBOL(poke_int3_handler);
  *	- replace the first byte (int3) by the first byte of
  *	  replacing opcode
  *	- sync cores
+ *
+ * Note: must be called under text_mutex.
  */
 void *text_poke_bp(void *addr, const void *opcode, size_t len, void *handler)
 {
@@ -795,9 +785,6 @@ void *text_poke_bp(void *addr, const void *opcode, size_t len, void *handler)
 	bp_int3_handler = handler;
 	bp_int3_addr = (u8 *)addr + sizeof(int3);
 	bp_patching_in_progress = true;
-
-	lockdep_assert_held(&text_mutex);
-
 	/*
 	 * Corresponding read barrier in int3 notifier for making sure the
 	 * in_progress and handler are correctly ordered wrt. patching.

@@ -30,11 +30,11 @@
 #include <linux/in6.h>
 #include <linux/jiffies.h>
 #include <linux/time.h>
+#include <linux/flex_array.h>
 #include <linux/cpumask.h>
 #include <net/inet_ecn.h>
 #include <net/ip_tunnels.h>
 #include <net/dst_metadata.h>
-#include <net/nsh.h>
 
 struct sk_buff;
 
@@ -59,17 +59,12 @@ struct ovs_tunnel_info {
 
 struct vlan_head {
 	__be16 tpid; /* Vlan type. Generally 802.1q or 802.1ad.*/
-	__be16 tci;  /* 0 if no VLAN, VLAN_CFI_MASK set otherwise. */
+	__be16 tci;  /* 0 if no VLAN, VLAN_TAG_PRESENT set otherwise. */
 };
 
 #define OVS_SW_FLOW_KEY_METADATA_SIZE			\
 	(offsetof(struct sw_flow_key, recirc_id) +	\
 	FIELD_SIZEOF(struct sw_flow_key, recirc_id))
-
-struct ovs_key_nsh {
-	struct ovs_nsh_key_base base;
-	__be32 context[NSH_MD1_CONTEXT_SIZE];
-};
 
 struct sw_flow_key {
 	u8 tun_opts[IP_TUNNEL_OPTS_MAX];
@@ -148,7 +143,6 @@ struct sw_flow_key {
 				} nd;
 			};
 		} ipv6;
-		struct ovs_key_nsh nsh;         /* network service header */
 	};
 	struct {
 		/* Connection tracking fields not packed above. */

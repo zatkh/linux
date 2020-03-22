@@ -28,6 +28,7 @@
 #include <linux/jiffies.h>
 #include <linux/cpufreq.h>
 #include <linux/percpu.h>
+#include <linux/miscdevice.h>
 #include <linux/rtc/m48t59.h>
 #include <linux/kernel_stat.h>
 #include <linux/clockchips.h>
@@ -445,8 +446,8 @@ static int rtc_probe(struct platform_device *op)
 {
 	struct resource *r;
 
-	printk(KERN_INFO "%pOF: RTC regs at 0x%llx\n",
-	       op->dev.of_node, op->resource[0].start);
+	printk(KERN_INFO "%s: RTC regs at 0x%llx\n",
+	       op->dev.of_node->full_name, op->resource[0].start);
 
 	/* The CMOS RTC driver only accepts IORESOURCE_IO, so cons
 	 * up a fake resource so that the probe works for all cases.
@@ -501,8 +502,8 @@ static struct platform_device rtc_bq4802_device = {
 static int bq4802_probe(struct platform_device *op)
 {
 
-	printk(KERN_INFO "%pOF: BQ4802 regs at 0x%llx\n",
-	       op->dev.of_node, op->resource[0].start);
+	printk(KERN_INFO "%s: BQ4802 regs at 0x%llx\n",
+	       op->dev.of_node->full_name, op->resource[0].start);
 
 	rtc_bq4802_device.resource = &op->resource[0];
 	return platform_device_register(&rtc_bq4802_device);
@@ -561,12 +562,12 @@ static int mostek_probe(struct platform_device *op)
 	/* On an Enterprise system there can be multiple mostek clocks.
 	 * We should only match the one that is on the central FHC bus.
 	 */
-	if (of_node_name_eq(dp->parent, "fhc") &&
-	    !of_node_name_eq(dp->parent->parent, "central"))
+	if (!strcmp(dp->parent->name, "fhc") &&
+	    strcmp(dp->parent->parent->name, "central") != 0)
 		return -ENODEV;
 
-	printk(KERN_INFO "%pOF: Mostek regs at 0x%llx\n",
-	       dp, op->resource[0].start);
+	printk(KERN_INFO "%s: Mostek regs at 0x%llx\n",
+	       dp->full_name, op->resource[0].start);
 
 	m48t59_rtc.resource = &op->resource[0];
 	return platform_device_register(&m48t59_rtc);
@@ -812,7 +813,7 @@ static void __init get_tick_patch(void)
 	}
 }
 
-static void __init init_tick_ops(struct sparc64_tick_ops *ops)
+static void init_tick_ops(struct sparc64_tick_ops *ops)
 {
 	unsigned long freq, quotient, tick;
 
@@ -830,16 +831,12 @@ static void __init init_tick_ops(struct sparc64_tick_ops *ops)
 void __init time_init_early(void)
 {
 	if (tlb_type == spitfire) {
-		if (is_hummingbird()) {
+		if (is_hummingbird())
 			init_tick_ops(&hbtick_operations);
-			clocksource_tick.archdata.vclock_mode = VCLOCK_NONE;
-		} else {
+		else
 			init_tick_ops(&tick_operations);
-			clocksource_tick.archdata.vclock_mode = VCLOCK_TICK;
-		}
 	} else {
 		init_tick_ops(&stick_operations);
-		clocksource_tick.archdata.vclock_mode = VCLOCK_STICK;
 	}
 }
 

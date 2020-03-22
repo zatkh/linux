@@ -177,7 +177,7 @@ static int vdic_get_ipu_resources(struct vdic_priv *priv)
 		priv->vdi_in_ch = ch;
 
 		ch = ipu_idmac_get(priv->ipu, IPUV3_CHANNEL_MEM_VDI_NEXT);
-		if (IS_ERR(ch)) {
+		if (IS_ERR(priv->vdi_in_ch_n)) {
 			err_chan = IPUV3_CHANNEL_MEM_VDI_NEXT;
 			ret = PTR_ERR(ch);
 			goto out_err_chan;
@@ -219,17 +219,25 @@ static void __maybe_unused prepare_vdi_in_buffers(struct vdic_priv *priv,
 
 	switch (priv->fieldtype) {
 	case V4L2_FIELD_SEQ_TB:
+		prev_phys = vb2_dma_contig_plane_dma_addr(prev_vb, 0);
+		curr_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0) + fs;
+		next_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0);
+		break;
 	case V4L2_FIELD_SEQ_BT:
 		prev_phys = vb2_dma_contig_plane_dma_addr(prev_vb, 0) + fs;
 		curr_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0);
 		next_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0) + fs;
 		break;
-	case V4L2_FIELD_INTERLACED_TB:
 	case V4L2_FIELD_INTERLACED_BT:
-	case V4L2_FIELD_INTERLACED:
 		prev_phys = vb2_dma_contig_plane_dma_addr(prev_vb, 0) + is;
 		curr_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0);
 		next_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0) + is;
+		break;
+	default:
+		/* assume V4L2_FIELD_INTERLACED_TB */
+		prev_phys = vb2_dma_contig_plane_dma_addr(prev_vb, 0);
+		curr_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0) + is;
+		next_phys = vb2_dma_contig_plane_dma_addr(curr_vb, 0);
 		break;
 	}
 
@@ -255,10 +263,10 @@ static int setup_vdi_channel(struct vdic_priv *priv,
 
 	memset(&image, 0, sizeof(image));
 	image.pix = vdev->fmt.fmt.pix;
-	image.rect = vdev->compose;
 	/* one field to VDIC channels */
 	image.pix.height /= 2;
-	image.rect.height /= 2;
+	image.rect.width = image.pix.width;
+	image.rect.height = image.pix.height;
 	image.phys0 = phys0;
 	image.phys1 = phys1;
 
@@ -818,10 +826,7 @@ static int vdic_s_frame_interval(struct v4l2_subdev *sd,
 	switch (fi->pad) {
 	case VDIC_SINK_PAD_DIRECT:
 	case VDIC_SINK_PAD_IDMAC:
-		/* No limits on valid input frame intervals */
-		if (fi->interval.numerator == 0 ||
-		    fi->interval.denominator == 0)
-			fi->interval = priv->frame_interval[fi->pad];
+		/* No limits on input frame interval */
 		/* Reset output interval */
 		*output_fi = fi->interval;
 		if (priv->csi_direct)
@@ -904,7 +909,6 @@ static void vdic_unregistered(struct v4l2_subdev *sd)
 }
 
 static const struct v4l2_subdev_pad_ops vdic_pad_ops = {
-	.init_cfg = imx_media_init_cfg,
 	.enum_mbus_code = vdic_enum_mbus_code,
 	.get_fmt = vdic_get_fmt,
 	.set_fmt = vdic_set_fmt,

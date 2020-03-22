@@ -1,10 +1,14 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
- * SuperH MSIOF SPI Controller Interface
+ * SuperH MSIOF SPI Master Interface
  *
  * Copyright (c) 2009 Magnus Damm
  * Copyright (C) 2014 Renesas Electronics Corporation
  * Copyright (C) 2014-2017 Glider bvba
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
  */
 
 #include <linux/bitmap.h>
@@ -15,7 +19,6 @@
 #include <linux/dmaengine.h>
 #include <linux/err.h>
 #include <linux/gpio.h>
-#include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -32,35 +35,30 @@
 #include <asm/unaligned.h>
 
 struct sh_msiof_chipdata {
-	u32 bits_per_word_mask;
 	u16 tx_fifo_size;
 	u16 rx_fifo_size;
-	u16 ctlr_flags;
-	u16 min_div_pow;
+	u16 master_flags;
+	u16 min_div;
 };
 
 struct sh_msiof_spi_priv {
-	struct spi_controller *ctlr;
+	struct spi_master *master;
 	void __iomem *mapbase;
 	struct clk *clk;
 	struct platform_device *pdev;
 	struct sh_msiof_spi_info *info;
 	struct completion done;
-	struct completion done_txdma;
 	unsigned int tx_fifo_size;
 	unsigned int rx_fifo_size;
-	unsigned int min_div_pow;
+	unsigned int min_div;
 	void *tx_dma_page;
 	void *rx_dma_page;
 	dma_addr_t tx_dma_addr;
 	dma_addr_t rx_dma_addr;
-	unsigned short unused_ss;
 	bool native_cs_inited;
 	bool native_cs_high;
 	bool slave_aborted;
 };
-
-#define MAX_SS	3	/* Maximum number of native chip selects */
 
 #define TMDR1	0x00	/* Transmit Mode Register 1 */
 #define TMDR2	0x04	/* Transmit Mode Register 2 */
@@ -95,8 +93,6 @@ struct sh_msiof_spi_priv {
 #define MDR1_XXSTP	 0x00000001 /* Transmission/Reception Stop on FIFO */
 /* TMDR1 */
 #define TMDR1_PCON	 0x40000000 /* Transfer Signal Connection */
-#define TMDR1_SYNCCH_MASK 0xc000000 /* Synchronization Signal Channel Select */
-#define TMDR1_SYNCCH_SHIFT	 26 /* 0=MSIOF_SYNC, 1=MSIOF_SS1, 2=MSIOF_SS2 */
 
 /* TMDR2 and RMDR2 */
 #define MDR2_BITLEN1(i)	(((i) - 1) << 24) /* Data Size (8-32 bits) */
@@ -247,48 +243,45 @@ static irqreturn_t sh_msiof_spi_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static const u32 sh_msiof_spi_div_array[] = {
-	SCR_BRDV_DIV_1, SCR_BRDV_DIV_2,	 SCR_BRDV_DIV_4,
-	SCR_BRDV_DIV_8,	SCR_BRDV_DIV_16, SCR_BRDV_DIV_32,
+static struct {
+	unsigned short div;
+	unsigned short brdv;
+} const sh_msiof_spi_div_table[] = {
+	{ 1,	SCR_BRDV_DIV_1 },
+	{ 2,	SCR_BRDV_DIV_2 },
+	{ 4,	SCR_BRDV_DIV_4 },
+	{ 8,	SCR_BRDV_DIV_8 },
+	{ 16,	SCR_BRDV_DIV_16 },
+	{ 32,	SCR_BRDV_DIV_32 },
 };
 
 static void sh_msiof_spi_set_clk_regs(struct sh_msiof_spi_priv *p,
 				      unsigned long parent_rate, u32 spi_hz)
 {
-	unsigned long div;
+	unsigned long div = 1024;
 	u32 brps, scr;
-	unsigned int div_pow = p->min_div_pow;
+	size_t k;
 
-	if (!spi_hz || !parent_rate) {
-		WARN(1, "Invalid clock rate parameters %lu and %u\n",
-		     parent_rate, spi_hz);
-		return;
-	}
+	if (!WARN_ON(!spi_hz || !parent_rate))
+		div = DIV_ROUND_UP(parent_rate, spi_hz);
 
-	div = DIV_ROUND_UP(parent_rate, spi_hz);
-	if (div <= 1024) {
+	div = max_t(unsigned long, div, p->min_div);
+
+	for (k = 0; k < ARRAY_SIZE(sh_msiof_spi_div_table); k++) {
+		brps = DIV_ROUND_UP(div, sh_msiof_spi_div_table[k].div);
 		/* SCR_BRDV_DIV_1 is valid only if BRPS is x 1/1 or x 1/2 */
-		if (!div_pow && div <= 32 && div > 2)
-			div_pow = 1;
-
-		if (div_pow)
-			brps = (div + 1) >> div_pow;
-		else
-			brps = div;
-
-		for (; brps > 32; div_pow++)
-			brps = (brps + 1) >> 1;
-	} else {
-		/* Set transfer rate composite divisor to 2^5 * 32 = 1024 */
-		dev_err(&p->pdev->dev,
-			"Requested SPI transfer rate %d is too low\n", spi_hz);
-		div_pow = 5;
-		brps = 32;
+		if (sh_msiof_spi_div_table[k].div == 1 && brps > 2)
+			continue;
+		if (brps <= 32) /* max of brdv is 32 */
+			break;
 	}
 
-	scr = sh_msiof_spi_div_array[div_pow] | SCR_BRPS(brps);
+	k = min_t(int, k, ARRAY_SIZE(sh_msiof_spi_div_table) - 1);
+	brps = min_t(int, brps, 32);
+
+	scr = sh_msiof_spi_div_table[k].brdv | SCR_BRPS(brps);
 	sh_msiof_write(p, TSCR, scr);
-	if (!(p->ctlr->flags & SPI_CONTROLLER_MUST_TX))
+	if (!(p->master->flags & SPI_MASTER_MUST_TX))
 		sh_msiof_write(p, RSCR, scr);
 }
 
@@ -334,7 +327,7 @@ static u32 sh_msiof_spi_get_dtdl_and_syncdl(struct sh_msiof_spi_priv *p)
 	return val;
 }
 
-static void sh_msiof_spi_set_pin_regs(struct sh_msiof_spi_priv *p, u32 ss,
+static void sh_msiof_spi_set_pin_regs(struct sh_msiof_spi_priv *p,
 				      u32 cpol, u32 cpha,
 				      u32 tx_hi_z, u32 lsb_first, u32 cs_high)
 {
@@ -352,14 +345,11 @@ static void sh_msiof_spi_set_pin_regs(struct sh_msiof_spi_priv *p, u32 ss,
 	tmp |= !cs_high << MDR1_SYNCAC_SHIFT;
 	tmp |= lsb_first << MDR1_BITLSB_SHIFT;
 	tmp |= sh_msiof_spi_get_dtdl_and_syncdl(p);
-	if (spi_controller_is_slave(p->ctlr)) {
+	if (spi_controller_is_slave(p->master))
 		sh_msiof_write(p, TMDR1, tmp | TMDR1_PCON);
-	} else {
-		sh_msiof_write(p, TMDR1,
-			       tmp | MDR1_TRMD | TMDR1_PCON |
-			       (ss < MAX_SS ? ss : 0) << TMDR1_SYNCCH_SHIFT);
-	}
-	if (p->ctlr->flags & SPI_CONTROLLER_MUST_TX) {
+	else
+		sh_msiof_write(p, TMDR1, tmp | MDR1_TRMD | TMDR1_PCON);
+	if (p->master->flags & SPI_MASTER_MUST_TX) {
 		/* These bits are reserved if RX needs TX */
 		tmp &= ~0x0000ffff;
 	}
@@ -383,7 +373,7 @@ static void sh_msiof_spi_set_mode_regs(struct sh_msiof_spi_priv *p,
 {
 	u32 dr2 = MDR2_BITLEN1(bits) | MDR2_WDLEN1(words);
 
-	if (tx_buf || (p->ctlr->flags & SPI_CONTROLLER_MUST_TX))
+	if (tx_buf || (p->master->flags & SPI_MASTER_MUST_TX))
 		sh_msiof_write(p, TMDR2, dr2);
 	else
 		sh_msiof_write(p, TMDR2, dr2 | MDR2_GRPMASK1);
@@ -394,8 +384,7 @@ static void sh_msiof_spi_set_mode_regs(struct sh_msiof_spi_priv *p,
 
 static void sh_msiof_reset_str(struct sh_msiof_spi_priv *p)
 {
-	sh_msiof_write(p, STR,
-		       sh_msiof_read(p, STR) & ~(STR_TDREQ | STR_RDREQ));
+	sh_msiof_write(p, STR, sh_msiof_read(p, STR));
 }
 
 static void sh_msiof_spi_write_fifo_8(struct sh_msiof_spi_priv *p,
@@ -540,9 +529,8 @@ static void sh_msiof_spi_read_fifo_s32u(struct sh_msiof_spi_priv *p,
 
 static int sh_msiof_spi_setup(struct spi_device *spi)
 {
-	struct device_node *np = spi->controller->dev.of_node;
-	struct sh_msiof_spi_priv *p =
-		spi_controller_get_devdata(spi->controller);
+	struct device_node	*np = spi->master->dev.of_node;
+	struct sh_msiof_spi_priv *p = spi_master_get_devdata(spi->master);
 	u32 clr, set, tmp;
 
 	if (!np) {
@@ -553,12 +541,12 @@ static int sh_msiof_spi_setup(struct spi_device *spi)
 		spi->cs_gpio = (uintptr_t)spi->controller_data;
 	}
 
-	if (gpio_is_valid(spi->cs_gpio)) {
-		gpio_direction_output(spi->cs_gpio, !(spi->mode & SPI_CS_HIGH));
+	if (spi->cs_gpio >= 0) {
+		gpio_set_value(spi->cs_gpio, !(spi->mode & SPI_CS_HIGH));
 		return 0;
 	}
 
-	if (spi_controller_is_slave(p->ctlr))
+	if (spi_controller_is_slave(p->master))
 		return 0;
 
 	if (p->native_cs_inited &&
@@ -567,47 +555,38 @@ static int sh_msiof_spi_setup(struct spi_device *spi)
 
 	/* Configure native chip select mode/polarity early */
 	clr = MDR1_SYNCMD_MASK;
-	set = MDR1_SYNCMD_SPI;
+	set = MDR1_TRMD | TMDR1_PCON | MDR1_SYNCMD_SPI;
 	if (spi->mode & SPI_CS_HIGH)
 		clr |= BIT(MDR1_SYNCAC_SHIFT);
 	else
 		set |= BIT(MDR1_SYNCAC_SHIFT);
 	pm_runtime_get_sync(&p->pdev->dev);
 	tmp = sh_msiof_read(p, TMDR1) & ~clr;
-	sh_msiof_write(p, TMDR1, tmp | set | MDR1_TRMD | TMDR1_PCON);
-	tmp = sh_msiof_read(p, RMDR1) & ~clr;
-	sh_msiof_write(p, RMDR1, tmp | set);
+	sh_msiof_write(p, TMDR1, tmp | set);
 	pm_runtime_put(&p->pdev->dev);
 	p->native_cs_high = spi->mode & SPI_CS_HIGH;
 	p->native_cs_inited = true;
 	return 0;
 }
 
-static int sh_msiof_prepare_message(struct spi_controller *ctlr,
+static int sh_msiof_prepare_message(struct spi_master *master,
 				    struct spi_message *msg)
 {
-	struct sh_msiof_spi_priv *p = spi_controller_get_devdata(ctlr);
+	struct sh_msiof_spi_priv *p = spi_master_get_devdata(master);
 	const struct spi_device *spi = msg->spi;
-	u32 ss, cs_high;
 
 	/* Configure pins before asserting CS */
-	if (gpio_is_valid(spi->cs_gpio)) {
-		ss = p->unused_ss;
-		cs_high = p->native_cs_high;
-	} else {
-		ss = spi->chip_select;
-		cs_high = !!(spi->mode & SPI_CS_HIGH);
-	}
-	sh_msiof_spi_set_pin_regs(p, ss, !!(spi->mode & SPI_CPOL),
+	sh_msiof_spi_set_pin_regs(p, !!(spi->mode & SPI_CPOL),
 				  !!(spi->mode & SPI_CPHA),
 				  !!(spi->mode & SPI_3WIRE),
-				  !!(spi->mode & SPI_LSB_FIRST), cs_high);
+				  !!(spi->mode & SPI_LSB_FIRST),
+				  !!(spi->mode & SPI_CS_HIGH));
 	return 0;
 }
 
 static int sh_msiof_spi_start(struct sh_msiof_spi_priv *p, void *rx_buf)
 {
-	bool slave = spi_controller_is_slave(p->ctlr);
+	bool slave = spi_controller_is_slave(p->master);
 	int ret = 0;
 
 	/* setup clock and rx/tx signals */
@@ -627,7 +606,7 @@ static int sh_msiof_spi_start(struct sh_msiof_spi_priv *p, void *rx_buf)
 
 static int sh_msiof_spi_stop(struct sh_msiof_spi_priv *p, void *rx_buf)
 {
-	bool slave = spi_controller_is_slave(p->ctlr);
+	bool slave = spi_controller_is_slave(p->master);
 	int ret = 0;
 
 	/* shut down frame, rx/tx and clock signals */
@@ -643,27 +622,25 @@ static int sh_msiof_spi_stop(struct sh_msiof_spi_priv *p, void *rx_buf)
 	return ret;
 }
 
-static int sh_msiof_slave_abort(struct spi_controller *ctlr)
+static int sh_msiof_slave_abort(struct spi_master *master)
 {
-	struct sh_msiof_spi_priv *p = spi_controller_get_devdata(ctlr);
+	struct sh_msiof_spi_priv *p = spi_master_get_devdata(master);
 
 	p->slave_aborted = true;
 	complete(&p->done);
-	complete(&p->done_txdma);
 	return 0;
 }
 
-static int sh_msiof_wait_for_completion(struct sh_msiof_spi_priv *p,
-					struct completion *x)
+static int sh_msiof_wait_for_completion(struct sh_msiof_spi_priv *p)
 {
-	if (spi_controller_is_slave(p->ctlr)) {
-		if (wait_for_completion_interruptible(x) ||
+	if (spi_controller_is_slave(p->master)) {
+		if (wait_for_completion_interruptible(&p->done) ||
 		    p->slave_aborted) {
 			dev_dbg(&p->pdev->dev, "interrupted\n");
 			return -EINTR;
 		}
 	} else {
-		if (!wait_for_completion_timeout(x, HZ)) {
+		if (!wait_for_completion_timeout(&p->done, HZ)) {
 			dev_err(&p->pdev->dev, "timeout\n");
 			return -ETIMEDOUT;
 		}
@@ -713,7 +690,7 @@ static int sh_msiof_spi_txrx_once(struct sh_msiof_spi_priv *p,
 	}
 
 	/* wait for tx fifo to be emptied / rx fifo to be filled */
-	ret = sh_msiof_wait_for_completion(p, &p->done);
+	ret = sh_msiof_wait_for_completion(p);
 	if (ret)
 		goto stop_reset;
 
@@ -742,7 +719,10 @@ stop_ier:
 
 static void sh_msiof_dma_complete(void *arg)
 {
-	complete(arg);
+	struct sh_msiof_spi_priv *p = arg;
+
+	sh_msiof_write(p, IER, 0);
+	complete(&p->done);
 }
 
 static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
@@ -756,14 +736,14 @@ static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
 	/* First prepare and submit the DMA request(s), as this may fail */
 	if (rx) {
 		ier_bits |= IER_RDREQE | IER_RDMAE;
-		desc_rx = dmaengine_prep_slave_single(p->ctlr->dma_rx,
-					p->rx_dma_addr, len, DMA_DEV_TO_MEM,
+		desc_rx = dmaengine_prep_slave_single(p->master->dma_rx,
+					p->rx_dma_addr, len, DMA_FROM_DEVICE,
 					DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 		if (!desc_rx)
 			return -EAGAIN;
 
 		desc_rx->callback = sh_msiof_dma_complete;
-		desc_rx->callback_param = &p->done;
+		desc_rx->callback_param = p;
 		cookie = dmaengine_submit(desc_rx);
 		if (dma_submit_error(cookie))
 			return cookie;
@@ -771,18 +751,23 @@ static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
 
 	if (tx) {
 		ier_bits |= IER_TDREQE | IER_TDMAE;
-		dma_sync_single_for_device(p->ctlr->dma_tx->device->dev,
+		dma_sync_single_for_device(p->master->dma_tx->device->dev,
 					   p->tx_dma_addr, len, DMA_TO_DEVICE);
-		desc_tx = dmaengine_prep_slave_single(p->ctlr->dma_tx,
-					p->tx_dma_addr, len, DMA_MEM_TO_DEV,
+		desc_tx = dmaengine_prep_slave_single(p->master->dma_tx,
+					p->tx_dma_addr, len, DMA_TO_DEVICE,
 					DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 		if (!desc_tx) {
 			ret = -EAGAIN;
 			goto no_dma_tx;
 		}
 
-		desc_tx->callback = sh_msiof_dma_complete;
-		desc_tx->callback_param = &p->done_txdma;
+		if (rx) {
+			/* No callback */
+			desc_tx->callback = NULL;
+		} else {
+			desc_tx->callback = sh_msiof_dma_complete;
+			desc_tx->callback_param = p;
+		}
 		cookie = dmaengine_submit(desc_tx);
 		if (dma_submit_error(cookie)) {
 			ret = cookie;
@@ -799,15 +784,13 @@ static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
 	sh_msiof_write(p, IER, ier_bits);
 
 	reinit_completion(&p->done);
-	if (tx)
-		reinit_completion(&p->done_txdma);
 	p->slave_aborted = false;
 
 	/* Now start DMA */
 	if (rx)
-		dma_async_issue_pending(p->ctlr->dma_rx);
+		dma_async_issue_pending(p->master->dma_rx);
 	if (tx)
-		dma_async_issue_pending(p->ctlr->dma_tx);
+		dma_async_issue_pending(p->master->dma_tx);
 
 	ret = sh_msiof_spi_start(p, rx);
 	if (ret) {
@@ -815,24 +798,17 @@ static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
 		goto stop_dma;
 	}
 
-	if (tx) {
-		/* wait for tx DMA completion */
-		ret = sh_msiof_wait_for_completion(p, &p->done_txdma);
-		if (ret)
-			goto stop_reset;
-	}
+	/* wait for tx/rx DMA completion */
+	ret = sh_msiof_wait_for_completion(p);
+	if (ret)
+		goto stop_reset;
 
-	if (rx) {
-		/* wait for rx DMA completion */
-		ret = sh_msiof_wait_for_completion(p, &p->done);
-		if (ret)
-			goto stop_reset;
-
-		sh_msiof_write(p, IER, 0);
-	} else {
-		/* wait for tx fifo to be emptied */
+	if (!rx) {
+		reinit_completion(&p->done);
 		sh_msiof_write(p, IER, IER_TEOFE);
-		ret = sh_msiof_wait_for_completion(p, &p->done);
+
+		/* wait for tx fifo to be emptied */
+		ret = sh_msiof_wait_for_completion(p);
 		if (ret)
 			goto stop_reset;
 	}
@@ -847,8 +823,9 @@ static int sh_msiof_dma_once(struct sh_msiof_spi_priv *p, const void *tx,
 	}
 
 	if (rx)
-		dma_sync_single_for_cpu(p->ctlr->dma_rx->device->dev,
-					p->rx_dma_addr, len, DMA_FROM_DEVICE);
+		dma_sync_single_for_cpu(p->master->dma_rx->device->dev,
+					p->rx_dma_addr, len,
+					DMA_FROM_DEVICE);
 
 	return 0;
 
@@ -857,10 +834,10 @@ stop_reset:
 	sh_msiof_spi_stop(p, rx);
 stop_dma:
 	if (tx)
-		dmaengine_terminate_all(p->ctlr->dma_tx);
+		dmaengine_terminate_all(p->master->dma_tx);
 no_dma_tx:
 	if (rx)
-		dmaengine_terminate_all(p->ctlr->dma_rx);
+		dmaengine_terminate_all(p->master->dma_rx);
 	sh_msiof_write(p, IER, 0);
 	return ret;
 }
@@ -908,11 +885,11 @@ static void copy_plain32(u32 *dst, const u32 *src, unsigned int words)
 	memcpy(dst, src, words * 4);
 }
 
-static int sh_msiof_transfer_one(struct spi_controller *ctlr,
+static int sh_msiof_transfer_one(struct spi_master *master,
 				 struct spi_device *spi,
 				 struct spi_transfer *t)
 {
-	struct sh_msiof_spi_priv *p = spi_controller_get_devdata(ctlr);
+	struct sh_msiof_spi_priv *p = spi_master_get_devdata(master);
 	void (*copy32)(u32 *, const u32 *, unsigned int);
 	void (*tx_fifo)(struct sh_msiof_spi_priv *, const void *, int, int);
 	void (*rx_fifo)(struct sh_msiof_spi_priv *, void *, int, int);
@@ -927,10 +904,10 @@ static int sh_msiof_transfer_one(struct spi_controller *ctlr,
 	int ret;
 
 	/* setup clocks (clock already enabled in chipselect()) */
-	if (!spi_controller_is_slave(p->ctlr))
+	if (!spi_controller_is_slave(p->master))
 		sh_msiof_spi_set_clk_regs(p, clk_get_rate(p->clk), t->speed_hz);
 
-	while (ctlr->dma_tx && len > 15) {
+	while (master->dma_tx && len > 15) {
 		/*
 		 *  DMA supports 32-bit words only, hence pack 8-bit and 16-bit
 		 *  words, with byte resp. word swapping.
@@ -938,13 +915,17 @@ static int sh_msiof_transfer_one(struct spi_controller *ctlr,
 		unsigned int l = 0;
 
 		if (tx_buf)
-			l = min(round_down(len, 4), p->tx_fifo_size * 4);
+			l = min(len, p->tx_fifo_size * 4);
 		if (rx_buf)
-			l = min(round_down(len, 4), p->rx_fifo_size * 4);
+			l = min(len, p->rx_fifo_size * 4);
 
 		if (bits <= 8) {
+			if (l & 3)
+				break;
 			copy32 = copy_bswap32;
 		} else if (bits <= 16) {
+			if (l & 3)
+				break;
 			copy32 = copy_wswap32;
 		} else {
 			copy32 = copy_plain32;
@@ -955,8 +936,9 @@ static int sh_msiof_transfer_one(struct spi_controller *ctlr,
 
 		ret = sh_msiof_dma_once(p, tx_buf, rx_buf, l);
 		if (ret == -EAGAIN) {
-			dev_warn_once(&p->pdev->dev,
-				"DMA not available, falling back to PIO\n");
+			pr_warn_once("%s %s: DMA not available, falling back to PIO\n",
+				     dev_driver_string(&p->pdev->dev),
+				     dev_name(&p->pdev->dev));
 			break;
 		}
 		if (ret)
@@ -974,7 +956,7 @@ static int sh_msiof_transfer_one(struct spi_controller *ctlr,
 			return 0;
 	}
 
-	if (bits <= 8 && len > 15) {
+	if (bits <= 8 && len > 15 && !(len & 3)) {
 		bits = 32;
 		swab = true;
 	} else {
@@ -1035,49 +1017,34 @@ static int sh_msiof_transfer_one(struct spi_controller *ctlr,
 		if (rx_buf)
 			rx_buf += n * bytes_per_word;
 		words -= n;
-
-		if (words == 0 && (len % bytes_per_word)) {
-			words = len % bytes_per_word;
-			bits = t->bits_per_word;
-			bytes_per_word = 1;
-			tx_fifo = sh_msiof_spi_write_fifo_8;
-			rx_fifo = sh_msiof_spi_read_fifo_8;
-		}
 	}
 
 	return 0;
 }
 
 static const struct sh_msiof_chipdata sh_data = {
-	.bits_per_word_mask = SPI_BPW_RANGE_MASK(8, 32),
 	.tx_fifo_size = 64,
 	.rx_fifo_size = 64,
-	.ctlr_flags = 0,
-	.min_div_pow = 0,
+	.master_flags = 0,
+	.min_div = 1,
 };
 
 static const struct sh_msiof_chipdata rcar_gen2_data = {
-	.bits_per_word_mask = SPI_BPW_MASK(8) | SPI_BPW_MASK(16) |
-			      SPI_BPW_MASK(24) | SPI_BPW_MASK(32),
 	.tx_fifo_size = 64,
 	.rx_fifo_size = 64,
-	.ctlr_flags = SPI_CONTROLLER_MUST_TX,
-	.min_div_pow = 0,
+	.master_flags = SPI_MASTER_MUST_TX,
+	.min_div = 1,
 };
 
 static const struct sh_msiof_chipdata rcar_gen3_data = {
-	.bits_per_word_mask = SPI_BPW_MASK(8) | SPI_BPW_MASK(16) |
-			      SPI_BPW_MASK(24) | SPI_BPW_MASK(32),
 	.tx_fifo_size = 64,
 	.rx_fifo_size = 64,
-	.ctlr_flags = SPI_CONTROLLER_MUST_TX,
-	.min_div_pow = 1,
+	.master_flags = SPI_MASTER_MUST_TX,
+	.min_div = 2,
 };
 
 static const struct of_device_id sh_msiof_match[] = {
 	{ .compatible = "renesas,sh-mobile-msiof", .data = &sh_data },
-	{ .compatible = "renesas,msiof-r8a7743",   .data = &rcar_gen2_data },
-	{ .compatible = "renesas,msiof-r8a7745",   .data = &rcar_gen2_data },
 	{ .compatible = "renesas,msiof-r8a7790",   .data = &rcar_gen2_data },
 	{ .compatible = "renesas,msiof-r8a7791",   .data = &rcar_gen2_data },
 	{ .compatible = "renesas,msiof-r8a7792",   .data = &rcar_gen2_data },
@@ -1126,45 +1093,6 @@ static struct sh_msiof_spi_info *sh_msiof_spi_parse_dt(struct device *dev)
 }
 #endif
 
-static int sh_msiof_get_cs_gpios(struct sh_msiof_spi_priv *p)
-{
-	struct device *dev = &p->pdev->dev;
-	unsigned int used_ss_mask = 0;
-	unsigned int cs_gpios = 0;
-	unsigned int num_cs, i;
-	int ret;
-
-	ret = gpiod_count(dev, "cs");
-	if (ret <= 0)
-		return 0;
-
-	num_cs = max_t(unsigned int, ret, p->ctlr->num_chipselect);
-	for (i = 0; i < num_cs; i++) {
-		struct gpio_desc *gpiod;
-
-		gpiod = devm_gpiod_get_index(dev, "cs", i, GPIOD_ASIS);
-		if (!IS_ERR(gpiod)) {
-			cs_gpios++;
-			continue;
-		}
-
-		if (PTR_ERR(gpiod) != -ENOENT)
-			return PTR_ERR(gpiod);
-
-		if (i >= MAX_SS) {
-			dev_err(dev, "Invalid native chip select %d\n", i);
-			return -EINVAL;
-		}
-		used_ss_mask |= BIT(i);
-	}
-	p->unused_ss = ffz(used_ss_mask);
-	if (cs_gpios && p->unused_ss >= MAX_SS) {
-		dev_err(dev, "No unused native chip select available\n");
-		return -EINVAL;
-	}
-	return 0;
-}
-
 static struct dma_chan *sh_msiof_request_dma_chan(struct device *dev,
 	enum dma_transfer_direction dir, unsigned int id, dma_addr_t port_addr)
 {
@@ -1208,10 +1136,10 @@ static int sh_msiof_request_dma(struct sh_msiof_spi_priv *p)
 {
 	struct platform_device *pdev = p->pdev;
 	struct device *dev = &pdev->dev;
-	const struct sh_msiof_spi_info *info = p->info;
+	const struct sh_msiof_spi_info *info = dev_get_platdata(dev);
 	unsigned int dma_tx_id, dma_rx_id;
 	const struct resource *res;
-	struct spi_controller *ctlr;
+	struct spi_master *master;
 	struct device *tx_dev, *rx_dev;
 
 	if (dev->of_node) {
@@ -1231,15 +1159,17 @@ static int sh_msiof_request_dma(struct sh_msiof_spi_priv *p)
 	if (!res)
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 
-	ctlr = p->ctlr;
-	ctlr->dma_tx = sh_msiof_request_dma_chan(dev, DMA_MEM_TO_DEV,
-						 dma_tx_id, res->start + TFDR);
-	if (!ctlr->dma_tx)
+	master = p->master;
+	master->dma_tx = sh_msiof_request_dma_chan(dev, DMA_MEM_TO_DEV,
+						   dma_tx_id,
+						   res->start + TFDR);
+	if (!master->dma_tx)
 		return -ENODEV;
 
-	ctlr->dma_rx = sh_msiof_request_dma_chan(dev, DMA_DEV_TO_MEM,
-						 dma_rx_id, res->start + RFDR);
-	if (!ctlr->dma_rx)
+	master->dma_rx = sh_msiof_request_dma_chan(dev, DMA_DEV_TO_MEM,
+						   dma_rx_id,
+						   res->start + RFDR);
+	if (!master->dma_rx)
 		goto free_tx_chan;
 
 	p->tx_dma_page = (void *)__get_free_page(GFP_KERNEL | GFP_DMA);
@@ -1250,13 +1180,13 @@ static int sh_msiof_request_dma(struct sh_msiof_spi_priv *p)
 	if (!p->rx_dma_page)
 		goto free_tx_page;
 
-	tx_dev = ctlr->dma_tx->device->dev;
+	tx_dev = master->dma_tx->device->dev;
 	p->tx_dma_addr = dma_map_single(tx_dev, p->tx_dma_page, PAGE_SIZE,
 					DMA_TO_DEVICE);
 	if (dma_mapping_error(tx_dev, p->tx_dma_addr))
 		goto free_rx_page;
 
-	rx_dev = ctlr->dma_rx->device->dev;
+	rx_dev = master->dma_rx->device->dev;
 	p->rx_dma_addr = dma_map_single(rx_dev, p->rx_dma_page, PAGE_SIZE,
 					DMA_FROM_DEVICE);
 	if (dma_mapping_error(rx_dev, p->rx_dma_addr))
@@ -1272,42 +1202,46 @@ free_rx_page:
 free_tx_page:
 	free_page((unsigned long)p->tx_dma_page);
 free_rx_chan:
-	dma_release_channel(ctlr->dma_rx);
+	dma_release_channel(master->dma_rx);
 free_tx_chan:
-	dma_release_channel(ctlr->dma_tx);
-	ctlr->dma_tx = NULL;
+	dma_release_channel(master->dma_tx);
+	master->dma_tx = NULL;
 	return -ENODEV;
 }
 
 static void sh_msiof_release_dma(struct sh_msiof_spi_priv *p)
 {
-	struct spi_controller *ctlr = p->ctlr;
+	struct spi_master *master = p->master;
+	struct device *dev;
 
-	if (!ctlr->dma_tx)
+	if (!master->dma_tx)
 		return;
 
-	dma_unmap_single(ctlr->dma_rx->device->dev, p->rx_dma_addr, PAGE_SIZE,
-			 DMA_FROM_DEVICE);
-	dma_unmap_single(ctlr->dma_tx->device->dev, p->tx_dma_addr, PAGE_SIZE,
-			 DMA_TO_DEVICE);
+	dev = &p->pdev->dev;
+	dma_unmap_single(master->dma_rx->device->dev, p->rx_dma_addr,
+			 PAGE_SIZE, DMA_FROM_DEVICE);
+	dma_unmap_single(master->dma_tx->device->dev, p->tx_dma_addr,
+			 PAGE_SIZE, DMA_TO_DEVICE);
 	free_page((unsigned long)p->rx_dma_page);
 	free_page((unsigned long)p->tx_dma_page);
-	dma_release_channel(ctlr->dma_rx);
-	dma_release_channel(ctlr->dma_tx);
+	dma_release_channel(master->dma_rx);
+	dma_release_channel(master->dma_tx);
 }
 
 static int sh_msiof_spi_probe(struct platform_device *pdev)
 {
 	struct resource	*r;
-	struct spi_controller *ctlr;
+	struct spi_master *master;
 	const struct sh_msiof_chipdata *chipdata;
+	const struct of_device_id *of_id;
 	struct sh_msiof_spi_info *info;
 	struct sh_msiof_spi_priv *p;
 	int i;
 	int ret;
 
-	chipdata = of_device_get_match_data(&pdev->dev);
-	if (chipdata) {
+	of_id = of_match_device(sh_msiof_match, &pdev->dev);
+	if (of_id) {
+		chipdata = of_id->data;
 		info = sh_msiof_spi_parse_dt(&pdev->dev);
 	} else {
 		chipdata = (const void *)pdev->id_entry->driver_data;
@@ -1320,23 +1254,22 @@ static int sh_msiof_spi_probe(struct platform_device *pdev)
 	}
 
 	if (info->mode == MSIOF_SPI_SLAVE)
-		ctlr = spi_alloc_slave(&pdev->dev,
-				       sizeof(struct sh_msiof_spi_priv));
+		master = spi_alloc_slave(&pdev->dev,
+					 sizeof(struct sh_msiof_spi_priv));
 	else
-		ctlr = spi_alloc_master(&pdev->dev,
-					sizeof(struct sh_msiof_spi_priv));
-	if (ctlr == NULL)
+		master = spi_alloc_master(&pdev->dev,
+					  sizeof(struct sh_msiof_spi_priv));
+	if (master == NULL)
 		return -ENOMEM;
 
-	p = spi_controller_get_devdata(ctlr);
+	p = spi_master_get_devdata(master);
 
 	platform_set_drvdata(pdev, p);
-	p->ctlr = ctlr;
+	p->master = master;
 	p->info = info;
-	p->min_div_pow = chipdata->min_div_pow;
+	p->min_div = chipdata->min_div;
 
 	init_completion(&p->done);
-	init_completion(&p->done_txdma);
 
 	p->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(p->clk)) {
@@ -1347,8 +1280,8 @@ static int sh_msiof_spi_probe(struct platform_device *pdev)
 
 	i = platform_get_irq(pdev, 0);
 	if (i < 0) {
-		dev_err(&pdev->dev, "cannot get IRQ\n");
-		ret = i;
+		dev_err(&pdev->dev, "cannot get platform IRQ\n");
+		ret = -ENOENT;
 		goto err1;
 	}
 
@@ -1377,32 +1310,27 @@ static int sh_msiof_spi_probe(struct platform_device *pdev)
 	if (p->info->rx_fifo_override)
 		p->rx_fifo_size = p->info->rx_fifo_override;
 
-	/* Setup GPIO chip selects */
-	ctlr->num_chipselect = p->info->num_chipselect;
-	ret = sh_msiof_get_cs_gpios(p);
-	if (ret)
-		goto err1;
-
-	/* init controller code */
-	ctlr->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
-	ctlr->mode_bits |= SPI_LSB_FIRST | SPI_3WIRE;
-	ctlr->flags = chipdata->ctlr_flags;
-	ctlr->bus_num = pdev->id;
-	ctlr->dev.of_node = pdev->dev.of_node;
-	ctlr->setup = sh_msiof_spi_setup;
-	ctlr->prepare_message = sh_msiof_prepare_message;
-	ctlr->slave_abort = sh_msiof_slave_abort;
-	ctlr->bits_per_word_mask = chipdata->bits_per_word_mask;
-	ctlr->auto_runtime_pm = true;
-	ctlr->transfer_one = sh_msiof_transfer_one;
+	/* init master code */
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
+	master->mode_bits |= SPI_LSB_FIRST | SPI_3WIRE;
+	master->flags = chipdata->master_flags;
+	master->bus_num = pdev->id;
+	master->dev.of_node = pdev->dev.of_node;
+	master->num_chipselect = p->info->num_chipselect;
+	master->setup = sh_msiof_spi_setup;
+	master->prepare_message = sh_msiof_prepare_message;
+	master->slave_abort = sh_msiof_slave_abort;
+	master->bits_per_word_mask = SPI_BPW_RANGE_MASK(8, 32);
+	master->auto_runtime_pm = true;
+	master->transfer_one = sh_msiof_transfer_one;
 
 	ret = sh_msiof_request_dma(p);
 	if (ret < 0)
 		dev_warn(&pdev->dev, "DMA not available, using PIO\n");
 
-	ret = devm_spi_register_controller(&pdev->dev, ctlr);
+	ret = devm_spi_register_master(&pdev->dev, master);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "devm_spi_register_controller error.\n");
+		dev_err(&pdev->dev, "spi_register_master error.\n");
 		goto err2;
 	}
 
@@ -1412,7 +1340,7 @@ static int sh_msiof_spi_probe(struct platform_device *pdev)
 	sh_msiof_release_dma(p);
 	pm_runtime_disable(&pdev->dev);
  err1:
-	spi_controller_put(ctlr);
+	spi_master_put(master);
 	return ret;
 }
 
@@ -1431,41 +1359,18 @@ static const struct platform_device_id spi_driver_ids[] = {
 };
 MODULE_DEVICE_TABLE(platform, spi_driver_ids);
 
-#ifdef CONFIG_PM_SLEEP
-static int sh_msiof_spi_suspend(struct device *dev)
-{
-	struct sh_msiof_spi_priv *p = dev_get_drvdata(dev);
-
-	return spi_controller_suspend(p->ctlr);
-}
-
-static int sh_msiof_spi_resume(struct device *dev)
-{
-	struct sh_msiof_spi_priv *p = dev_get_drvdata(dev);
-
-	return spi_controller_resume(p->ctlr);
-}
-
-static SIMPLE_DEV_PM_OPS(sh_msiof_spi_pm_ops, sh_msiof_spi_suspend,
-			 sh_msiof_spi_resume);
-#define DEV_PM_OPS	&sh_msiof_spi_pm_ops
-#else
-#define DEV_PM_OPS	NULL
-#endif /* CONFIG_PM_SLEEP */
-
 static struct platform_driver sh_msiof_spi_drv = {
 	.probe		= sh_msiof_spi_probe,
 	.remove		= sh_msiof_spi_remove,
 	.id_table	= spi_driver_ids,
 	.driver		= {
 		.name		= "spi_sh_msiof",
-		.pm		= DEV_PM_OPS,
 		.of_match_table = of_match_ptr(sh_msiof_match),
 	},
 };
 module_platform_driver(sh_msiof_spi_drv);
 
-MODULE_DESCRIPTION("SuperH MSIOF SPI Controller Interface Driver");
+MODULE_DESCRIPTION("SuperH MSIOF SPI Master Interface Driver");
 MODULE_AUTHOR("Magnus Damm");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:spi_sh_msiof");

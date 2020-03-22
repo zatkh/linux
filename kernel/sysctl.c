@@ -67,8 +67,6 @@
 #include <linux/bpf.h>
 #include <linux/mount.h>
 
-#include "../lib/kstrtox.h"
-
 #include <linux/uaccess.h>
 #include <asm/processor.h>
 
@@ -92,9 +90,7 @@
 #ifdef CONFIG_CHR_DEV_SG
 #include <scsi/sg.h>
 #endif
-#ifdef CONFIG_STACKLEAK_RUNTIME_DISABLE
-#include <linux/stackleak.h>
-#endif
+
 #ifdef CONFIG_LOCKUP_DETECTOR
 #include <linux/nmi.h>
 #endif
@@ -128,9 +124,7 @@ static int zero;
 static int __maybe_unused one = 1;
 static int __maybe_unused two = 2;
 static int __maybe_unused four = 4;
-static unsigned long zero_ul;
 static unsigned long one_ul = 1;
-static unsigned long long_max = LONG_MAX;
 static int one_hundred = 100;
 static int one_thousand = 1000;
 #ifdef CONFIG_PRINTK
@@ -150,10 +144,7 @@ static int minolduid;
 static int ngroups_max = NGROUPS_MAX;
 static const int cap_last_cap = CAP_LAST_CAP;
 
-/*
- * This is needed for proc_doulongvec_minmax of sysctl_hung_task_timeout_secs
- * and hung_task_check_interval_secs
- */
+/*this is needed for proc_doulongvec_minmax of sysctl_hung_task_timeout_secs */
 #ifdef CONFIG_DETECT_HUNG_TASK
 static unsigned long hung_task_timeout_max = (LONG_MAX/HZ);
 #endif
@@ -226,16 +217,9 @@ static int proc_dointvec_minmax_coredump(struct ctl_table *table, int write,
 static int proc_dostring_coredump(struct ctl_table *table, int write,
 		void __user *buffer, size_t *lenp, loff_t *ppos);
 #endif
-static int proc_dopipe_max_size(struct ctl_table *table, int write,
-		void __user *buffer, size_t *lenp, loff_t *ppos);
-#ifdef CONFIG_BPF_SYSCALL
-static int proc_dointvec_minmax_bpf_stats(struct ctl_table *table, int write,
-					  void __user *buffer, size_t *lenp,
-					  loff_t *ppos);
-#endif
 
 #ifdef CONFIG_MAGIC_SYSRQ
-/* Note: sysrq code uses its own private copy */
+/* Note: sysrq code uses it's own private copy */
 static int __sysrq_enabled = CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE;
 
 static int sysrq_sysctl_handler(struct ctl_table *table, int write,
@@ -264,10 +248,6 @@ static struct ctl_table dev_table[];
 extern struct ctl_table random_table[];
 #ifdef CONFIG_EPOLL
 extern struct ctl_table epoll_table[];
-#endif
-
-#ifdef CONFIG_FW_LOADER_USER_HELPER
-extern struct ctl_table firmware_config_table[];
 #endif
 
 #ifdef HAVE_ARCH_PICK_MMAP_LAYOUT
@@ -381,6 +361,14 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname	= "sched_time_avg_ms",
+		.data		= &sysctl_sched_time_avg,
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &one,
+	},
 #ifdef CONFIG_SCHEDSTATS
 	{
 		.procname	= "sched_schedstats",
@@ -474,17 +462,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
 		.extra1		= &one,
-	},
-#endif
-#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
-	{
-		.procname	= "sched_energy_aware",
-		.data		= &sysctl_sched_energy_aware,
-		.maxlen		= sizeof(unsigned int),
-		.mode		= 0644,
-		.proc_handler	= sched_energy_aware_handler,
-		.extra1		= &zero,
-		.extra2		= &one,
 	},
 #endif
 #ifdef CONFIG_PROVE_LOCKING
@@ -768,13 +745,6 @@ static struct ctl_table kern_table[] = {
 		.mode		= 0555,
 		.child		= usermodehelper_table,
 	},
-#ifdef CONFIG_FW_LOADER_USER_HELPER
-	{
-		.procname	= "firmware_config",
-		.mode		= 0555,
-		.child		= firmware_config_table,
-	},
-#endif
 	{
 		.procname	= "overflowuid",
 		.data		= &overflowuid,
@@ -826,13 +796,6 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
-	},
-	{
-		.procname	= "panic_print",
-		.data		= &panic_print,
-		.maxlen		= sizeof(unsigned long),
-		.mode		= 0644,
-		.proc_handler	= proc_doulongvec_minmax,
 	},
 #if defined CONFIG_PRINTK
 	{
@@ -1122,14 +1085,6 @@ static struct ctl_table kern_table[] = {
 		.extra2		= &hung_task_timeout_max,
 	},
 	{
-		.procname	= "hung_task_check_interval_secs",
-		.data		= &sysctl_hung_task_check_interval_secs,
-		.maxlen		= sizeof(unsigned long),
-		.mode		= 0644,
-		.proc_handler	= proc_dohung_task_timeout_secs,
-		.extra2		= &hung_task_timeout_max,
-	},
-	{
 		.procname	= "hung_task_warnings",
 		.data		= &sysctl_hung_task_warnings,
 		.maxlen		= sizeof(int),
@@ -1249,15 +1204,6 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &one,
 		.extra2		= &one,
 	},
-	{
-		.procname	= "bpf_stats_enabled",
-		.data		= &sysctl_bpf_stats_enabled,
-		.maxlen		= sizeof(sysctl_bpf_stats_enabled),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax_bpf_stats,
-		.extra1		= &zero,
-		.extra2		= &one,
-	},
 #endif
 #if defined(CONFIG_TREE_RCU) || defined(CONFIG_PREEMPT_RCU)
 	{
@@ -1266,17 +1212,6 @@ static struct ctl_table kern_table[] = {
 		.maxlen		= sizeof(sysctl_panic_on_rcu_stall),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
-		.extra2		= &one,
-	},
-#endif
-#ifdef CONFIG_STACKLEAK_RUNTIME_DISABLE
-	{
-		.procname	= "stack_erasing",
-		.data		= NULL,
-		.maxlen		= sizeof(int),
-		.mode		= 0600,
-		.proc_handler	= stack_erasing_sysctl,
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
@@ -1391,10 +1326,15 @@ static struct ctl_table vm_table[] = {
 	{
 		.procname	= "dirtytime_expire_seconds",
 		.data		= &dirtytime_expire_interval,
-		.maxlen		= sizeof(dirtytime_expire_interval),
+		.maxlen		= sizeof(dirty_expire_interval),
 		.mode		= 0644,
 		.proc_handler	= dirtytime_interval_handler,
 		.extra1		= &zero,
+	},
+	{
+		.procname       = "nr_pdflush_threads",
+		.mode           = 0444 /* read-only */,
+		.proc_handler   = pdflush_proc_obsolete,
 	},
 	{
 		.procname	= "swappiness",
@@ -1421,15 +1361,6 @@ static struct ctl_table vm_table[] = {
 		.mode           = 0644,
 		.proc_handler   = &hugetlb_mempolicy_sysctl_handler,
 	},
-	{
-		.procname		= "numa_stat",
-		.data			= &sysctl_vm_numa_stat,
-		.maxlen			= sizeof(int),
-		.mode			= 0644,
-		.proc_handler	= sysctl_vm_numa_stat_handler,
-		.extra1			= &zero,
-		.extra2			= &one,
-	},
 #endif
 	 {
 		.procname	= "hugetlb_shm_group",
@@ -1438,6 +1369,13 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	 },
+	 {
+		.procname	= "hugepages_treat_as_movable",
+		.data		= &hugepages_treat_as_movable,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
 	{
 		.procname	= "nr_overcommit_hugepages",
 		.data		= NULL,
@@ -1475,7 +1413,7 @@ static struct ctl_table vm_table[] = {
 		.data		= &sysctl_extfrag_threshold,
 		.maxlen		= sizeof(int),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec_minmax,
+		.proc_handler	= sysctl_extfrag_handler,
 		.extra1		= &min_extfrag_threshold,
 		.extra2		= &max_extfrag_threshold,
 	},
@@ -1496,14 +1434,6 @@ static struct ctl_table vm_table[] = {
 		.maxlen		= sizeof(min_free_kbytes),
 		.mode		= 0644,
 		.proc_handler	= min_free_kbytes_sysctl_handler,
-		.extra1		= &zero,
-	},
-	{
-		.procname	= "watermark_boost_factor",
-		.data		= &watermark_boost_factor,
-		.maxlen		= sizeof(watermark_boost_factor),
-		.mode		= 0644,
-		.proc_handler	= watermark_boost_factor_sysctl_handler,
 		.extra1		= &zero,
 	},
 	{
@@ -1751,8 +1681,6 @@ static struct ctl_table fs_table[] = {
 		.maxlen		= sizeof(files_stat.max_files),
 		.mode		= 0644,
 		.proc_handler	= proc_doulongvec_minmax,
-		.extra1		= &zero_ul,
-		.extra2		= &long_max,
 	},
 	{
 		.procname	= "nr_open",
@@ -1866,24 +1794,6 @@ static struct ctl_table fs_table[] = {
 		.extra2		= &one,
 	},
 	{
-		.procname	= "protected_fifos",
-		.data		= &sysctl_protected_fifos,
-		.maxlen		= sizeof(int),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
-		.extra2		= &two,
-	},
-	{
-		.procname	= "protected_regular",
-		.data		= &sysctl_protected_regular,
-		.maxlen		= sizeof(int),
-		.mode		= 0600,
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= &zero,
-		.extra2		= &two,
-	},
-	{
 		.procname	= "suid_dumpable",
 		.data		= &suid_dumpable,
 		.maxlen		= sizeof(int),
@@ -1904,7 +1814,8 @@ static struct ctl_table fs_table[] = {
 		.data		= &pipe_max_size,
 		.maxlen		= sizeof(pipe_max_size),
 		.mode		= 0644,
-		.proc_handler	= proc_dopipe_max_size,
+		.proc_handler	= &pipe_proc_fn,
+		.extra1		= &pipe_min_size,
 	},
 	{
 		.procname	= "pipe-user-pages-hard",
@@ -2052,13 +1963,13 @@ static void warn_sysctl_write(struct ctl_table *table)
 }
 
 /**
- * proc_first_pos_non_zero_ignore - check if first position is allowed
+ * proc_first_pos_non_zero_ignore - check if firs position is allowed
  * @ppos: file position
  * @table: the sysctl table
  *
  * Returns true if the first position is non-zero and the sysctl_writes_strict
  * mode indicates this is not allowed for numeric input types. String proc
- * handlers can ignore the return value.
+ * hadlers can ignore the return value.
  */
 static bool proc_first_pos_non_zero_ignore(loff_t *ppos,
 					   struct ctl_table *table)
@@ -2123,41 +2034,6 @@ static void proc_skip_char(char **buf, size_t *size, const char v)
 	}
 }
 
-/**
- * strtoul_lenient - parse an ASCII formatted integer from a buffer and only
- *                   fail on overflow
- *
- * @cp: kernel buffer containing the string to parse
- * @endp: pointer to store the trailing characters
- * @base: the base to use
- * @res: where the parsed integer will be stored
- *
- * In case of success 0 is returned and @res will contain the parsed integer,
- * @endp will hold any trailing characters.
- * This function will fail the parse on overflow. If there wasn't an overflow
- * the function will defer the decision what characters count as invalid to the
- * caller.
- */
-static int strtoul_lenient(const char *cp, char **endp, unsigned int base,
-			   unsigned long *res)
-{
-	unsigned long long result;
-	unsigned int rv;
-
-	cp = _parse_integer_fixup_radix(cp, &base);
-	rv = _parse_integer(cp, base, &result);
-	if ((rv & KSTRTOX_OVERFLOW) || (result != (unsigned long)result))
-		return -ERANGE;
-
-	cp += rv;
-
-	if (endp)
-		*endp = (char *)cp;
-
-	*res = (unsigned long)result;
-	return 0;
-}
-
 #define TMPBUFLEN 22
 /**
  * proc_get_long - reads an ASCII formatted integer from a user buffer
@@ -2201,8 +2077,7 @@ static int proc_get_long(char **buf, size_t *size,
 	if (!isdigit(*p))
 		return -EINVAL;
 
-	if (strtoul_lenient(p, &p, 0, val))
-		return -EINVAL;
+	*val = simple_strtoul(p, &p, 0);
 
 	len = p - tmp;
 
@@ -2626,15 +2501,6 @@ static int proc_dointvec_minmax_sysadmin(struct ctl_table *table, int write,
 }
 #endif
 
-/**
- * struct do_proc_dointvec_minmax_conv_param - proc_dointvec_minmax() range checking structure
- * @min: pointer to minimum allowable value
- * @max: pointer to maximum allowable value
- *
- * The do_proc_dointvec_minmax_conv_param structure provides the
- * minimum and maximum values for doing range checking for those sysctl
- * parameters that use the proc_dointvec_minmax() handler.
- */
 struct do_proc_dointvec_minmax_conv_param {
 	int *min;
 	int *max;
@@ -2644,25 +2510,23 @@ static int do_proc_dointvec_minmax_conv(bool *negp, unsigned long *lvalp,
 					int *valp,
 					int write, void *data)
 {
-	int tmp, ret;
 	struct do_proc_dointvec_minmax_conv_param *param = data;
-	/*
-	 * If writing, first do so via a temporary local int so we can
-	 * bounds-check it before touching *valp.
-	 */
-	int *ip = write ? &tmp : valp;
-
-	ret = do_proc_dointvec_conv(negp, lvalp, ip, write, data);
-	if (ret)
-		return ret;
-
 	if (write) {
-		if ((param->min && *param->min > tmp) ||
-		    (param->max && *param->max < tmp))
+		int val = *negp ? -*lvalp : *lvalp;
+		if ((param->min && *param->min > val) ||
+		    (param->max && *param->max < val))
 			return -EINVAL;
-		*valp = tmp;
+		*valp = val;
+	} else {
+		int val = *valp;
+		if (val < 0) {
+			*negp = true;
+			*lvalp = -(unsigned long)val;
+		} else {
+			*negp = false;
+			*lvalp = (unsigned long)val;
+		}
 	}
-
 	return 0;
 }
 
@@ -2680,7 +2544,7 @@ static int do_proc_dointvec_minmax_conv(bool *negp, unsigned long *lvalp,
  * This routine will ensure the values are within the range specified by
  * table->extra1 (min) and table->extra2 (max).
  *
- * Returns 0 on success or -EINVAL on write when the range check fails.
+ * Returns 0 on success.
  */
 int proc_dointvec_minmax(struct ctl_table *table, int write,
 		  void __user *buffer, size_t *lenp, loff_t *ppos)
@@ -2693,15 +2557,6 @@ int proc_dointvec_minmax(struct ctl_table *table, int write,
 				do_proc_dointvec_minmax_conv, &param);
 }
 
-/**
- * struct do_proc_douintvec_minmax_conv_param - proc_douintvec_minmax() range checking structure
- * @min: pointer to minimum allowable value
- * @max: pointer to maximum allowable value
- *
- * The do_proc_douintvec_minmax_conv_param structure provides the
- * minimum and maximum values for doing range checking for those sysctl
- * parameters that use the proc_douintvec_minmax() handler.
- */
 struct do_proc_douintvec_minmax_conv_param {
 	unsigned int *min;
 	unsigned int *max;
@@ -2711,22 +2566,21 @@ static int do_proc_douintvec_minmax_conv(unsigned long *lvalp,
 					 unsigned int *valp,
 					 int write, void *data)
 {
-	int ret;
-	unsigned int tmp;
 	struct do_proc_douintvec_minmax_conv_param *param = data;
-	/* write via temporary local uint for bounds-checking */
-	unsigned int *up = write ? &tmp : valp;
-
-	ret = do_proc_douintvec_conv(lvalp, up, write, data);
-	if (ret)
-		return ret;
 
 	if (write) {
-		if ((param->min && *param->min > tmp) ||
-		    (param->max && *param->max < tmp))
+		unsigned int val = *lvalp;
+
+		if ((param->min && *param->min > val) ||
+		    (param->max && *param->max < val))
 			return -ERANGE;
 
-		*valp = tmp;
+		if (*lvalp > UINT_MAX)
+			return -EINVAL;
+		*valp = val;
+	} else {
+		unsigned int val = *valp;
+		*lvalp = (unsigned long) val;
 	}
 
 	return 0;
@@ -2749,7 +2603,7 @@ static int do_proc_douintvec_minmax_conv(unsigned long *lvalp,
  * check for UINT_MAX to avoid having to support wrap around uses from
  * userspace.
  *
- * Returns 0 on success or -ERANGE on write when the range check fails.
+ * Returns 0 on success.
  */
 int proc_douintvec_minmax(struct ctl_table *table, int write,
 			  void __user *buffer, size_t *lenp, loff_t *ppos)
@@ -2760,33 +2614,6 @@ int proc_douintvec_minmax(struct ctl_table *table, int write,
 	};
 	return do_proc_douintvec(table, write, buffer, lenp, ppos,
 				 do_proc_douintvec_minmax_conv, &param);
-}
-
-static int do_proc_dopipe_max_size_conv(unsigned long *lvalp,
-					unsigned int *valp,
-					int write, void *data)
-{
-	if (write) {
-		unsigned int val;
-
-		val = round_pipe_size(*lvalp);
-		if (val == 0)
-			return -EINVAL;
-
-		*valp = val;
-	} else {
-		unsigned int val = *valp;
-		*lvalp = (unsigned long) val;
-	}
-
-	return 0;
-}
-
-static int proc_dopipe_max_size(struct ctl_table *table, int write,
-				void __user *buffer, size_t *lenp, loff_t *ppos)
-{
-	return do_proc_douintvec(table, write, buffer, lenp, ppos,
-				 do_proc_dopipe_max_size_conv, NULL);
 }
 
 static void validate_coredump_safety(void)
@@ -2863,8 +2690,6 @@ static int __do_proc_doulongvec_minmax(void *data, struct ctl_table *table, int 
 			bool neg;
 
 			left -= proc_skip_spaces(&p);
-			if (!left)
-				break;
 
 			err = proc_get_long(&p, &left, &val, &neg,
 					     proc_wspace_sep,
@@ -3166,8 +2991,7 @@ int proc_do_large_bitmap(struct ctl_table *table, int write,
 		if (IS_ERR(kbuf))
 			return PTR_ERR(kbuf);
 
-		tmp_bitmap = kcalloc(BITS_TO_LONGS(bitmap_len),
-				     sizeof(unsigned long),
+		tmp_bitmap = kzalloc(BITS_TO_LONGS(bitmap_len) * sizeof(unsigned long),
 				     GFP_KERNEL);
 		if (!tmp_bitmap) {
 			kfree(kbuf);
@@ -3255,12 +3079,14 @@ int proc_do_large_bitmap(struct ctl_table *table, int write,
 			else
 				bitmap_copy(bitmap, tmp_bitmap, bitmap_len);
 		}
+		kfree(tmp_bitmap);
 		*lenp -= left;
 		*ppos += *lenp;
+		return 0;
+	} else {
+		kfree(tmp_bitmap);
+		return err;
 	}
-
-	kfree(tmp_bitmap);
-	return err;
 }
 
 #else /* CONFIG_PROC_SYSCTL */
@@ -3329,29 +3155,6 @@ int proc_doulongvec_ms_jiffies_minmax(struct ctl_table *table, int write,
 
 #endif /* CONFIG_PROC_SYSCTL */
 
-#if defined(CONFIG_BPF_SYSCALL) && defined(CONFIG_SYSCTL)
-static int proc_dointvec_minmax_bpf_stats(struct ctl_table *table, int write,
-					  void __user *buffer, size_t *lenp,
-					  loff_t *ppos)
-{
-	int ret, bpf_stats = *(int *)table->data;
-	struct ctl_table tmp = *table;
-
-	if (write && !capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	tmp.data = &bpf_stats;
-	ret = proc_dointvec_minmax(&tmp, write, buffer, lenp, ppos);
-	if (write && !ret) {
-		*(int *)table->data = bpf_stats;
-		if (bpf_stats)
-			static_branch_enable(&bpf_stats_enabled_key);
-		else
-			static_branch_disable(&bpf_stats_enabled_key);
-	}
-	return ret;
-}
-#endif
 /*
  * No sense putting this after each symbol definition, twice,
  * exception granted :-)

@@ -29,9 +29,9 @@
 #define ST_MAGN_NUMBER_DATA_CHANNELS		3
 
 /* DEFAULT VALUE FOR SENSORS */
-#define ST_MAGN_DEFAULT_OUT_X_H_ADDR		0x03
-#define ST_MAGN_DEFAULT_OUT_Y_H_ADDR		0x07
-#define ST_MAGN_DEFAULT_OUT_Z_H_ADDR		0x05
+#define ST_MAGN_DEFAULT_OUT_X_H_ADDR		0X03
+#define ST_MAGN_DEFAULT_OUT_Y_H_ADDR		0X07
+#define ST_MAGN_DEFAULT_OUT_Z_H_ADDR		0X05
 
 /* FULLSCALE */
 #define ST_MAGN_FS_AVL_1300MG			1300
@@ -267,7 +267,6 @@ static const struct st_sensor_settings st_magn_sensors_settings[] = {
 		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
 		.sensors_supported = {
 			[0] = LIS3MDL_MAGN_DEV_NAME,
-			[1] = LSM9DS1_MAGN_DEV_NAME,
 		},
 		.ch = (struct iio_chan_spec *)st_magn_2_16bit_channels,
 		.odr = {
@@ -316,20 +315,12 @@ static const struct st_sensor_settings st_magn_sensors_settings[] = {
 				},
 			},
 		},
-		.bdu = {
-			.addr = 0x24,
-			.mask = 0x40,
-		},
 		.drdy_irq = {
 			/* drdy line is routed drdy pin */
 			.stat_drdy = {
 				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
 				.mask = 0x07,
 			},
-		},
-		.sim = {
-			.addr = 0x22,
-			.value = BIT(2),
 		},
 		.multi_read_bit = true,
 		.bootime = 2,
@@ -371,10 +362,8 @@ static const struct st_sensor_settings st_magn_sensors_settings[] = {
 			.mask = 0x10,
 		},
 		.drdy_irq = {
-			.int1 = {
-				.addr = 0x62,
-				.mask = 0x01,
-			},
+			.addr = 0x62,
+			.mask_int1 = 0x01,
 			.stat_drdy = {
 				.addr = 0x67,
 				.mask = 0x07,
@@ -455,6 +444,7 @@ static const struct attribute_group st_magn_attribute_group = {
 };
 
 static const struct iio_info magn_info = {
+	.driver_module = THIS_MODULE,
 	.attrs = &st_magn_attribute_group,
 	.read_raw = &st_magn_read_raw,
 	.write_raw = &st_magn_write_raw,
@@ -463,6 +453,7 @@ static const struct iio_info magn_info = {
 
 #ifdef CONFIG_IIO_TRIGGER
 static const struct iio_trigger_ops st_magn_trigger_ops = {
+	.owner = THIS_MODULE,
 	.set_trigger_state = ST_MAGN_TRIGGER_SET_STATE,
 	.validate_device = st_sensors_validate_device,
 };

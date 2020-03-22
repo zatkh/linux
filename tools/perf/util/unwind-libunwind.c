@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "unwind.h"
-#include "map.h"
 #include "thread.h"
 #include "session.h"
 #include "debug.h"
-#include "env.h"
+#include "arch/common.h"
 
 struct unwind_libunwind_ops __weak *local_unwind_libunwind_ops;
 struct unwind_libunwind_ops __weak *x86_32_unwind_libunwind_ops;
@@ -40,7 +39,7 @@ int unwind__prepare_access(struct thread *thread, struct map *map,
 	if (dso_type == DSO__TYPE_UNKNOWN)
 		return 0;
 
-	arch = perf_env__arch(thread->mg->machine->env);
+	arch = normalize_arch(thread->mg->machine->env->arch);
 
 	if (!strcmp(arch, "x86")) {
 		if (dso_type != DSO__TYPE_64BIT)

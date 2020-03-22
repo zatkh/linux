@@ -1,9 +1,7 @@
-// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * caam - Freescale FSL CAAM support for Public Key Cryptography
  *
  * Copyright 2016 Freescale Semiconductor, Inc.
- * Copyright 2018 NXP
  *
  * There is no Shared Descriptor for PKC so that the Job Descriptor must carry
  * all the desired key parameters, input and output pointers.
@@ -73,8 +71,8 @@ static void rsa_priv_f2_unmap(struct device *dev, struct rsa_edesc *edesc,
 	dma_unmap_single(dev, pdb->d_dma, key->d_sz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, pdb->p_dma, p_sz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, pdb->q_dma, q_sz, DMA_TO_DEVICE);
-	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_BIDIRECTIONAL);
-	dma_unmap_single(dev, pdb->tmp2_dma, q_sz, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_TO_DEVICE);
+	dma_unmap_single(dev, pdb->tmp2_dma, q_sz, DMA_TO_DEVICE);
 }
 
 static void rsa_priv_f3_unmap(struct device *dev, struct rsa_edesc *edesc,
@@ -92,8 +90,8 @@ static void rsa_priv_f3_unmap(struct device *dev, struct rsa_edesc *edesc,
 	dma_unmap_single(dev, pdb->dp_dma, p_sz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, pdb->dq_dma, q_sz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, pdb->c_dma, p_sz, DMA_TO_DEVICE);
-	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_BIDIRECTIONAL);
-	dma_unmap_single(dev, pdb->tmp2_dma, q_sz, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_TO_DEVICE);
+	dma_unmap_single(dev, pdb->tmp2_dma, q_sz, DMA_TO_DEVICE);
 }
 
 /* RSA Job Completion handler */
@@ -419,13 +417,13 @@ static int set_rsa_priv_f2_pdb(struct akcipher_request *req,
 		goto unmap_p;
 	}
 
-	pdb->tmp1_dma = dma_map_single(dev, key->tmp1, p_sz, DMA_BIDIRECTIONAL);
+	pdb->tmp1_dma = dma_map_single(dev, key->tmp1, p_sz, DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, pdb->tmp1_dma)) {
 		dev_err(dev, "Unable to map RSA tmp1 memory\n");
 		goto unmap_q;
 	}
 
-	pdb->tmp2_dma = dma_map_single(dev, key->tmp2, q_sz, DMA_BIDIRECTIONAL);
+	pdb->tmp2_dma = dma_map_single(dev, key->tmp2, q_sz, DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, pdb->tmp2_dma)) {
 		dev_err(dev, "Unable to map RSA tmp2 memory\n");
 		goto unmap_tmp1;
@@ -453,7 +451,7 @@ static int set_rsa_priv_f2_pdb(struct akcipher_request *req,
 	return 0;
 
 unmap_tmp1:
-	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_TO_DEVICE);
 unmap_q:
 	dma_unmap_single(dev, pdb->q_dma, q_sz, DMA_TO_DEVICE);
 unmap_p:
@@ -506,13 +504,13 @@ static int set_rsa_priv_f3_pdb(struct akcipher_request *req,
 		goto unmap_dq;
 	}
 
-	pdb->tmp1_dma = dma_map_single(dev, key->tmp1, p_sz, DMA_BIDIRECTIONAL);
+	pdb->tmp1_dma = dma_map_single(dev, key->tmp1, p_sz, DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, pdb->tmp1_dma)) {
 		dev_err(dev, "Unable to map RSA tmp1 memory\n");
 		goto unmap_qinv;
 	}
 
-	pdb->tmp2_dma = dma_map_single(dev, key->tmp2, q_sz, DMA_BIDIRECTIONAL);
+	pdb->tmp2_dma = dma_map_single(dev, key->tmp2, q_sz, DMA_TO_DEVICE);
 	if (dma_mapping_error(dev, pdb->tmp2_dma)) {
 		dev_err(dev, "Unable to map RSA tmp2 memory\n");
 		goto unmap_tmp1;
@@ -540,7 +538,7 @@ static int set_rsa_priv_f3_pdb(struct akcipher_request *req,
 	return 0;
 
 unmap_tmp1:
-	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, pdb->tmp1_dma, p_sz, DMA_TO_DEVICE);
 unmap_qinv:
 	dma_unmap_single(dev, pdb->c_dma, p_sz, DMA_TO_DEVICE);
 unmap_dq:
@@ -785,12 +783,19 @@ static u8 *caam_read_rsa_crt(const u8 *ptr, size_t nbytes, size_t dstlen)
  */
 static inline u8 *caam_read_raw_data(const u8 *buf, size_t *nbytes)
 {
+	u8 *val;
 
 	caam_rsa_drop_leading_zeros(&buf, nbytes);
 	if (!*nbytes)
 		return NULL;
 
-	return kmemdup(buf, *nbytes, GFP_DMA | GFP_KERNEL);
+	val = kzalloc(*nbytes, GFP_DMA | GFP_KERNEL);
+	if (!val)
+		return NULL;
+
+	memcpy(val, buf, *nbytes);
+
+	return val;
 }
 
 static int caam_rsa_check_key_length(unsigned int len)
@@ -1018,7 +1023,7 @@ static int __init caam_pkc_init(void)
 	struct platform_device *pdev;
 	struct device *ctrldev;
 	struct caam_drv_private *priv;
-	u32 pk_inst;
+	u32 cha_inst, pk_inst;
 	int err;
 
 	dev_node = of_find_compatible_node(NULL, NULL, "fsl,sec-v4.0");
@@ -1042,23 +1047,16 @@ static int __init caam_pkc_init(void)
 	 * If priv is NULL, it's probably because the caam driver wasn't
 	 * properly initialized (e.g. RNG4 init failed). Thus, bail out here.
 	 */
-	if (!priv) {
-		err = -ENODEV;
-		goto out_put_dev;
-	}
+	if (!priv)
+		return -ENODEV;
 
 	/* Determine public key hardware accelerator presence. */
-	if (priv->era < 10)
-		pk_inst = (rd_reg32(&priv->ctrl->perfmon.cha_num_ls) &
-			   CHA_ID_LS_PK_MASK) >> CHA_ID_LS_PK_SHIFT;
-	else
-		pk_inst = rd_reg32(&priv->ctrl->vreg.pkha) & CHA_VER_NUM_MASK;
+	cha_inst = rd_reg32(&priv->ctrl->perfmon.cha_num_ls);
+	pk_inst = (cha_inst & CHA_ID_LS_PK_MASK) >> CHA_ID_LS_PK_SHIFT;
 
 	/* Do not register algorithms if PKHA is not present. */
-	if (!pk_inst) {
-		err =  -ENODEV;
-		goto out_put_dev;
-	}
+	if (!pk_inst)
+		return -ENODEV;
 
 	err = crypto_register_akcipher(&caam_rsa);
 	if (err)
@@ -1067,8 +1065,6 @@ static int __init caam_pkc_init(void)
 	else
 		dev_info(ctrldev, "caam pkc algorithms registered in /proc/crypto\n");
 
-out_put_dev:
-	put_device(ctrldev);
 	return err;
 }
 

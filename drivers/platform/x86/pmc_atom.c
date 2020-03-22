@@ -17,7 +17,6 @@
 
 #include <linux/debugfs.h>
 #include <linux/device.h>
-#include <linux/dmi.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/platform_data/x86/clk-pmc-atom.h>
@@ -310,7 +309,17 @@ static int pmc_dev_state_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-DEFINE_SHOW_ATTRIBUTE(pmc_dev_state);
+static int pmc_dev_state_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmc_dev_state_show, inode->i_private);
+}
+
+static const struct file_operations pmc_dev_state_ops = {
+	.open		= pmc_dev_state_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int pmc_pss_state_show(struct seq_file *s, void *unused)
 {
@@ -327,7 +336,17 @@ static int pmc_pss_state_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-DEFINE_SHOW_ATTRIBUTE(pmc_pss_state);
+static int pmc_pss_state_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmc_pss_state_show, inode->i_private);
+}
+
+static const struct file_operations pmc_pss_state_ops = {
+	.open		= pmc_pss_state_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int pmc_sleep_tmr_show(struct seq_file *s, void *unused)
 {
@@ -348,7 +367,17 @@ static int pmc_sleep_tmr_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-DEFINE_SHOW_ATTRIBUTE(pmc_sleep_tmr);
+static int pmc_sleep_tmr_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmc_sleep_tmr_show, inode->i_private);
+}
+
+static const struct file_operations pmc_sleep_tmr_ops = {
+	.open		= pmc_sleep_tmr_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static void pmc_dbgfs_unregister(struct pmc_dev *pmc)
 {
@@ -366,17 +395,17 @@ static int pmc_dbgfs_register(struct pmc_dev *pmc)
 	pmc->dbgfs_dir = dir;
 
 	f = debugfs_create_file("dev_state", S_IFREG | S_IRUGO,
-				dir, pmc, &pmc_dev_state_fops);
+				dir, pmc, &pmc_dev_state_ops);
 	if (!f)
 		goto err;
 
 	f = debugfs_create_file("pss_state", S_IFREG | S_IRUGO,
-				dir, pmc, &pmc_pss_state_fops);
+				dir, pmc, &pmc_pss_state_ops);
 	if (!f)
 		goto err;
 
 	f = debugfs_create_file("sleep_state", S_IFREG | S_IRUGO,
-				dir, pmc, &pmc_sleep_tmr_fops);
+				dir, pmc, &pmc_sleep_tmr_ops);
 	if (!f)
 		goto err;
 
@@ -392,27 +421,11 @@ static int pmc_dbgfs_register(struct pmc_dev *pmc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
-/*
- * Some systems need one or more of their pmc_plt_clks to be
- * marked as critical.
- */
-static const struct dmi_system_id critclk_systems[] = {
-	{
-		.ident = "MPL CEC1x",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "MPL AG"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "CEC10 Family"),
-		},
-	},
-	{ /*sentinel*/ }
-};
-
 static int pmc_setup_clks(struct pci_dev *pdev, void __iomem *pmc_regmap,
 			  const struct pmc_data *pmc_data)
 {
 	struct platform_device *clkdev;
 	struct pmc_clk_data *clk_data;
-	const struct dmi_system_id *d = dmi_first_match(critclk_systems);
 
 	clk_data = kzalloc(sizeof(*clk_data), GFP_KERNEL);
 	if (!clk_data)
@@ -420,10 +433,6 @@ static int pmc_setup_clks(struct pci_dev *pdev, void __iomem *pmc_regmap,
 
 	clk_data->base = pmc_regmap; /* offset is added by client */
 	clk_data->clks = pmc_data->clks;
-	if (d) {
-		clk_data->critical = true;
-		pr_info("%s critclks quirk enabled\n", d->ident);
-	}
 
 	clkdev = platform_device_register_data(&pdev->dev, "clk-pmc-atom",
 					       PLATFORM_DEVID_NONE,

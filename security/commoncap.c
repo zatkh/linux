@@ -9,6 +9,7 @@
 
 #include <linux/capability.h>
 #include <linux/audit.h>
+#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/lsm_hooks.h>
@@ -57,7 +58,7 @@ static void warn_setuid_and_fcaps_mixed(const char *fname)
  * @cred: The credentials to use
  * @ns:  The user namespace in which we need the capability
  * @cap: The capability to check for
- * @opts: Bitmask of options defined in include/linux/security.h
+ * @audit: Whether to write an audit message or not
  *
  * Determine whether the nominated task has the specified capability amongst
  * its effective set, returning 0 if it does, -ve if it does not.
@@ -68,7 +69,7 @@ static void warn_setuid_and_fcaps_mixed(const char *fname)
  * kernel's capable() and has_capability() returns 1 for this case.
  */
 int cap_capable(const struct cred *cred, struct user_namespace *targ_ns,
-		int cap, unsigned int opts)
+		int cap, int audit)
 {
 	struct user_namespace *ns = targ_ns;
 
@@ -222,11 +223,12 @@ int cap_capget(struct task_struct *target, kernel_cap_t *effective,
  */
 static inline int cap_inh_is_capped(void)
 {
+
 	/* they are so limited unless the current task has the CAP_SETPCAP
 	 * capability
 	 */
 	if (cap_capable(current_cred(), current_cred()->user_ns,
-			CAP_SETPCAP, CAP_OPT_NONE) == 0)
+			CAP_SETPCAP, SECURITY_CAP_AUDIT) == 0)
 		return 0;
 	return 1;
 }
@@ -386,7 +388,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 	if (strcmp(name, "capability") != 0)
 		return -EOPNOTSUPP;
 
-	dentry = d_find_any_alias(inode);
+	dentry = d_find_alias(inode);
 	if (!dentry)
 		return -EINVAL;
 
@@ -533,7 +535,7 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t size)
 static inline int bprm_caps_from_vfs_caps(struct cpu_vfs_cap_data *caps,
 					  struct linux_binprm *bprm,
 					  bool *effective,
-					  bool *has_fcap)
+					  bool *has_cap)
 {
 	struct cred *new = bprm->cred;
 	unsigned i;
@@ -543,7 +545,7 @@ static inline int bprm_caps_from_vfs_caps(struct cpu_vfs_cap_data *caps,
 		*effective = true;
 
 	if (caps->magic_etc & VFS_CAP_REVISION_MASK)
-		*has_fcap = true;
+		*has_cap = true;
 
 	CAP_FOR_EACH_U32(i) {
 		__u32 permitted = caps->permitted.cap[i];
@@ -642,8 +644,6 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 	cpu_caps->permitted.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
 	cpu_caps->inheritable.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
 
-	cpu_caps->rootid = rootkuid;
-
 	return 0;
 }
 
@@ -652,7 +652,7 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
  * its xattrs and, if present, apply them to the proposed credentials being
  * constructed by execve().
  */
-static int get_file_caps(struct linux_binprm *bprm, bool *effective, bool *has_fcap)
+static int get_file_caps(struct linux_binprm *bprm, bool *effective, bool *has_cap)
 {
 	int rc = 0;
 	struct cpu_vfs_cap_data vcaps;
@@ -683,122 +683,16 @@ static int get_file_caps(struct linux_binprm *bprm, bool *effective, bool *has_f
 		goto out;
 	}
 
-	rc = bprm_caps_from_vfs_caps(&vcaps, bprm, effective, has_fcap);
+	rc = bprm_caps_from_vfs_caps(&vcaps, bprm, effective, has_cap);
+	if (rc == -EINVAL)
+		printk(KERN_NOTICE "%s: cap_from_disk returned %d for %s\n",
+		       __func__, rc, bprm->filename);
 
 out:
 	if (rc)
 		cap_clear(bprm->cred->cap_permitted);
 
 	return rc;
-}
-
-static inline bool root_privileged(void) { return !issecure(SECURE_NOROOT); }
-
-static inline bool __is_real(kuid_t uid, struct cred *cred)
-{ return uid_eq(cred->uid, uid); }
-
-static inline bool __is_eff(kuid_t uid, struct cred *cred)
-{ return uid_eq(cred->euid, uid); }
-
-static inline bool __is_suid(kuid_t uid, struct cred *cred)
-{ return !__is_real(uid, cred) && __is_eff(uid, cred); }
-
-/*
- * handle_privileged_root - Handle case of privileged root
- * @bprm: The execution parameters, including the proposed creds
- * @has_fcap: Are any file capabilities set?
- * @effective: Do we have effective root privilege?
- * @root_uid: This namespace' root UID WRT initial USER namespace
- *
- * Handle the case where root is privileged and hasn't been neutered by
- * SECURE_NOROOT.  If file capabilities are set, they won't be combined with
- * set UID root and nothing is changed.  If we are root, cap_permitted is
- * updated.  If we have become set UID root, the effective bit is set.
- */
-static void handle_privileged_root(struct linux_binprm *bprm, bool has_fcap,
-				   bool *effective, kuid_t root_uid)
-{
-	const struct cred *old = current_cred();
-	struct cred *new = bprm->cred;
-
-	if (!root_privileged())
-		return;
-	/*
-	 * If the legacy file capability is set, then don't set privs
-	 * for a setuid root binary run by a non-root user.  Do set it
-	 * for a root user just to cause least surprise to an admin.
-	 */
-	if (has_fcap && __is_suid(root_uid, new)) {
-		warn_setuid_and_fcaps_mixed(bprm->filename);
-		return;
-	}
-	/*
-	 * To support inheritance of root-permissions and suid-root
-	 * executables under compatibility mode, we override the
-	 * capability sets for the file.
-	 */
-	if (__is_eff(root_uid, new) || __is_real(root_uid, new)) {
-		/* pP' = (cap_bset & ~0) | (pI & ~0) */
-		new->cap_permitted = cap_combine(old->cap_bset,
-						 old->cap_inheritable);
-	}
-	/*
-	 * If only the real uid is 0, we do not set the effective bit.
-	 */
-	if (__is_eff(root_uid, new))
-		*effective = true;
-}
-
-#define __cap_gained(field, target, source) \
-	!cap_issubset(target->cap_##field, source->cap_##field)
-#define __cap_grew(target, source, cred) \
-	!cap_issubset(cred->cap_##target, cred->cap_##source)
-#define __cap_full(field, cred) \
-	cap_issubset(CAP_FULL_SET, cred->cap_##field)
-
-static inline bool __is_setuid(struct cred *new, const struct cred *old)
-{ return !uid_eq(new->euid, old->uid); }
-
-static inline bool __is_setgid(struct cred *new, const struct cred *old)
-{ return !gid_eq(new->egid, old->gid); }
-
-/*
- * 1) Audit candidate if current->cap_effective is set
- *
- * We do not bother to audit if 3 things are true:
- *   1) cap_effective has all caps
- *   2) we became root *OR* are were already root
- *   3) root is supposed to have all caps (SECURE_NOROOT)
- * Since this is just a normal root execing a process.
- *
- * Number 1 above might fail if you don't have a full bset, but I think
- * that is interesting information to audit.
- *
- * A number of other conditions require logging:
- * 2) something prevented setuid root getting all caps
- * 3) non-setuid root gets fcaps
- * 4) non-setuid root gets ambient
- */
-static inline bool nonroot_raised_pE(struct cred *new, const struct cred *old,
-				     kuid_t root, bool has_fcap)
-{
-	bool ret = false;
-
-	if ((__cap_grew(effective, ambient, new) &&
-	     !(__cap_full(effective, new) &&
-	       (__is_eff(root, new) || __is_real(root, new)) &&
-	       root_privileged())) ||
-	    (root_privileged() &&
-	     __is_suid(root, new) &&
-	     !__cap_full(effective, new)) ||
-	    (!__is_setuid(new, old) &&
-	     ((has_fcap &&
-	       __cap_gained(permitted, new, old)) ||
-	      __cap_gained(ambient, new, old))))
-
-		ret = true;
-
-	return ret;
 }
 
 /**
@@ -813,33 +707,61 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 {
 	const struct cred *old = current_cred();
 	struct cred *new = bprm->cred;
-	bool effective = false, has_fcap = false, is_setid;
+	bool effective, has_cap = false, is_setid;
 	int ret;
 	kuid_t root_uid;
 
 	if (WARN_ON(!cap_ambient_invariant_ok(old)))
 		return -EPERM;
 
-	ret = get_file_caps(bprm, &effective, &has_fcap);
+	effective = false;
+	ret = get_file_caps(bprm, &effective, &has_cap);
 	if (ret < 0)
 		return ret;
 
 	root_uid = make_kuid(new->user_ns, 0);
 
-	handle_privileged_root(bprm, has_fcap, &effective, root_uid);
+	if (!issecure(SECURE_NOROOT)) {
+		/*
+		 * If the legacy file capability is set, then don't set privs
+		 * for a setuid root binary run by a non-root user.  Do set it
+		 * for a root user just to cause least surprise to an admin.
+		 */
+		if (has_cap && !uid_eq(new->uid, root_uid) && uid_eq(new->euid, root_uid)) {
+			warn_setuid_and_fcaps_mixed(bprm->filename);
+			goto skip;
+		}
+		/*
+		 * To support inheritance of root-permissions and suid-root
+		 * executables under compatibility mode, we override the
+		 * capability sets for the file.
+		 *
+		 * If only the real uid is 0, we do not set the effective bit.
+		 */
+		if (uid_eq(new->euid, root_uid) || uid_eq(new->uid, root_uid)) {
+			/* pP' = (cap_bset & ~0) | (pI & ~0) */
+			new->cap_permitted = cap_combine(old->cap_bset,
+							 old->cap_inheritable);
+		}
+		if (uid_eq(new->euid, root_uid))
+			effective = true;
+	}
+skip:
 
 	/* if we have fs caps, clear dangerous personality flags */
-	if (__cap_gained(permitted, new, old))
+	if (!cap_issubset(new->cap_permitted, old->cap_permitted))
 		bprm->per_clear |= PER_CLEAR_ON_SETID;
+
 
 	/* Don't let someone trace a set[ug]id/setpcap binary with the revised
 	 * credentials unless they have the appropriate permit.
 	 *
 	 * In addition, if NO_NEW_PRIVS, then ensure we get no new privs.
 	 */
-	is_setid = __is_setuid(new, old) || __is_setgid(new, old);
+	is_setid = !uid_eq(new->euid, old->uid) || !gid_eq(new->egid, old->gid);
 
-	if ((is_setid || __cap_gained(permitted, new, old)) &&
+	if ((is_setid ||
+	     !cap_issubset(new->cap_permitted, old->cap_permitted)) &&
 	    ((bprm->unsafe & ~LSM_UNSAFE_PTRACE) ||
 	     !ptracer_capable(current, new->user_ns))) {
 		/* downgrade; they get no more than they had, and maybe less */
@@ -856,7 +778,7 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 	new->sgid = new->fsgid = new->egid;
 
 	/* File caps or setid cancels ambient. */
-	if (has_fcap || is_setid)
+	if (has_cap || is_setid)
 		cap_clear(new->cap_ambient);
 
 	/*
@@ -877,10 +799,26 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 	if (WARN_ON(!cap_ambient_invariant_ok(new)))
 		return -EPERM;
 
-	if (nonroot_raised_pE(new, old, root_uid, has_fcap)) {
-		ret = audit_log_bprm_fcaps(bprm, new, old);
-		if (ret < 0)
-			return ret;
+	/*
+	 * Audit candidate if current->cap_effective is set
+	 *
+	 * We do not bother to audit if 3 things are true:
+	 *   1) cap_effective has all caps
+	 *   2) we are root
+	 *   3) root is supposed to have all caps (SECURE_NOROOT)
+	 * Since this is just a normal root execing a process.
+	 *
+	 * Number 1 above might fail if you don't have a full bset, but I think
+	 * that is interesting information to audit.
+	 */
+	if (!cap_issubset(new->cap_effective, new->cap_ambient)) {
+		if (!cap_issubset(CAP_FULL_SET, new->cap_effective) ||
+		    !uid_eq(new->euid, root_uid) || !uid_eq(new->uid, root_uid) ||
+		    issecure(SECURE_NOROOT)) {
+			ret = audit_log_bprm_fcaps(bprm, new, old);
+			if (ret < 0)
+				return ret;
+		}
 	}
 
 	new->securebits &= ~issecure_mask(SECURE_KEEP_CAPS);
@@ -890,11 +828,13 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 
 	/* Check for privilege-elevated exec. */
 	bprm->cap_elevated = 0;
-	if (is_setid ||
-	    (!__is_real(root_uid, new) &&
-	     (effective ||
-	      __cap_grew(permitted, ambient, new))))
+	if (is_setid) {
 		bprm->cap_elevated = 1;
+	} else if (!uid_eq(new->uid, root_uid)) {
+		if (effective ||
+		    !cap_issubset(new->cap_permitted, new->cap_ambient))
+			bprm->cap_elevated = 1;
+	}
 
 	return 0;
 }
@@ -916,8 +856,6 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 int cap_inode_setxattr(struct dentry *dentry, const char *name,
 		       const void *value, size_t size, int flags)
 {
-	struct user_namespace *user_ns = dentry->d_sb->s_user_ns;
-
 	/* Ignore non-security xattrs */
 	if (strncmp(name, XATTR_SECURITY_PREFIX,
 			sizeof(XATTR_SECURITY_PREFIX) - 1) != 0)
@@ -930,7 +868,7 @@ int cap_inode_setxattr(struct dentry *dentry, const char *name,
 	if (strcmp(name, XATTR_NAME_CAPS) == 0)
 		return 0;
 
-	if (!ns_capable(user_ns, CAP_SYS_ADMIN))
+	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 	return 0;
 }
@@ -948,8 +886,6 @@ int cap_inode_setxattr(struct dentry *dentry, const char *name,
  */
 int cap_inode_removexattr(struct dentry *dentry, const char *name)
 {
-	struct user_namespace *user_ns = dentry->d_sb->s_user_ns;
-
 	/* Ignore non-security xattrs */
 	if (strncmp(name, XATTR_SECURITY_PREFIX,
 			sizeof(XATTR_SECURITY_PREFIX) - 1) != 0)
@@ -965,7 +901,7 @@ int cap_inode_removexattr(struct dentry *dentry, const char *name)
 		return 0;
 	}
 
-	if (!ns_capable(user_ns, CAP_SYS_ADMIN))
+	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 	return 0;
 }
@@ -1209,9 +1145,8 @@ int cap_task_prctl(int option, unsigned long arg2, unsigned long arg3,
 		    || ((old->securebits & SECURE_ALL_LOCKS & ~arg2))	/*[2]*/
 		    || (arg2 & ~(SECURE_ALL_LOCKS | SECURE_ALL_BITS))	/*[3]*/
 		    || (cap_capable(current_cred(),
-				    current_cred()->user_ns,
-				    CAP_SETPCAP,
-				    CAP_OPT_NONE) != 0)			/*[4]*/
+				    current_cred()->user_ns, CAP_SETPCAP,
+				    SECURITY_CAP_AUDIT) != 0)		/*[4]*/
 			/*
 			 * [1] no changing of bits that are locked
 			 * [2] no unlocking of locks
@@ -1306,10 +1241,9 @@ int cap_vm_enough_memory(struct mm_struct *mm, long pages)
 {
 	int cap_sys_admin = 0;
 
-	if (cap_capable(current_cred(), &init_user_ns,
-				CAP_SYS_ADMIN, CAP_OPT_NOAUDIT) == 0)
+	if (cap_capable(current_cred(), &init_user_ns, CAP_SYS_ADMIN,
+			SECURITY_CAP_NOAUDIT) == 0)
 		cap_sys_admin = 1;
-
 	return cap_sys_admin;
 }
 
@@ -1328,7 +1262,7 @@ int cap_mmap_addr(unsigned long addr)
 
 	if (addr < dac_mmap_min_addr) {
 		ret = cap_capable(current_cred(), &init_user_ns, CAP_SYS_RAWIO,
-				  CAP_OPT_NONE);
+				  SECURITY_CAP_AUDIT);
 		/* set PF_SUPERPRIV if it turns out we allow the low mmap */
 		if (ret == 0)
 			current->flags |= PF_SUPERPRIV;
@@ -1365,17 +1299,10 @@ struct security_hook_list capability_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(vm_enough_memory, cap_vm_enough_memory),
 };
 
-static int __init capability_init(void)
+void __init capability_add_hooks(void)
 {
 	security_add_hooks(capability_hooks, ARRAY_SIZE(capability_hooks),
 				"capability");
-	return 0;
 }
-
-DEFINE_LSM(capability) = {
-	.name = "capability",
-	.order = LSM_ORDER_FIRST,
-	.init = capability_init,
-};
 
 #endif /* CONFIG_SECURITY */

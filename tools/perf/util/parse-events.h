@@ -71,7 +71,6 @@ enum {
 	PARSE_EVENTS__TERM_TYPE_NOINHERIT,
 	PARSE_EVENTS__TERM_TYPE_INHERIT,
 	PARSE_EVENTS__TERM_TYPE_MAX_STACK,
-	PARSE_EVENTS__TERM_TYPE_MAX_EVENTS,
 	PARSE_EVENTS__TERM_TYPE_NOOVERWRITE,
 	PARSE_EVENTS__TERM_TYPE_OVERWRITE,
 	PARSE_EVENTS__TERM_TYPE_DRV_CFG,
@@ -168,9 +167,7 @@ int parse_events_add_breakpoint(struct list_head *list, int *idx,
 				void *ptr, char *type, u64 len);
 int parse_events_add_pmu(struct parse_events_state *parse_state,
 			 struct list_head *list, char *name,
-			 struct list_head *head_config,
-			 bool auto_merge_stats,
-			 bool use_alias);
+			 struct list_head *head_config);
 
 int parse_events_multi_pmu_add(struct parse_events_state *parse_state,
 			       char *str,
@@ -181,8 +178,7 @@ int parse_events_copy_term_list(struct list_head *old,
 
 enum perf_pmu_event_symbol_type
 perf_pmu__parse_check(const char *name);
-void parse_events__set_leader(char *name, struct list_head *list,
-			      struct parse_events_state *parse_state);
+void parse_events__set_leader(char *name, struct list_head *list);
 void parse_events_update_lists(struct list_head *list_event,
 			       struct list_head *list_all);
 void parse_events_evlist_error(struct parse_events_state *parse_state,
@@ -209,9 +205,6 @@ int is_valid_tracepoint(const char *event_string);
 
 int valid_event_mount(const char *eventfs);
 char *parse_events_formats_error_string(char *additional_terms);
-
-void parse_events_print_error(struct parse_events_error *err,
-			      const char *event);
 
 #ifdef HAVE_LIBELF_SUPPORT
 /*

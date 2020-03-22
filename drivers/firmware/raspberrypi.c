@@ -1,9 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0
 /*
  * Defines interfaces for interacting wtih the Raspberry Pi firmware's
  * property channel.
  *
  * Copyright © 2015 Broadcom
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  */
 
 #include <linux/dma-mapping.h>
@@ -11,7 +14,8 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
+#include <linux/reboot.h>
+#include <linux/workqueue.h>
 #include <soc/bcm2835/raspberrypi-firmware.h>
 
 #define MBOX_MSG(chan, data28)		(((data28) & ~0xf) | ((chan) & 0xf))
@@ -19,14 +23,49 @@
 #define MBOX_DATA28(msg)		((msg) & ~0xf)
 #define MBOX_CHAN_PROPERTY		8
 
-static struct platform_device *rpi_hwmon;
+#define UNDERVOLTAGE_BIT		BIT(0)
+
+
+/*
+ * This section defines some rate limited logging that prevent
+ * repeated messages at much lower Hz than the default kernel settings.
+ * It's usually 5s, this is 5 minutes.
+ * Burst 3 means you may get three messages 'quickly', before
+ * the ratelimiting kicks in.
+ */
+#define LOCAL_RATELIMIT_INTERVAL (5 * 60 * HZ)
+#define LOCAL_RATELIMIT_BURST 3
+
+#ifdef CONFIG_PRINTK
+#define printk_ratelimited_local(fmt, ...)	\
+({						\
+	static DEFINE_RATELIMIT_STATE(_rs,	\
+		LOCAL_RATELIMIT_INTERVAL,	\
+		LOCAL_RATELIMIT_BURST);		\
+						\
+	if (__ratelimit(&_rs))			\
+		printk(fmt, ##__VA_ARGS__);	\
+})
+#else
+#define printk_ratelimited_local(fmt, ...)	\
+	no_printk(fmt, ##__VA_ARGS__)
+#endif
+
+#define pr_crit_ratelimited_local(fmt, ...)              \
+	printk_ratelimited_local(KERN_CRIT pr_fmt(fmt), ##__VA_ARGS__)
+#define pr_info_ratelimited_local(fmt, ...)              \
+	printk_ratelimited_local(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
+
 
 struct rpi_firmware {
 	struct mbox_client cl;
 	struct mbox_chan *chan; /* The property channel. */
 	struct completion c;
 	u32 enabled;
+	struct delayed_work get_throttled_poll_work;
 };
+
+static struct platform_device *g_pdev;
 
 static DEFINE_MUTEX(transaction_lock);
 
@@ -40,7 +79,7 @@ static void response_callback(struct mbox_client *cl, void *msg)
  * Sends a request to the firmware through the BCM2835 mailbox driver,
  * and synchronously waits for the reply.
  */
-static int
+int
 rpi_firmware_transaction(struct rpi_firmware *fw, u32 chan, u32 data)
 {
 	u32 message = MBOX_MSG(chan, data);
@@ -52,12 +91,8 @@ rpi_firmware_transaction(struct rpi_firmware *fw, u32 chan, u32 data)
 	reinit_completion(&fw->c);
 	ret = mbox_send_message(fw->chan, &message);
 	if (ret >= 0) {
-		if (wait_for_completion_timeout(&fw->c, HZ)) {
-			ret = 0;
-		} else {
-			ret = -ETIMEDOUT;
-			WARN_ONCE(1, "Firmware transaction timeout");
-		}
+		wait_for_completion(&fw->c);
+		ret = 0;
 	} else {
 		dev_err(fw->cl.dev, "mbox_send_message returned %d\n", ret);
 	}
@@ -65,6 +100,7 @@ rpi_firmware_transaction(struct rpi_firmware *fw, u32 chan, u32 data)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(rpi_firmware_transaction);
 
 /**
  * rpi_firmware_property_list - Submit firmware property list
@@ -116,7 +152,7 @@ int rpi_firmware_property_list(struct rpi_firmware *fw,
 		 * error, if there were multiple tags in the request.
 		 * But single-tag is the most common, so go with it.
 		 */
-		dev_err(fw->cl.dev, "Request 0x%08x returned status 0x%08x\n",
+		dev_dbg(fw->cl.dev, "Request 0x%08x returned status 0x%08x\n",
 			buf[2], buf[1]);
 		ret = -EINVAL;
 	}
@@ -144,34 +180,160 @@ EXPORT_SYMBOL_GPL(rpi_firmware_property_list);
 int rpi_firmware_property(struct rpi_firmware *fw,
 			  u32 tag, void *tag_data, size_t buf_size)
 {
-	struct rpi_firmware_property_tag_header *header;
+	/* Single tags are very small (generally 8 bytes), so the
+	 * stack should be safe.
+	 */
+	u8 data[buf_size + sizeof(struct rpi_firmware_property_tag_header)];
+	struct rpi_firmware_property_tag_header *header =
+		(struct rpi_firmware_property_tag_header *)data;
 	int ret;
 
-	/* Some mailboxes can use over 1k bytes. Rather than checking
-	 * size and using stack or kmalloc depending on requirements,
-	 * just use kmalloc. Mailboxes don't get called enough to worry
-	 * too much about the time taken in the allocation.
-	 */
-	void *data = kmalloc(sizeof(*header) + buf_size, GFP_KERNEL);
-
-	if (!data)
-		return -ENOMEM;
-
-	header = data;
 	header->tag = tag;
 	header->buf_size = buf_size;
 	header->req_resp_size = 0;
-	memcpy(data + sizeof(*header), tag_data, buf_size);
+	memcpy(data + sizeof(struct rpi_firmware_property_tag_header),
+	       tag_data, buf_size);
 
-	ret = rpi_firmware_property_list(fw, data, buf_size + sizeof(*header));
-
-	memcpy(tag_data, data + sizeof(*header), buf_size);
-
-	kfree(data);
+	ret = rpi_firmware_property_list(fw, &data, sizeof(data));
+	memcpy(tag_data,
+	       data + sizeof(struct rpi_firmware_property_tag_header),
+	       buf_size);
 
 	return ret;
 }
 EXPORT_SYMBOL_GPL(rpi_firmware_property);
+
+static int rpi_firmware_get_throttled(struct rpi_firmware *fw, u32 *value)
+{
+	static int old_firmware;
+	static ktime_t old_timestamp;
+	static u32 old_value;
+	u32 new_sticky, old_sticky, new_uv, old_uv;
+	ktime_t new_timestamp;
+	s64 elapsed_ms;
+	int ret;
+
+	if (!fw)
+		return -EBUSY;
+
+	if (old_firmware)
+		return -EINVAL;
+
+	/*
+	 * We can't run faster than the sticky shift (100ms) since we get
+	 * flipping in the sticky bits that are cleared.
+	 * This happens on polling, so just return the previous value.
+	 */
+	new_timestamp = ktime_get();
+	elapsed_ms = ktime_ms_delta(new_timestamp, old_timestamp);
+	if (elapsed_ms < 150) {
+		*value = old_value;
+		return 0;
+	}
+	old_timestamp = new_timestamp;
+
+	/* Clear sticky bits */
+	*value = 0xffff;
+
+	ret = rpi_firmware_property(fw, RPI_FIRMWARE_GET_THROTTLED,
+				    value, sizeof(*value));
+
+	if (ret) {
+		/* If the mailbox call fails once, then it will continue to
+		 * fail in the future, so no point in continuing to call it
+		 * Usual failure reason is older firmware
+		 */
+		old_firmware = 1;
+		dev_err(fw->cl.dev, "Get Throttled mailbox call failed");
+
+		return ret;
+	}
+
+	new_sticky = *value >> 16;
+	old_sticky = old_value >> 16;
+	old_value = *value;
+
+	/* Only notify about changes in the sticky bits */
+	if (new_sticky == old_sticky)
+		return 0;
+
+	new_uv = new_sticky & UNDERVOLTAGE_BIT;
+	old_uv = old_sticky & UNDERVOLTAGE_BIT;
+
+	if (new_uv != old_uv) {
+		if (new_uv)
+			pr_crit_ratelimited_local(
+				"Under-voltage detected! (0x%08x)\n",
+				 *value);
+		else
+			pr_info_ratelimited_local(
+				"Voltage normalised (0x%08x)\n",
+				 *value);
+	}
+
+	sysfs_notify(&fw->cl.dev->kobj, NULL, "get_throttled");
+
+	return 0;
+}
+
+static int rpi_firmware_notify_reboot(struct notifier_block *nb,
+				      unsigned long action,
+				      void *data)
+{
+	struct rpi_firmware *fw;
+	struct platform_device *pdev = g_pdev;
+
+	if (!pdev)
+		return 0;
+
+	fw = platform_get_drvdata(pdev);
+	if (!fw)
+		return 0;
+
+	(void)rpi_firmware_property(fw, RPI_FIRMWARE_NOTIFY_REBOOT,
+				    0, 0);
+
+	return 0;
+}
+
+static void get_throttled_poll(struct work_struct *work)
+{
+	struct rpi_firmware *fw = container_of(work, struct rpi_firmware,
+					       get_throttled_poll_work.work);
+	u32 dummy;
+	int ret;
+
+	ret = rpi_firmware_get_throttled(fw, &dummy);
+
+	/* Only reschedule if we are getting valid responses */
+	if (!ret)
+		schedule_delayed_work(&fw->get_throttled_poll_work, 2 * HZ);
+}
+
+static ssize_t get_throttled_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct rpi_firmware *fw = dev_get_drvdata(dev);
+	u32 value;
+	int ret;
+
+	ret = rpi_firmware_get_throttled(fw, &value);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%x\n", value);
+}
+
+static DEVICE_ATTR_RO(get_throttled);
+
+static struct attribute *rpi_firmware_dev_attrs[] = {
+	&dev_attr_get_throttled.attr,
+	NULL,
+};
+
+static const struct attribute_group rpi_firmware_dev_group = {
+	.attrs = rpi_firmware_dev_attrs,
+};
 
 static void
 rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
@@ -184,7 +346,7 @@ rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
 	if (ret == 0) {
 		struct tm tm;
 
-		time64_to_tm(packet, 0, &tm);
+		time_to_tm(packet, 0, &tm);
 
 		dev_info(fw->cl.dev,
 			 "Attached to firmware from %04ld-%02d-%02d %02d:%02d\n",
@@ -193,24 +355,15 @@ rpi_firmware_print_firmware_revision(struct rpi_firmware *fw)
 	}
 }
 
-static void
-rpi_register_hwmon_driver(struct device *dev, struct rpi_firmware *fw)
-{
-	u32 packet;
-	int ret = rpi_firmware_property(fw, RPI_FIRMWARE_GET_THROTTLED,
-					&packet, sizeof(packet));
-
-	if (ret)
-		return;
-
-	rpi_hwmon = platform_device_register_data(dev, "raspberrypi-hwmon",
-						  -1, NULL, 0);
-}
-
 static int rpi_firmware_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct rpi_firmware *fw;
+	int ret;
+
+	ret = devm_device_add_group(dev, &rpi_firmware_dev_group);
+	if (ret)
+		return ret;
 
 	fw = devm_kzalloc(dev, sizeof(*fw), GFP_KERNEL);
 	if (!fw)
@@ -229,32 +382,25 @@ static int rpi_firmware_probe(struct platform_device *pdev)
 	}
 
 	init_completion(&fw->c);
+	INIT_DELAYED_WORK(&fw->get_throttled_poll_work, get_throttled_poll);
 
 	platform_set_drvdata(pdev, fw);
+	g_pdev = pdev;
 
 	rpi_firmware_print_firmware_revision(fw);
-	rpi_register_hwmon_driver(dev, fw);
+
+	schedule_delayed_work(&fw->get_throttled_poll_work, 0);
 
 	return 0;
-}
-
-static void rpi_firmware_shutdown(struct platform_device *pdev)
-{
-	struct rpi_firmware *fw = platform_get_drvdata(pdev);
-
-	if (!fw)
-		return;
-
-	rpi_firmware_property(fw, RPI_FIRMWARE_NOTIFY_REBOOT, NULL, 0);
 }
 
 static int rpi_firmware_remove(struct platform_device *pdev)
 {
 	struct rpi_firmware *fw = platform_get_drvdata(pdev);
 
-	platform_device_unregister(rpi_hwmon);
-	rpi_hwmon = NULL;
+	cancel_delayed_work_sync(&fw->get_throttled_poll_work);
 	mbox_free_channel(fw->chan);
+	g_pdev = NULL;
 
 	return 0;
 }
@@ -267,7 +413,7 @@ static int rpi_firmware_remove(struct platform_device *pdev)
  */
 struct rpi_firmware *rpi_firmware_get(struct device_node *firmware_node)
 {
-	struct platform_device *pdev = of_find_device_by_node(firmware_node);
+	struct platform_device *pdev = g_pdev;
 
 	if (!pdev)
 		return NULL;
@@ -288,10 +434,37 @@ static struct platform_driver rpi_firmware_driver = {
 		.of_match_table = rpi_firmware_of_match,
 	},
 	.probe		= rpi_firmware_probe,
-	.shutdown	= rpi_firmware_shutdown,
 	.remove		= rpi_firmware_remove,
 };
-module_platform_driver(rpi_firmware_driver);
+
+static struct notifier_block rpi_firmware_reboot_notifier = {
+	.notifier_call = rpi_firmware_notify_reboot,
+};
+
+static int __init rpi_firmware_init(void)
+{
+	int ret = register_reboot_notifier(&rpi_firmware_reboot_notifier);
+	if (ret)
+		goto out1;
+	ret = platform_driver_register(&rpi_firmware_driver);
+	if (ret)
+		goto out2;
+
+	return 0;
+
+out2:
+	unregister_reboot_notifier(&rpi_firmware_reboot_notifier);
+out1:
+	return ret;
+}
+subsys_initcall(rpi_firmware_init);
+
+static void __init rpi_firmware_exit(void)
+{
+	platform_driver_unregister(&rpi_firmware_driver);
+	unregister_reboot_notifier(&rpi_firmware_reboot_notifier);
+}
+module_exit(rpi_firmware_exit);
 
 MODULE_AUTHOR("Eric Anholt <eric@anholt.net>");
 MODULE_DESCRIPTION("Raspberry Pi firmware driver");

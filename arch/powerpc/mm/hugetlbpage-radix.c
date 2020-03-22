@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 #include <linux/mm.h>
 #include <linux/hugetlb.h>
-#include <linux/security.h>
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
 #include <asm/cacheflush.h>
@@ -62,10 +61,16 @@ radix__hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 		return -EINVAL;
 	if (len > high_limit)
 		return -ENOMEM;
-
 	if (fixed) {
 		if (addr > high_limit - len)
 			return -ENOMEM;
+	}
+
+	if (unlikely(addr > mm->context.addr_limit &&
+		     mm->context.addr_limit != TASK_SIZE))
+		mm->context.addr_limit = TASK_SIZE;
+
+	if (fixed) {
 		if (prepare_hugepage_range(file, addr, len))
 			return -EINVAL;
 		return addr;
@@ -74,7 +79,7 @@ radix__hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 	if (addr) {
 		addr = ALIGN(addr, huge_page_size(h));
 		vma = find_vma(mm, addr);
-		if (high_limit - len >= addr && addr >= mmap_min_addr &&
+		if (high_limit - len >= addr &&
 		    (!vma || addr + len <= vm_start_gap(vma)))
 			return addr;
 	}
@@ -84,27 +89,10 @@ radix__hugetlb_get_unmapped_area(struct file *file, unsigned long addr,
 	 */
 	info.flags = VM_UNMAPPED_AREA_TOPDOWN;
 	info.length = len;
-	info.low_limit = max(PAGE_SIZE, mmap_min_addr);
+	info.low_limit = PAGE_SIZE;
 	info.high_limit = mm->mmap_base + (high_limit - DEFAULT_MAP_WINDOW);
 	info.align_mask = PAGE_MASK & ~huge_page_mask(h);
 	info.align_offset = 0;
 
 	return vm_unmapped_area(&info);
-}
-
-void radix__huge_ptep_modify_prot_commit(struct vm_area_struct *vma,
-					 unsigned long addr, pte_t *ptep,
-					 pte_t old_pte, pte_t pte)
-{
-	struct mm_struct *mm = vma->vm_mm;
-
-	/*
-	 * To avoid NMMU hang while relaxing access we need to flush the tlb before
-	 * we set the new value.
-	 */
-	if (is_pte_rw_upgrade(pte_val(old_pte), pte_val(pte)) &&
-	    (atomic_read(&mm->context.copros) > 0))
-		radix__flush_hugetlb_page(vma, addr);
-
-	set_huge_pte_at(vma->vm_mm, addr, ptep, pte);
 }
