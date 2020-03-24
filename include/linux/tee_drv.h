@@ -120,6 +120,13 @@ struct tee_driver_ops {
 			    struct page **pages, size_t num_pages,
 			    unsigned long start);
 	int (*shm_unregister)(struct tee_context *ctx, struct tee_shm *shm);
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	int (*difc_open_session)(struct tee_context *ctx,
+			    struct tee_ioctl_open_session_arg *arg,
+			    struct tee_param *param);
+
+	#endif			
 };
 
 /**

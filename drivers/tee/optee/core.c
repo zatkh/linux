@@ -314,12 +314,18 @@ static const struct tee_driver_ops optee_ops = {
 	.get_version = optee_get_version,
 	.open = optee_open,
 	.release = optee_release,
-	.open_session = optee_open_session,
+	.open_session = optee_open_session,	
 	.close_session = optee_close_session,
 	.invoke_func = optee_invoke_func,
 	.cancel_req = optee_cancel_req,
 	.shm_register = optee_shm_register,
 	.shm_unregister = optee_shm_unregister,
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	.difc_open_session= optee_difc_open_session,
+
+	#endif
+
 };
 
 static const struct tee_desc optee_desc = {
