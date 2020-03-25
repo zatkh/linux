@@ -152,6 +152,7 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 
 		optee_bm_timestamp();
 
+//send the tag to sm then sm would tag the trusted thread for rpc
 		optee->invoke_fn(param.a0, param.a1, param.a2, param.a3,
 				 param.a4, param.a5, param.a6, param.a7,
 				 &res);
@@ -714,6 +715,9 @@ int optee_difc_open_session(struct tee_context *ctx,
 		rc = -ENOMEM;
 		goto out;
 	}
+	//create the enclave tag and send it to sm for labeling rpc and msges
+	security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
+
 
 	if (optee_do_call_with_arg(ctx, msg_parg)) {
 		msg_arg->ret = TEEC_ERROR_COMMUNICATION;

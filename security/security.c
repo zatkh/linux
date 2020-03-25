@@ -2418,13 +2418,13 @@ int security_check_task_labeled (struct task_struct *tsk)
 	return -EOPNOTSUPP;
 }
 
-int security_set_task_label (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+unsigned long security_set_task_label (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
 {
 	struct security_hook_list *hp;
-	int rc;
+	unsigned long rc;
 
 	hlist_for_each_entry(hp, &security_hook_heads.set_task_label, list) {
-		rc = hp->hook.set_task_label(tsk,label,op_type,label_type,bulk_label);
+		rc = hp->hook.set_task_label(tsk,label,ops,label_type,bulk_label);
 		if (rc != -EOPNOTSUPP)
 			return rc;
 	}
