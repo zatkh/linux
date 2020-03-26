@@ -2470,7 +2470,7 @@ SYSCALL_DEFINE6(udom_clone, const char __user *, label, unsigned long, clone_fla
 {
 	
 		//difc_set_task_label: set_task_label(0, REPLACE_LABEL, 0, &cur_label);
-	security_set_task_label(current,2,ADD_LABEL, SECRECY_LABEL, NULL);
+//	security_set_task_label(current,2,ADD_LABEL, SECRECY_LABEL, NULL);
 
 	return _udom_do_fork(label,clone_flags, newsp, 0, parent_tidptr, child_tidptr, tls);
 }

@@ -465,6 +465,7 @@ void optee_handle_rpc(struct tee_context *ctx, struct optee_rpc_param *param,
 	struct tee_shm *shm;
 	phys_addr_t pa;
 
+
 	switch (OPTEE_SMC_RETURN_GET_RPC_FUNC(param->a0)) {
 	case OPTEE_SMC_RPC_FUNC_ALLOC:
 		shm = tee_shm_alloc(ctx, param->a1, TEE_SHM_MAPPED);

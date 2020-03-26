@@ -7,7 +7,7 @@
 #include <linux/parser.h>
 #include <linux/uaccess.h>
 
-#include "difc.h"
+#include <azure-sphere/difc.h>
 
 int add_ownership(struct task_security_struct *tsp, int tag_content) {
 	bool present = false;

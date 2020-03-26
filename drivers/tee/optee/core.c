@@ -257,6 +257,14 @@ static int optee_open(struct tee_context *ctx)
 	INIT_LIST_HEAD(&ctxdata->sess_list);
 
 	ctx->data = ctxdata;
+
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	INIT_LIST_HEAD(&ctx->slabel);
+	INIT_LIST_HEAD(&ctx->ilabel);
+
+	#endif
+
 	return 0;
 }
 
@@ -314,12 +322,13 @@ static const struct tee_driver_ops optee_ops = {
 	.get_version = optee_get_version,
 	.open = optee_open,
 	.release = optee_release,
-	.open_session = optee_open_session,
+	.open_session = optee_open_session,	
 	.close_session = optee_close_session,
 	.invoke_func = optee_invoke_func,
 	.cancel_req = optee_cancel_req,
 	.shm_register = optee_shm_register,
 	.shm_unregister = optee_shm_unregister,
+
 };
 
 static const struct tee_desc optee_desc = {

@@ -149,6 +149,63 @@ u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
 
 		optee_bm_timestamp();
 
+//send the tag to sm then sm would tag the trusted thread for rpc
+		optee->invoke_fn(param.a0, param.a1, param.a2, param.a3,
+				 param.a4, param.a5, param.a6, param.a7,
+				 &res);
+
+		optee_bm_timestamp();
+
+		if (res.a0 == OPTEE_SMC_RETURN_ETHREAD_LIMIT) {
+			/*
+			 * Out of threads in secure world, wait for a thread
+			 * become available.
+			 */
+			optee_cq_wait_for_completion(&optee->call_queue, &w);
+		} else if (OPTEE_SMC_RETURN_IS_RPC(res.a0)) {
+			param.a0 = res.a0;
+			param.a1 = res.a1;
+			param.a2 = res.a2;
+			param.a3 = res.a3;
+			optee_handle_rpc(ctx, &param, &call_ctx);
+		} else {
+			ret = res.a0;
+			break;
+		}
+	}
+
+	optee_rpc_finalize_call(&call_ctx);
+	/*
+	 * We're done with our thread in secure world, if there's any
+	 * thread waiters wake up one.
+	 */
+	optee_cq_wait_final(&optee->call_queue, &w);
+
+	return ret;
+}
+
+
+u32 optee_difc_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg)
+{
+	struct optee *optee = tee_get_drvdata(ctx->teedev);
+	struct optee_call_waiter w;
+	struct optee_rpc_param param = { };
+	struct optee_call_ctx call_ctx = { };
+	u32 ret;
+
+	param.a0 = OPTEE_SMC_CALL_WITH_ARG;
+		//create the enclave tag and send it to sm for labeling rpc and msges
+
+
+	reg_pair_from_64(&param.a1, &param.a2, parg);
+	/* Initialize waiter */
+	optee_cq_wait_init(&optee->call_queue, &w);
+	while (true) {
+		struct arm_smccc_res res;
+
+		optee_bm_timestamp();
+
+//send the tag to sm then sm would tag the trusted thread for rpc
 		optee->invoke_fn(param.a0, param.a1, param.a2, param.a3,
 				 param.a4, param.a5, param.a6, param.a7,
 				 &res);
@@ -665,3 +722,4 @@ int optee_shm_unregister_supp(struct tee_context *ctx, struct tee_shm *shm)
 {
 	return 0;
 }
+

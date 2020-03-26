@@ -1805,7 +1805,7 @@ union security_list_options {
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-	int  (*set_task_label) (struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label);
+	unsigned long  (*set_task_label) (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label);
 	void*  (*copy_user_label) (const char __user *label);
 	int  (*check_tasks_labels_allowed) (struct task_struct *s_tsk,struct task_struct *d_tsk);
 	int (*check_task_labeled) (struct task_struct *tsk);

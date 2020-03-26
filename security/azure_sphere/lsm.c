@@ -55,8 +55,9 @@
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
+#include <azure-sphere/difc.h>
+
 #include "lsm.h"
-#include "difc.h"
 #include "linux/smv.h"
 #include "linux/memdom.h"
 
@@ -85,7 +86,6 @@ struct kmem_cache *tag_struct;
 
 atomic_t max_caps_num;
 typedef label_t* labelList_t;
-static int debug = 1;
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
@@ -105,13 +105,6 @@ unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
 
 
-#define difc_lsm_debug(fmt, arg...)					\
-	do {							\
-		if (debug)					\
-			printk(KERN_INFO "(pid %d) %s: [%s]: " fmt ,	\
-			       current->pid, "[difc_lsm]" , __FUNCTION__ , 	\
-				## arg);			\
-	} while (0)
 
 /* labellist iterator */
 #define list_for_each_label(index, l, head)	\
@@ -984,10 +977,6 @@ static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
 
 
 
-
-
-
-
 }
 
 
@@ -1003,15 +992,11 @@ out:
 }
 
 
-static int difc_set_task_label(struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
+static unsigned long difc_set_task_label(struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
 {
 
 	struct task_security_struct *tsec=current_security();
-	struct tag *new_tag;
-	unsigned long tag_content;
-	struct list_head new_label;
-	//int is_max=0; ztodo:check later
-	int result;
+
 
 // for now removed the group tag (label) support, just one by one tag operations
 
@@ -1021,93 +1006,22 @@ static int difc_set_task_label(struct task_struct *tsk, unsigned long label, enu
         return -ENOENT;
     }
 
-
-	tag_content =label;
-	if (ops == OWNERSHIP_ADD) {
-			result = add_ownership(tsec, tag_content);
-			if (result < 0)
-				goto out;	
-		} 
-	else if (ops == OWNERSHIP_DROP) {
-			result = drop_ownership(tsec, tag_content);
-			if (result < 0)
-				goto out;	
-		}
-	else {
-			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
-			if (!new_tag) {
-				result = -ENOMEM;
-				goto out;
-			}
-			new_tag->content = tag_content;
-			INIT_LIST_HEAD(&new_label);
-			list_add_tail_rcu(&new_tag->next, &new_label);
+	if(tsk!=current)
+	{
+		difc_lsm_debug("only current task supported for now\n");
+        return -ENOENT;
+    }
 
 
-		}
+	if(label==0)
+	{
+		difc_lsm_debug("no label to set, creating one\n");
 
+		return difc_alloc_label(PLUS_CAPABILITY|MINUS_CAPABILITY,label_type);
+    }
 
-	if (ops == SEC_LABEL || ops == INT_LABEL) {
-		if (ops == SEC_LABEL) { 
-			result = can_label_change(&tsec->slabel, &new_label, &tsec->olabel);
-			if (result != 0) {
-				clean_label(&new_label);
-				difc_lsm_debug("secrecy label denied\n");
-				goto out;
-			} else {
-				change_label(&tsec->slabel, &new_label);
-			}
-		} else {
-			result = can_label_change(&tsec->ilabel, &new_label, &tsec->olabel);
-			if (result != 0) {
-				clean_label(&new_label);
-				difc_lsm_debug(" integrity label denied\n");
-				goto out;
-			} else {
-				change_label(&tsec->ilabel, &new_label);
-			}
-		}
-	}
-
-
-
-	else if(ops==SEC_LABEL_FLOATING )
-		{	
-			// merge floating initializations here
-			pid_t tid=task_pid_vnr(current);
-			//new_tag->floating=true;
-
-  		  //LOCK on TSEC
-   			mutex_lock(&tsec->lock);
-    		tsec->pid = tid;
-   			if(tsec->seclabel==NULL)
-			   {
-				difc_lsm_debug("Allocating tsec->seclabel for tid %d\n",tid);
-				tsec->seclabel = (struct tag*)kzalloc(sizeof(struct tag), GFP_KERNEL);
-				init_list2(tsec->seclabel);
- 			   }
-    		add_list(tsec->seclabel, tag_content);
-
-		
-   			//Release LOCK on TSEC
-  			mutex_unlock(&tsec->lock);
-		
-		}
-
-		else{
-			difc_lsm_debug("not supported operation\n");
-			return -EINVAL;
-		}
-		
-
-	result = 0;
-	return result;
-out:
-	list_del(&new_label);
-	if(ops==SEC_LABEL_FLOATING )
-  	  rcu_read_unlock();
-//	kfree(data);
-	return result;	
+	return 0;
+	
 
 }
 
@@ -2465,7 +2379,7 @@ return 0;
 
 
 //set current task labels
-asmlinkage long sys_set_task_label(unsigned long label, enum label_types ops, int label_type, void *bulk_label)
+asmlinkage unsigned long sys_set_task_label(unsigned long label, enum label_types ops, int label_type, void *bulk_label)
 {
 
 	return difc_set_task_label(current,  label,  ops,  label_type, bulk_label);
@@ -2638,7 +2552,7 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-//	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
+	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
 	LSM_HOOK_INIT(copy_user_label,difc_copy_user_label),
 //	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
 //	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),

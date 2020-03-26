@@ -57,6 +57,9 @@ typedef capability_t* capList_t;
 #define REGULAR_TCB 3847
 #define FLOATING_TCB 2938
 
+extern struct kmem_cache *tag_struct;
+
+
 struct label_struct {
     label_t sList[LABEL_LIST_LABELS]; //secrecy label
     label_t iList[LABEL_LIST_LABELS]; //integrity label
@@ -72,7 +75,7 @@ struct object_security_struct {
 	struct rw_semaphore label_change_sem; 
 };
 
-enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING};
+//enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING};
 enum smv_ops {INIT = 0, INIT_CREATE, CREATE, KILL, REGISTER, EXISTS,NO_SMV_OPS};
 enum smv_udom_ops {JOIN = 0, LEAVE, CHECK,NO_UDOM_OPS};
 enum udom_ops {UDOM_CREATE = 0, UDOM_KILL, UDOM_MMAP_REG, UDOM_DATA,UDOM_MAINID,UDOM_QUERYID,UDOM_PRIVID,UDOM_PRIV_OPS};
@@ -93,6 +96,8 @@ struct inode_difc {
 	int type;
 
 };
+
+
 
 struct socket_difc {
 	struct inode_difc *isp;

@@ -2,7 +2,7 @@
 * Author: Yuqiong Sun <yus138@cse.psu.edu>
 */
 
-#include "difc.h"
+#include <azure-sphere/difc.h>
 
 void clean_label(struct list_head *label) {
 	struct tag *t, *next_t;
