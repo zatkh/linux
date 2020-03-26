@@ -86,7 +86,6 @@ struct kmem_cache *tag_struct;
 
 atomic_t max_caps_num;
 typedef label_t* labelList_t;
-static int debug = 1;
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
 
@@ -106,13 +105,6 @@ unsigned char *empty_address="0000:0000:0000:0000:0000:0000:0000:0000";
 
 
 
-#define difc_lsm_debug(fmt, arg...)					\
-	do {							\
-		if (debug)					\
-			printk(KERN_INFO "(pid %d) %s: [%s]: " fmt ,	\
-			       current->pid, "[difc_lsm]" , __FUNCTION__ , 	\
-				## arg);			\
-	} while (0)
 
 /* labellist iterator */
 #define list_for_each_label(index, l, head)	\

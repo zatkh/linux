@@ -434,13 +434,13 @@ static int tee_ioctl_invoke(struct tee_context *ctx,
 
 	if (tsec->type==TAG_CONF)
 	{
-		printk(KERN_INFO " %s: [%s]: not tagged thread can not access an enclave \n" , "[difc_lsm]" , __FUNCTION__);
+		difc_lsm_debug(" not tagged thread can not access an enclave \n");
 		return -EPERM;
 	}
 	else{
 		rc = is_label_subset(&ctx->slabel, &tsec->olabel, &tsec->slabel);
 			if (rc < 0 && down != 0) {
-			printk(KERN_INFO " %s: [%s]: enclave secrecy: restrectricted operation \n" , "[difc_lsm]" , __FUNCTION__);
+			difc_lsm_debug("enclave secrecy: restrectricted operation \n" );
 				rc = -EPERM;
 				goto out;
 			}
@@ -745,15 +745,15 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 	if (copy_from_user(&buf, ubuf, sizeof(buf)))
 		return -EFAULT;
 
-	if (buf.buf_len > TEE_MAX_ARG_SIZE ||
+/*	if (buf.buf_len > TEE_MAX_ARG_SIZE ||
 	    buf.buf_len < sizeof(struct tee_ioctl_open_session_arg))
 		return -EINVAL;
-
+*/
 	//tag the owner thread/
 	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
 	enc_tag = security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
 	new_tag->content=enc_tag;
-	printk(KERN_INFO " %s: [%s]: enc_tag: %lu \n" , "[difc_lsm]" , __FUNCTION__ ,enc_tag);
+	difc_lsm_debug(" enc_tag: %lu \n");
 	list_add_tail_rcu(&new_tag->next, &ctx->slabel);
 
 	//memcpy(&msg_arg->params[2].u.value, enc_tag, sizeof(enc_tag));
@@ -764,9 +764,10 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 	if (copy_from_user(&arg, uarg, sizeof(arg)))
 		return -EFAULT;
 
+/*
 	if (sizeof(arg) + TEE_IOCTL_PARAM_SIZE(arg.num_params) != buf.buf_len)
 		return -EINVAL;
-
+*/
 	if (arg.num_params) {
 		params = kcalloc(arg.num_params, sizeof(struct tee_param),
 				 GFP_KERNEL);
@@ -778,7 +779,7 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 			goto out;
 	}
 
-	rc = ctx->teedev->desc->ops->difc_open_session(ctx, &arg, params);
+	rc = ctx->teedev->desc->ops->open_session(ctx, &arg, params);
 	if (rc)
 		goto out;
 	have_session = true;

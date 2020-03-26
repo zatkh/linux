@@ -206,12 +206,5 @@ static inline void reg_pair_from_64(u32 *reg0, u32 *reg1, u64 val)
 	*reg0 = val >> 32;
 	*reg1 = val;
 }
-#ifdef CONFIG_EXTENDED_LSM_DIFC
 
-
-int optee_difc_open_session(struct tee_context *ctx,
-		       struct tee_ioctl_open_session_arg *arg,
-		       struct tee_param *param);
-
-#endif // CONFIG_EXTENDED_LSM_DIFC//
 #endif /*OPTEE_PRIVATE_H*/

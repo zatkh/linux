@@ -8,6 +8,15 @@
 #include <linux/sched.h>
 #include <azure-sphere/security.h>
 
+static int debug = 1;
+
+#define difc_lsm_debug(fmt, arg...)					\
+	do {							\
+		if (debug)					\
+			printk(KERN_INFO "(pid %d) %s: [%s]: " fmt ,	\
+			       current->pid, "[difc_lsm]" , __FUNCTION__ , 	\
+				## arg);			\
+	} while (0)
 
 #define MAX_LABEL_SIZE 300
 
