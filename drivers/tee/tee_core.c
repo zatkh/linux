@@ -449,22 +449,14 @@ static int tee_ioctl_invoke(struct tee_context *ctx,
 	#endif
 
 
-	if (!ctx->teedev->desc->ops->invoke_func)
-		return -EINVAL;
 
 	if (copy_from_user(&buf, ubuf, sizeof(buf)))
 		return -EFAULT;
-
-	if (buf.buf_len > TEE_MAX_ARG_SIZE ||
-	    buf.buf_len < sizeof(struct tee_ioctl_invoke_arg))
-		return -EINVAL;
 
 	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (copy_from_user(&arg, uarg, sizeof(arg)))
 		return -EFAULT;
 
-	if (sizeof(arg) + TEE_IOCTL_PARAM_SIZE(arg.num_params) != buf.buf_len)
-		return -EINVAL;
 
 	if (arg.num_params) {
 		params = kcalloc(arg.num_params, sizeof(struct tee_param),
@@ -753,7 +745,7 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
 	enc_tag = security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
 	new_tag->content=enc_tag;
-	difc_lsm_debug(" enc_tag: %lu \n");
+	difc_lsm_debug(" enc_tag: %lu \n",enc_tag);
 	list_add_tail_rcu(&new_tag->next, &ctx->slabel);
 
 	//memcpy(&msg_arg->params[2].u.value, enc_tag, sizeof(enc_tag));
