@@ -55,8 +55,9 @@
 #include <asm/bug.h>
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
+#include <azure-sphere/difc.h>
+
 #include "lsm.h"
-#include "difc.h"
 #include "linux/smv.h"
 #include "linux/memdom.h"
 

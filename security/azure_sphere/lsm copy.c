@@ -55,7 +55,7 @@
 #include <asm/tlbflush.h>
 #include <asm/udom.h>
 #include "lsm.h"
-#include "difc.h"
+#include <azure-sphere/difc.h>
 
 
 #ifdef CONFIG_EXTENDED_FLOATING_DIFC
