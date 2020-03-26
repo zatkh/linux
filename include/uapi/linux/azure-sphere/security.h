@@ -57,6 +57,9 @@ typedef capability_t* capList_t;
 #define REGULAR_TCB 3847
 #define FLOATING_TCB 2938
 
+extern struct kmem_cache *tag_struct;
+
+
 struct label_struct {
     label_t sList[LABEL_LIST_LABELS]; //secrecy label
     label_t iList[LABEL_LIST_LABELS]; //integrity label

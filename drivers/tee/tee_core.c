@@ -692,6 +692,16 @@ out:
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
+
+static void difc_free_label(struct list_head *label) {
+	struct tag *t, *t_next;
+	list_for_each_entry_safe(t, t_next, label, next) {
+		list_del_rcu(&t->next);
+		kmem_cache_free(tag_struct, t);
+	}
+}
+
+
 static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 				  struct tee_ioctl_buf_data __user *ubuf)
 {
@@ -703,6 +713,8 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 	struct tee_ioctl_param __user *uparams = NULL;
 	struct tee_param *params = NULL;
 	bool have_session = false;
+	struct tag* new_tag;
+	unsigned long enc_tag;
 
 	if (!ctx->teedev->desc->ops->open_session)
 		return -EINVAL;
@@ -713,6 +725,17 @@ static int tee_difc_ioctl_open_session(struct tee_context *ctx,
 	if (buf.buf_len > TEE_MAX_ARG_SIZE ||
 	    buf.buf_len < sizeof(struct tee_ioctl_open_session_arg))
 		return -EINVAL;
+
+	//tag the owner thread/
+	new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+	enc_tag = security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
+	new_tag->content=enc_tag;
+	printk(KERN_INFO " %s: [%s]: enc_tag: %lu \n" , "[difc_lsm]" , __FUNCTION__ ,enc_tag);
+	list_add_tail_rcu(&new_tag->next, &ctx->slabel);
+
+	//memcpy(&msg_arg->params[2].u.value, enc_tag, sizeof(enc_tag));
+	
+
 
 	uarg = u64_to_user_ptr(buf.buf_ptr);
 	if (copy_from_user(&arg, uarg, sizeof(arg)))
@@ -764,6 +787,31 @@ out:
 	return rc;
 }
 
+
+
+static int
+tee_difc_ioctl_close_session(struct tee_context *ctx,
+			struct tee_ioctl_close_session_arg __user *uarg)
+{
+	struct tee_ioctl_close_session_arg arg;
+
+		difc_free_label(&ctx->ilabel);
+	  	list_del(&ctx->ilabel);
+
+		difc_free_label(&ctx->slabel);
+		list_del(&ctx->slabel);
+
+
+	if (!ctx->teedev->desc->ops->close_session)
+		return -EINVAL;
+
+	if (copy_from_user(&arg, uarg, sizeof(arg)))
+		return -EFAULT;
+
+	return ctx->teedev->desc->ops->close_session(ctx, arg.session);
+}
+
+
 #endif
 static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
@@ -796,7 +844,16 @@ static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case TEE_IOC_CANCEL:
 		return tee_ioctl_cancel(ctx, uarg);
 	case TEE_IOC_CLOSE_SESSION:
-		return tee_ioctl_close_session(ctx, uarg);
+
+		#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+			return tee_difc_ioctl_close_session(ctx, uarg);
+
+		#else
+			return tee_ioctl_close_session(ctx, uarg);
+
+		#endif
+
 	case TEE_IOC_SUPPL_RECV:
 		return tee_ioctl_supp_recv(ctx, uarg);
 	case TEE_IOC_SUPPL_SEND:
