@@ -464,6 +464,12 @@ void optee_handle_rpc(struct tee_context *ctx, struct optee_rpc_param *param,
 	struct optee *optee = tee_get_drvdata(teedev);
 	struct tee_shm *shm;
 	phys_addr_t pa;
+	//unsigned long enc_tag;
+	//enc_tag = security_set_task_label (current, 0, 0, SEC_LABEL,NULL);
+	//printk(KERN_INFO " %s: [%s]: enc_tag: %lu \n" , "[difc_lsm]" , __FUNCTION__ ,enc_tag);
+
+	//memcpy(&msg_arg->params[2].u.value, enc_tag, sizeof(enc_tag));
+	
 
 	switch (OPTEE_SMC_RETURN_GET_RPC_FUNC(param->a0)) {
 	case OPTEE_SMC_RPC_FUNC_ALLOC:

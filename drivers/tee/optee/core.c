@@ -257,6 +257,14 @@ static int optee_open(struct tee_context *ctx)
 	INIT_LIST_HEAD(&ctxdata->sess_list);
 
 	ctx->data = ctxdata;
+
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	INIT_LIST_HEAD(&ctx->slabel);
+	INIT_LIST_HEAD(&ctx->ilabel);
+
+	#endif
+
 	return 0;
 }
 

@@ -24,6 +24,11 @@
 #include <linux/types.h>
 #include <linux/uuid.h>
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+#include <linux/security.h>
+#include <azure-sphere/security.h>
+
+#endif
 /*
  * The file describes the API provided by the generic TEE driver to the
  * specific TEE driver.
@@ -63,6 +68,14 @@ struct tee_context {
 	struct kref refcount;
 	bool releasing;
 	bool supp_nowait;
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+	
+	struct list_head slabel;
+	struct list_head ilabel;
+
+
+	//unsigned long etag;
+	#endif
 };
 
 struct tee_param_memref {
@@ -83,6 +96,7 @@ struct tee_param {
 		struct tee_param_memref memref;
 		struct tee_param_value value;
 	} u;
+
 };
 
 /**

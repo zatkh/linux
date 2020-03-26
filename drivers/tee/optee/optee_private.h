@@ -19,6 +19,12 @@
 #include <linux/semaphore.h>
 #include <linux/tee_drv.h>
 #include <linux/types.h>
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+#include <linux/security.h>
+#include <azure-sphere/security.h>
+
+#endif
+
 #include "optee_msg.h"
 
 #define OPTEE_MAX_ARG_SIZE	1024
@@ -151,6 +157,8 @@ int optee_supp_send(struct tee_context *ctx, u32 ret, u32 num_params,
 		    struct tee_param *param);
 
 u32 optee_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg);
+u32 optee_difc_do_call_with_arg(struct tee_context *ctx, phys_addr_t parg);
+
 int optee_open_session(struct tee_context *ctx,
 		       struct tee_ioctl_open_session_arg *arg,
 		       struct tee_param *param);
