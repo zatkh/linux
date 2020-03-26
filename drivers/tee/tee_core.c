@@ -23,6 +23,8 @@
 #include <linux/uaccess.h>
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 #include <linux/security.h>
+#include <linux/cred.h>
+#include <azure-sphere/difc.h>
 #endif
 
 #include "tee_private.h"
@@ -425,6 +427,27 @@ static int tee_ioctl_invoke(struct tee_context *ctx,
 	struct tee_ioctl_invoke_arg arg;
 	struct tee_ioctl_param __user *uparams = NULL;
 	struct tee_param *params = NULL;
+	struct task_security_struct *tsec = current_security();
+
+
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	if (tsec->type==TAG_CONF)
+	{
+		printk(KERN_INFO " %s: [%s]: not tagged thread can not access an enclave \n" , "[difc_lsm]" , __FUNCTION__);
+		return -EPERM;
+	}
+	else{
+		rc = is_label_subset(&ctx->slabel, &tsec->olabel, &tsec->slabel);
+			if (rc < 0 && down != 0) {
+			printk(KERN_INFO " %s: [%s]: enclave secrecy: restrectricted operation \n" , "[difc_lsm]" , __FUNCTION__);
+				rc = -EPERM;
+				goto out;
+			}
+	}
+
+	#endif
+
 
 	if (!ctx->teedev->desc->ops->invoke_func)
 		return -EINVAL;
@@ -812,7 +835,10 @@ tee_difc_ioctl_close_session(struct tee_context *ctx,
 }
 
 
-#endif
+#endif // CONFIG_EXTENDED_LSM_DIFC
+
+
+
 static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct tee_context *ctx = filp->private_data;
