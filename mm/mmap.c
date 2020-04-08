@@ -3684,7 +3684,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
 		vma_link(mm, new_vma, prev, rb_link, rb_parent);
-		*need_rmap_locks = false;*need_rmap_locks = false;
+		*need_rmap_locks = false;
 	#ifdef CONFIG_SW_UDOM
 		vma->memdom_id = vma->memdom_id; // copy memdom_id
 	#endif

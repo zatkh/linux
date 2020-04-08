@@ -420,4 +420,13 @@ struct tee_ioctl_shm_register_data {
 
 #define TEE_DIFC_IOC_SHM_REGISTER   _IOWR(TEE_IOC_MAGIC, TEE_IOC_BASE + 12, \
 				     struct tee_ioctl_shm_register_data)
+
+#define TEE_DIFC_IOC_OPEN_SESSION	_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 13, \
+				     struct tee_ioctl_buf_data)
+
+#define TEE_DIFC_IOC_CLOSE_SESSION	_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 14, \
+				     struct tee_ioctl_close_session_arg)
+
+#define TEE_DIFC_IOC_INVOKE		_IOR(TEE_IOC_MAGIC, TEE_IOC_BASE + 15, \
+				     struct tee_ioctl_buf_data)
 #endif /*__TEE_H*/
