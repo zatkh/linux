@@ -54,6 +54,8 @@
 #ifdef CONFIG_SW_UDOM
 #include <asm/udom.h>
 #include <linux/smv_mm.h>
+#include <azure-sphere/difc.h>
+
 #endif
 
 
@@ -1175,10 +1177,10 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	if ( vm_flags & VM_MEMDOM ||
 		(prev && (prev->vm_flags & VM_MEMDOM)) ||
 		(next && (next->vm_flags & VM_MEMDOM))) {
-		printk(KERN_INFO "[%s] smv %d skip merging VM_MEMDOM vma\n", __func__, current->smv_id);
-    	printk(KERN_INFO "[%s] smv %d prev->vm_start: 0x%16lx to prev->vm_end: 0x%16lx, prev->memdom_id: %d\n",
+		difc_lsm_debug(KERN_INFO "[%s] smv %d skip merging VM_MEMDOM vma\n", __func__, current->smv_id);
+    	difc_lsm_debug(KERN_INFO "[%s] smv %d prev->vm_start: 0x%16lx to prev->vm_end: 0x%16lx, prev->memdom_id: %d\n",
 	        			 __func__, current->smv_id, prev->vm_start, prev->vm_end, prev->memdom_id);	
-    	printk(KERN_INFO "[%s] smv %d next->vm_start: 0x%16lx to next->vm_end: 0x%16lx, next->memdom_id: %d\n",
+    	difc_lsm_debug(KERN_INFO "[%s] smv %d next->vm_start: 0x%16lx to next->vm_end: 0x%16lx, next->memdom_id: %d\n",
 	        			 __func__, current->smv_id, next->vm_start, next->vm_end, next->memdom_id);	
 		return NULL;
 	}
@@ -1687,7 +1689,7 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 		return -EINVAL;
 
 	counts=len/SECTION_SIZE;
-	printk("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
+	difc_lsm_debug("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
 	
 
 	/*
@@ -1870,10 +1872,10 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
         pmd++;
 
 	for (i = 0; i < counts; ++i) {
-		printk(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+		difc_lsm_debug(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
         *pmd = (*pmd & 0xfffffe1f) | (domain_copy << 5);
         flush_pmd_entry(pmd);
-		printk(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+		difc_lsm_debug(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
 
         pmd++;
     }
@@ -1881,7 +1883,7 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 	//if labeld thread make it no access //DOMAIN_MANAGER
 
 		dacr=get_dacr();
-		    printk("dacr=0x%lx\n", dacr);
+		    difc_lsm_debug("dacr=0x%lx\n", dacr);
 
 	if(prot ==PROT_NONE)
 		{
@@ -1893,7 +1895,7 @@ unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned lo
 
 
 	dacr=get_dacr();
-    printk("dacr=0x%lx\n", dacr);
+    difc_lsm_debug("dacr=0x%lx\n", dacr);
 
 	return addr;
 }
@@ -2116,7 +2118,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	if ( vm_flags & VM_MEMDOM ) {
 		vma->memdom_id = current->mmap_memdom_id;	
 		current->mmap_memdom_id = -1; // reset to -1
-		printk(KERN_INFO "[%s] smv %d allocated vma in memdom %d [0x%16lx - 0x%16lx)\n", 
+		difc_lsm_debug(KERN_INFO "[%s] smv %d allocated vma in memdom %d [0x%16lx - 0x%16lx)\n", 
 			   __func__, current->smv_id, vma->memdom_id, vma->vm_start, vma->vm_end);
 	} else {
 		vma->memdom_id = MAIN_THREAD; 
@@ -3215,7 +3217,7 @@ int __do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 	#ifdef CONFIG_SW_UDOM
 
 	if (vma->memdom_id != MAIN_THREAD) {
-		printk(KERN_INFO "[%s] smv %d removing vma in memdom %d\n", __func__, current->smv_id, vma->memdom_id);
+		difc_lsm_debug(KERN_INFO "[%s] smv %d removing vma in memdom %d\n", __func__, current->smv_id, vma->memdom_id);
 	}	
 	#endif
 	/* Detach vmas from rbtree */
