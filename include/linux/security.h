@@ -35,7 +35,11 @@
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 typedef uint64_t label_t;
 enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING};
-
+extern unsigned long difc_alloc_label(struct cred * newcred,int cap_type, enum label_types mode);
+//#define CLONE_DIFC	0x00800000 //CLONE_UNTRACED removed
+#define PLUS_CAPABILITY  (1<<30)
+#define MINUS_CAPABILITY (1<<31)
+#define CAP_MAX_VAL    (1<<29)
 
 #define SECRECY_LABEL  0
 #define INTEGRITY_LABEL  1

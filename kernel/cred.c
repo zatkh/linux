@@ -20,6 +20,8 @@
 #include <linux/binfmts.h>
 #include <linux/cn_proc.h>
 #include <linux/uidgid.h>
+#include <azure-sphere/difc.h>
+
 
 #if 0
 #define kdebug(FMT, ...)						\
@@ -331,6 +333,10 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 #ifdef CONFIG_KEYS
 		!p->cred->thread_keyring &&
 #endif
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+		!(clone_flags & CLONE_DIFC) &&
+#endif
 		clone_flags & CLONE_THREAD
 	    ) {
 		p->real_cred = get_cred(p->cred);
@@ -343,9 +349,28 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 		return 0;
 	}
 
+
+	if (
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+		clone_flags & CLONE_DIFC &&
+#endif
+		clone_flags & CLONE_THREAD
+	    ) {
+			new = prepare_creds();
+			if (!new)
+				return -ENOMEM;
+
+			atomic_inc(&new->user->processes);
+			p->cred = p->real_cred = get_cred(new);
+			alter_cred_subscribers(new, 2);
+			validate_creds(new);
+		    return 0;
+	}
+
 	new = prepare_creds();
 	if (!new)
 		return -ENOMEM;
+
 
 	if (clone_flags & CLONE_NEWUSER) {
 		ret = create_user_ns(new);

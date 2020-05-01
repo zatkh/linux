@@ -838,15 +838,24 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
 //allocate a new label and add it to the task's cap set 
-static unsigned long difc_alloc_label(int cap_type, enum label_types mode)
+unsigned long difc_alloc_label(struct cred * newcred,int cap_type, enum label_types mode)
 {
-	struct task_security_struct *tsec=current_security();
 	struct tag *new_tag,*label_tag, *t;
 	unsigned long tag_content;
 	struct list_head new_label;
 	int is_max=0;
 	int ret=-EINVAL;
 	bool present = false;
+	struct task_security_struct *tsec;
+
+	
+	if(newcred ==NULL)
+	{
+		tsec=current_security();
+	}else{
+		 tsec= newcred->security;	
+	}
+	
 
 
 
@@ -1017,7 +1026,7 @@ static unsigned long difc_set_task_label(struct task_struct *tsk, unsigned long 
 	{
 		difc_lsm_debug("no label to set, creating one\n");
 
-		return difc_alloc_label(PLUS_CAPABILITY|MINUS_CAPABILITY,label_type);
+		return difc_alloc_label(NULL,PLUS_CAPABILITY|MINUS_CAPABILITY,label_type);
     }
 
 	return 0;
@@ -2349,7 +2358,7 @@ asmlinkage long sys_alloc_label(int type, enum label_types mode)
 {
 
 
-	return difc_alloc_label(type,mode);
+	return difc_alloc_label(NULL,type,mode);
 	
 }
 
