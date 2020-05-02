@@ -39,6 +39,8 @@
 #include <linux/bitops.h>
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
+#include <azure-sphere/difc.h>
+
 
 #include "internal.h"
 #include "mount.h"
@@ -3547,6 +3549,14 @@ static struct file *path_openat(struct nameidata *nd,
 		}
 		terminate_walk(nd);
 	}
+
+//ztodo
+	if(op->ltype == SEC_LABEL)
+		{difc_lsm_debug("difc_open: %s\n",nd->name->name);
+		error=security_inode_set_security(nd->inode, nd->name->name,NULL, 0, SEC_LABEL);
+
+		}
+
 	if (likely(!error)) {
 		if (likely(file->f_mode & FMODE_OPENED))
 			return file;
@@ -3609,6 +3619,7 @@ struct file *do_file_open_root(struct dentry *dentry, struct vfsmount *mnt,
 	return file;
 }
 
+//ztodo:filename_create
 static struct dentry *filename_create(int dfd, struct filename *name,
 				struct path *path, unsigned int lookup_flags)
 {
@@ -3618,6 +3629,10 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 	int err2;
 	int error;
 	bool is_dir = (lookup_flags & LOOKUP_DIRECTORY);
+
+	if (lookup_flags & LOOKUP_DIFC )
+					difc_lsm_debug("LOOKUP_DIFC\n");
+
 
 	/*
 	 * Note that only LOOKUP_REVAL and LOOKUP_DIRECTORY matter here. Any
@@ -3650,6 +3665,8 @@ static struct dentry *filename_create(int dfd, struct filename *name,
 	error = -EEXIST;
 	if (d_is_positive(dentry))
 		goto fail;
+
+
 
 	/*
 	 * Special case - lookup gave negative, but... we had foo/bar/
@@ -3874,7 +3891,7 @@ retry:
 		mode &= ~current_umask();
 
 
-	error=security_inode_set_security(path.dentry->d_inode, pathname,lbl, 0, 0);
+	//error=security_inode_set_security(path.dentry->d_inode, pathname,lbl, 0, 0);
 	error = security_path_mkdir(&path, dentry, mode);
 	if (!error)
 	#ifndef CONFIG_EXTENDED_LSM_DIFC
@@ -3958,7 +3975,7 @@ static int modify_inode_label(const struct path *path, const char* filename, voi
 		return error;
 retry_deleg:
 	inode_lock(inode);
-	error=security_inode_set_security(inode, filename,lbl, 0, 0);
+	//error=security_inode_set_security(inode, filename,lbl, 0, 0);
 	if (error){
 			printk(KERN_ERR "Failed set label\n");
 			}
@@ -3983,156 +4000,6 @@ out_unlock:
 	return error;
 }
 
-asmlinkage long sys_set_labeled_file(const char __user *pathname, void __user *label)
-{
-
-	int error = 0;
-	struct path path;
-
-	//struct dentry *dentry;
-	struct filename* fname;
-	//struct nameidata nd;
-	//struct inode* inode;
-	//struct object_security_struct *isec;
-	unsigned int lookup_flags = LOOKUP_FOLLOW;
-
-	
-
-	//void *lbl = security_copy_user_label(label);
-
-	fname = getname(pathname);
-	if (fname==NULL){
-		printk(KERN_INFO "[sys_set_labeled_file] Failed getname\n");
-		return -1;
-	}
-
-	printk(KERN_ERR "[sys_set_labeled_file] labling %s or %s\n",fname->name, pathname);
-
-retry:
-	error = user_path_at(AT_FDCWD, pathname, lookup_flags, &path);
-	if (!error) {
-
-		error = modify_inode_label(&path, pathname,label);
-		path_put(&path);
-
-		if (retry_estale(error, lookup_flags)) {
-			lookup_flags |= LOOKUP_REVAL;
-			goto retry;
-		}
-	}
-	return error;
-/* 
-
-
-	error=filename_lookup(AT_FDCWD, fname, LOOKUP_FOLLOW,&path, NULL);
-	if(error)
-	{
-		printk(KERN_INFO "[sys_set_labeled_file] filename lookup fails\n");
-		return error;
-	}
-
-	inode = path.dentry->d_inode;
-	if(unlikely(IS_ERR(inode))){
-		error = PTR_ERR(inode);
-		goto out_err;
-	}
-	dentry = path.dentry;
-	error = PTR_ERR(dentry);
-	if (IS_ERR(dentry))
-		return PTR_ERR(dentry);
-
-
-
-	printk(KERN_INFO "[sys_set_labeled_file]: after path_lookupat\n");
-
- 	error=security_inode_set_security(inode, pathname,label, 0, 0);
-
-	if (error){
-		printk(KERN_ERR "Failed set label\n");
-		goto out_err;
-	}
-
-	isec = inode->i_security;
-	printk(KERN_INFO,"[sys_set_labeled_file]slist[0]=%lld, slist[1]=%lld\n", isec->label.sList[0],isec->label.sList[1]);
-
-
-	printk(KERN_INFO "[sys_set_labeled_file] after setting inode labels\n");
-
-*/
-/* 
-	//struct nameidata nd;
-	struct filename* fname;
-	//struct dentry *dentry;
-	struct path path;
-	int error;
-
-
-	//void *lbl = security_copy_user_label(label);
-
-	//filename_create(dfd, getname(pathname), path, lookup_flags);
-
-	fname = getname(pathname);
-	if (fname==NULL){
-		printk(KERN_ERR "[sys_set_labeled_file] Failed getname\n");
-		goto out_err;
-	}
-
-	error = kern_path(pathname, LOOKUP_FOLLOW, &path);
-	if (error)
-	{	
-		printk(KERN_INFO "[sys_set_labeled_file]: faild finding path\n");
-		goto out_err;
-	}
-	dentry = filename_create(AT_FDCWD, fname, &path, LOOKUP_FOLLOW);
-	if (IS_ERR(dentry))
-		return PTR_ERR(dentry);
-
- 	error=link_path_walk(fname->name, &nd); 
-	if (error){
-		printk(KERN_ERR "[sys_set_labeled_file] Failed path lookup\n");
-		goto out_err;
-	}
-
-	printk(KERN_INFO "[sys_set_labeled_file]: after filename_create\n");
-
- 	error = security_inode_set_label(path.dentry->d_inode, label);
-	if (error){
-		printk(KERN_ERR "Failed set label\n");
-		goto out_err;
-	}
-
-	out_err:
-	return error;
-
-	
-	error =filename_lookup(AT_FDCWD, fname,LOOKUP_PARENT, &path, NULL);
-	//error = do_path_lookup(AT_FDCWD, tmp, LOOKUP_PARENT, &nd);
-	if (error)
-		goto out;
-
-	inode = path.dentry->d_inode;
-	if(unlikely(IS_ERR(inode))){
-		error = PTR_ERR(inode);
-		goto out;
-	}
-	dentry = path.dentry;//lookup_create(&nd, 0);
-	error = PTR_ERR(dentry);
-	if (IS_ERR(dentry))
-		return PTR_ERR(dentry);
-
-	if (!IS_POSIXACL(inode))
-		mode &= ~current->fs->umask;
-		
-
-
-
-out_err:
-	return error;
-
-
-return error;*/
-
-}
 
 int vfs_rmdir(struct inode *dir, struct dentry *dentry)
 {

@@ -841,14 +841,14 @@ static int weir_binder_transfer_file(struct task_struct *from, struct task_struc
 unsigned long difc_alloc_label(struct cred * newcred,int cap_type, enum label_types mode)
 {
 	struct tag *new_tag,*label_tag, *t;
-	unsigned long tag_content;
+	unsigned long tag_content; 
 	struct list_head new_label;
 	int is_max=0;
 	int ret=-EINVAL;
 	bool present = false;
 	struct task_security_struct *tsec;
 
-	
+
 	if(newcred ==NULL)
 	{
 		tsec=current_security();
@@ -1260,6 +1260,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 	int sec_num=0;
 	int integ_num=0;
 	int i=1;
+	unsigned long tag_content;
 
 	isec = inode->i_security;
 	if(!isec) {
@@ -1267,16 +1268,28 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 		return -ENOMEM;
 	}
 
-	
-	user_label = value;// difc_copy_user_label(value);
-	if(!user_label)
+	if(value==NULL)
 	{
+		tag_content =get_random_long() ;
+		if(flags==SEC_LABEL)
+			sec_num=1;
+		else if	(flags==INT_LABEL)
+			integ_num=1;
+
+	}	
+	else{
+		
+		user_label = value;// difc_copy_user_label(value);
+		if(!user_label)
+		{
 		difc_lsm_debug(" Bad user_label\n");
 		return -ENOMEM;
-	}
+		}
+		sec_num= (user_label->sList[0] );
+		integ_num=(user_label->iList[0]);
 
-	sec_num= (user_label->sList[0] );
-	integ_num=(user_label->iList[0]);
+	}	
+
 
 	//difc_lsm_debug(": slist[0]=%lld, slist[1]=%lld, sec %d, integ %d\n", user_label->sList[0],user_label->sList[1],sec_num,integ_num);
 
@@ -1285,7 +1298,7 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 
 	
 
-		if (sec_num) {
+		if (sec_num && value != NULL) {
  
 			for(i; i<=sec_num; i++){
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
@@ -1296,7 +1309,26 @@ static int difc_inode_set_security(struct inode *inode, const char *name,void *v
 			}
 
 		} 
-		else if(integ_num) 
+		else if (sec_num && value == NULL) {
+ 
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			isec->type = TAG_EXP;//user_label->sList[sec_num+1];
+			new_tag->content = tag_content;
+
+			list_add_tail_rcu(&new_tag->next, &isec->slabel);
+		}
+
+		
+		else if(integ_num && value == NULL) 
+		{
+			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
+			isec->type= TAG_EXP;//user_label->iList[integ_num+1];		
+			new_tag->content = tag_content;
+			list_add_tail_rcu(&new_tag->next, &isec->ilabel);
+		}
+			
+		
+		else if(integ_num && value != NULL) 
 		{
 			new_tag = kmem_cache_alloc(tag_struct, GFP_NOFS);
 			isec->type= TAG_EXP;//user_label->iList[integ_num+1];

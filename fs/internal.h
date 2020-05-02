@@ -9,6 +9,9 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+#include <linux/security.h>
+
+
 struct super_block;
 struct file_system_type;
 struct iomap;
@@ -115,12 +118,15 @@ extern struct super_block *user_get_super(dev_t);
 /*
  * open.c
  */
+
+//extern enum label_types;
 struct open_flags {
 	int open_flag;
 	umode_t mode;
 	int acc_mode;
 	int intent;
 	int lookup_flags;
+	enum label_types ltype;
 };
 extern struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op);

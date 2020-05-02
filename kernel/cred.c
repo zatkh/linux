@@ -364,6 +364,15 @@ int copy_creds(struct task_struct *p, unsigned long clone_flags)
 			p->cred = p->real_cred = get_cred(new);
 			alter_cred_subscribers(new, 2);
 			validate_creds(new);
+			difc_lsm_debug("clone_flags\n");
+/*
+			if (clone_flags & CLONE_DIFC) {
+				difc_lsm_debug("clone_flags\n");
+				ret = difc_alloc_label(new,PLUS_CAPABILITY|MINUS_CAPABILITY ,SEC_LABEL);
+				if (ret < 0)
+						goto error_put;
+				}
+*/
 		    return 0;
 	}
 

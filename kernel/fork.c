@@ -1710,8 +1710,6 @@ static __latent_entropy struct task_struct *copy_process(
 	struct task_struct *p;
 	struct multiprocess_signals delayed;
 
-	if (clone_flags & CLONE_DIFC) 
-				difc_lsm_debug("clone_flags\n");
 
 
 	/*
@@ -1816,14 +1814,6 @@ static __latent_entropy struct task_struct *copy_process(
 	if (retval < 0)
 		goto bad_fork_free;
 
-		/*
-			if (clone_flags & CLONE_DIFC) {
-				difc_lsm_debug("clone_flags\n");
-					ret = difc_alloc_label(new,PLUS_CAPABILITY|MINUS_CAPABILITY ,SEC_LABEL);
-					if (ret < 0)
-						goto error_put;
-				}
-*/
 
 	/*
 	 * If multiple threads are within copy_process(), then this check
