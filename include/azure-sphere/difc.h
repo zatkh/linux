@@ -7,6 +7,7 @@
 #include <linux/spinlock.h>
 #include <linux/sched.h>
 #include <azure-sphere/security.h>
+#define O_DIFC	40000000
 
 static int debug = 1;
 

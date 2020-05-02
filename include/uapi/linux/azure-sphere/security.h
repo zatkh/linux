@@ -40,9 +40,7 @@ typedef capability_t* capList_t;
 #define CAP_LIST_CAPS (LABEL_LIST_BYTES / sizeof(capability_t))
 #define CAP_LIST_MAX_ENTRIES (CAP_LIST_BYTES / sizeof(capability_t)) - 1
 /* Use the upper two bits for +/- */
-#define PLUS_CAPABILITY  (1<<30)
-#define MINUS_CAPABILITY (1<<31)
-#define CAP_MAX_VAL    (1<<29)
+
 #define CAP_LABEL_MASK (0xFFFFFFFF ^ (PLUS_CAPABILITY | MINUS_CAPABILITY))
 
 #define THREAD_NONE  0

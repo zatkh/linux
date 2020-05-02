@@ -427,27 +427,6 @@ static int tee_ioctl_invoke(struct tee_context *ctx,
 	struct tee_ioctl_invoke_arg arg;
 	struct tee_ioctl_param __user *uparams = NULL;
 	struct tee_param *params = NULL;
-	struct task_security_struct *tsec = current_security();
-
-
-	#ifdef CONFIG_EXTENDED_LSM_DIFC
-
-	if (tsec->type==TAG_CONF)
-	{
-		difc_lsm_debug(" not tagged thread can not access an enclave \n");
-		return -EPERM;
-	}
-	else{
-		rc = is_label_subset(&ctx->slabel, &tsec->olabel, &tsec->slabel);
-			if (rc < 0 && down != 0) {
-			difc_lsm_debug("enclave secrecy: restrectricted operation \n" );
-				rc = -EPERM;
-				goto out;
-			}
-	}
-
-	#endif
-
 
 
 	if (copy_from_user(&buf, ubuf, sizeof(buf)))
@@ -901,6 +880,81 @@ static int tee_difc_ioctl_shm_register_fd(struct tee_context *ctx,
 	tee_shm_put(shm);
 	return ret;
 }
+
+
+static int tee_difc_ioctl_invoke(struct tee_context *ctx,
+			    struct tee_ioctl_buf_data __user *ubuf)
+{
+	int rc;
+	size_t n;
+	struct tee_ioctl_buf_data buf;
+	struct tee_ioctl_invoke_arg __user *uarg;
+	struct tee_ioctl_invoke_arg arg;
+	struct tee_ioctl_param __user *uparams = NULL;
+	struct tee_param *params = NULL;
+	struct task_security_struct *tsec = current_security();
+
+
+	#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	if (tsec->type==TAG_CONF)
+	{
+		difc_lsm_debug(" not tagged thread can not access an enclave \n");
+		return -EPERM;
+	}
+	else{
+		rc = is_label_subset(&ctx->slabel, &tsec->olabel, &tsec->slabel);
+			if (rc < 0 && down != 0) {
+			difc_lsm_debug("enclave secrecy: restrectricted operation \n" );
+				rc = -EPERM;
+				goto out;
+			}
+	}
+
+	#endif
+
+
+
+	if (copy_from_user(&buf, ubuf, sizeof(buf)))
+		return -EFAULT;
+
+	uarg = u64_to_user_ptr(buf.buf_ptr);
+	if (copy_from_user(&arg, uarg, sizeof(arg)))
+		return -EFAULT;
+
+
+	if (arg.num_params) {
+		params = kcalloc(arg.num_params, sizeof(struct tee_param),
+				 GFP_KERNEL);
+		if (!params)
+			return -ENOMEM;
+		uparams = uarg->params;
+		rc = params_from_user(ctx, params, arg.num_params, uparams);
+		if (rc)
+			goto out;
+	}
+
+	rc = ctx->teedev->desc->ops->invoke_func(ctx, &arg, params);
+	if (rc)
+		goto out;
+
+	if (put_user(arg.ret, &uarg->ret) ||
+	    put_user(arg.ret_origin, &uarg->ret_origin)) {
+		rc = -EFAULT;
+		goto out;
+	}
+	rc = params_to_user(uparams, arg.num_params, params);
+out:
+	if (params) {
+		/* Decrease ref count for all valid shared memory pointers */
+		for (n = 0; n < arg.num_params; n++)
+			if (tee_param_is_memref(params + n) &&
+			    params[n].u.memref.shm)
+				tee_shm_put(params[n].u.memref.shm);
+		kfree(params);
+	}
+	return rc;
+}
 #endif // CONFIG_EXTENDED_LSM_DIFC
 
 
@@ -925,33 +979,20 @@ static long tee_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return tee_difc_ioctl_shm_register(ctx, uarg);
 	case TEE_DIFC_IOC_SHM_REGISTER_FD:
 		return tee_difc_ioctl_shm_register_fd(ctx, uarg);	
+	case TEE_DIFC_IOC_OPEN_SESSION:
+		return tee_difc_ioctl_open_session(ctx, uarg);
 	case TEE_IOC_OPEN_SESSION:
-	{
-		#ifdef CONFIG_EXTENDED_LSM_DIFC
-
-			return tee_difc_ioctl_open_session(ctx, uarg);
-
-		#else
 			return tee_ioctl_open_session(ctx, uarg);
-
-		#endif
-
-	}
 	case TEE_IOC_INVOKE:
 		return tee_ioctl_invoke(ctx, uarg);
+	case TEE_DIFC_IOC_INVOKE:
+		return tee_difc_ioctl_invoke(ctx, uarg);
 	case TEE_IOC_CANCEL:
 		return tee_ioctl_cancel(ctx, uarg);
 	case TEE_IOC_CLOSE_SESSION:
-
-		#ifdef CONFIG_EXTENDED_LSM_DIFC
-
-			return tee_difc_ioctl_close_session(ctx, uarg);
-
-		#else
-			return tee_ioctl_close_session(ctx, uarg);
-
-		#endif
-
+		return tee_ioctl_close_session(ctx, uarg);
+	case TEE_DIFC_IOC_CLOSE_SESSION:
+		return tee_difc_ioctl_close_session(ctx, uarg);
 	case TEE_IOC_SUPPL_RECV:
 		return tee_ioctl_supp_recv(ctx, uarg);
 	case TEE_IOC_SUPPL_SEND:
