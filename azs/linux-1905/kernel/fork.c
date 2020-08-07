@@ -2240,6 +2240,9 @@ long _udom_do_fork(const char __user * label, unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
+
+void *lbl = security_copy_user_label(label);
+
 	/*
 	 * Determine whether and which event to report to ptracer.  When
 	 * called from kernel_thread or CLONE_UNTRACED is explicitly
@@ -2374,14 +2377,12 @@ SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 
 #ifdef CONFIG_EXTENDED_LSM_DIFC
 
-SYSCALL_DEFINE6(udom_clone, const char __user *, label, unsigned long, clone_flags, unsigned long, newsp,
+SYSCALL_DEFINE6(udom_clone, unsigned long, clone_flags, unsigned long, newsp,
 		 int __user *, parent_tidptr,
 		 int __user *, child_tidptr,
-		 unsigned long, tls)
+		 unsigned long, tls,  const char __user *, label)
 {
-	
-		//difc_set_task_label: set_task_label(0, REPLACE_LABEL, 0, &cur_label);
-	security_set_task_label(current,2,ADD_LABEL, SECRECY_LABEL, NULL);
+
 
 	return _udom_do_fork(label,clone_flags, newsp, 0, parent_tidptr, child_tidptr, tls);
 }

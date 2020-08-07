@@ -333,7 +333,7 @@ static inline int remove_label(struct label_struct *lables_list, label_t label, 
 	label_t index, l;
 	labelList_t list;
 
-	difc_lsm_debug("start removing %llu from the labels\n", label);
+	//difc_lsm_debug("start removing %llu from the labels\n", label);
 	
     switch(label_type){
 	case SECRECY_LABEL: list = lables_list->sList; break;
@@ -359,7 +359,7 @@ static inline int remove_label(struct label_struct *lables_list, label_t label, 
 	}
 	(*list)--;
 
-    difc_lsm_debug("removed the label from the list\n");
+  //  difc_lsm_debug("removed the label from the list\n");
 
 	
     return 0;

@@ -20,7 +20,8 @@ BOOT=/media/zt/boot
 FS=/media/zt/rootfs
 LINUX_BOOT_DIR=$PWD/arch/arm/boot
 LINUX_MODULES_DIR=$PWD/mnt/ext4/lib/modules/4.19.42-v7/
-
+LIBDDS_DIR=$HOME/Documents/git/libddssec/build
+OUTDIR=$HOME/raspbian-tee/out
 
 #sudo mount -o loop,offset=4194304 $IMG $BOOT
 #sudo mount -o loop,offset=67108864 $IMG $FS
