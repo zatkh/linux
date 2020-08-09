@@ -17,6 +17,12 @@
 
 #include <asm/mmu.h>
 
+#ifdef CONFIG_MMU_TPT_ENABLED
+#include <linux/tpt_mm.h>
+#include <linux/tpt.h>
+#include <linux/mdom.h>
+#endif
+
 #ifndef AT_VECTOR_SIZE_ARCH
 #define AT_VECTOR_SIZE_ARCH 0
 #endif
@@ -323,6 +329,10 @@ struct vm_area_struct {
 	struct mempolicy *vm_policy;	/* NUMA policy for the VMA */
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
+#ifdef CONFIG_MMU_TPT_ENABLED
+	int memdom_id; //which mdom has this vma
+#endif //CONFIG_MMU_TPT_ENABLED
+	
 } __randomize_layout;
 
 struct core_thread {
@@ -339,6 +349,21 @@ struct core_state {
 struct kioctx_table;
 struct mm_struct {
 	struct {
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+	/* Additional fields to support the secure memory view model */
+    atomic_t num_smvs;	/* number of smvs the current process has */
+	atomic_t num_memdoms;	/* number of memdoms the current process has */
+	DECLARE_BITMAP(memdom_bitmapInUse, TPT_ARRAY_SIZE); /* Bitmap of memdoms in use.  set to 1 if memdom[i] is in use, 0 otherwise. */
+    DECLARE_BITMAP(smv_bitmapInUse, TPT_ARRAY_SIZE); /* Bitmap of smvs in use.  set to 1 if smv[i] is in use, 0 otherwise. */
+	struct memdom_struct *memdom_metadata[TPT_ARRAY_SIZE];	/* Bookkeeping of per-process memory domains info */
+	struct smv_struct *smv_metadata[TPT_ARRAY_SIZE];	/* Bookkeeping of per-process smvs info */
+	struct mutex smv_metadataMutex;	/* mutex protecting memdom/smv_metadata and memdom/smv_bitmap */
+	int using_smv;	/* set to 1 if current mm is using the secure memory view model */
+	int standby_smv_id; /* For smv_thread_create to tell the kernel what smv an about-to-run thread will be running in */
+	spinlock_t page_table_lock_smv[TPT_ARRAY_SIZE];   /* Page table used by smv threads.  Index at MAX_RIBBON-th pgd is for main thread */
+#endif //CONFIG_MMU_TPT_ENABLED//
+
 		struct vm_area_struct *mmap;		/* list of VMAs */
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
@@ -357,6 +382,10 @@ struct mm_struct {
 		unsigned long task_size;	/* size of task vm space */
 		unsigned long highest_vm_end;	/* highest vma end address */
 		pgd_t * pgd;
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+		pgd_t *pgd_smv[TPT_ARRAY_SIZE];   /* Page table used by smv threads.  Index at MAX_RIBBON-th pgd is for main thread */
+#endif
 
 		/**
 		 * @mm_users: The number of users including userspace.
@@ -383,9 +412,8 @@ struct mm_struct {
 #endif
 		int map_count;			/* number of VMAs */
 
-		spinlock_t page_table_lock; /* Protects page tables and some
-					     * counters
-					     */
+		spinlock_t page_table_lock; /* Protects page tables and some * counters*/
+
 		struct rw_semaphore mmap_sem;
 
 		struct list_head mmlist; /* List of maybe swapped mm's.	These

@@ -598,6 +598,12 @@ struct task_struct {
 	 */
 	struct thread_info		thread_info;
 #endif
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+    int smv_id; //current task smv
+	int mmap_memdom_id; // current mdom this task is trying to mem alloc used by mdom_alloc() 
+#endif
+
 	/* -1 unrunnable, 0 runnable, >0 stopped: */
 	volatile long			state;
 
