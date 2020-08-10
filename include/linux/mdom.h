@@ -22,12 +22,12 @@ struct memdom_struct {
 };
 
 // internal memory managment functions
-/*
+
 #define allocate_memdom()   (kmem_cache_alloc(memdom_cachep, GFP_KERNEL))
 #define free_memdom(memdom) (kmem_cache_free(memdom_cachep, memdom))
 extern void memdom_init(void);
 int memdom_claim_all_vmas(int memdom_id);
-*/
+
 
 
 //exported functions to user space 

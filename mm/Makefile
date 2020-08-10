@@ -39,7 +39,7 @@ obj-y			:= filemap.o mempool.o oom_kill.o fadvise.o \
 			   mm_init.o mmu_context.o percpu.o slab_common.o \
 			   compaction.o vmacache.o \
 			   interval_tree.o list_lru.o workingset.o \
-			   debug.o tpt.o $(mmu-y) #smv.o mdom.o smv_mm.o
+			   debug.o tpt.o mdom.o $(mmu-y) # smv_mm.o
 
 obj-y += init-mm.o
 

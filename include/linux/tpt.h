@@ -40,16 +40,17 @@ void smv_free_mmap(struct mm_struct *mm, int smv_id);
 
 //exported functions to user space 
 
-/*int smv_main_init(void);
 int smv_create(void);
 int smv_kill(int smv_id, struct mm_struct *mm);
 void free_all_smvs(struct mm_struct *mm);
-int smv_join_memdom(int memdom_id, int smv_id);
-int smv_leave_memdom(int memdom_id, int smv_id, struct mm_struct *mm);
-int smv_is_in_memdom(int memdom_id, int smv_id);
+int get_curr_smv_id(void);
 int smv_exists(int smv_id);
-int smv_get_smv_id(void);
-int register_smv_thread(int smv_id);*/
+int is_smv_joined_mdom(int memdom_id, int smv_id);
+int smv_leave_mdom(int memdom_id, int smv_id, struct mm_struct *mm);
+int smv_attach_mdom(int memdom_id, int smv_id);
+int register_smv_thread(int smv_id);
+//int smv_main_init(void);
+
 
 
 #endif //_LINUX_TPT_H//
