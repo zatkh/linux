@@ -11,7 +11,6 @@
 #define MEMDOM_EXECUTE          0x00000004
 #define MEMDOM_ALLOCATE         0x00000008
 
-/// Memdom struct metadata ///
 struct memdom_struct {
     int memdom_id;    
     struct mutex memdom_mutex;
@@ -29,20 +28,20 @@ extern void memdom_init(void);
 int memdom_claim_all_vmas(int memdom_id);
 
 
-
 //exported functions to user space 
-/*
+
+int memdom_main_id(void);
+int memdom_private_id(void);
+int memdom_query_id(unsigned long addr);
 int memdom_create(void);
-void free_all_memdoms(struct mm_struct *mm);
 int memdom_kill(int memdom_id, struct mm_struct *mm);
+void free_all_memdoms(struct mm_struct *mm);
 int memdom_priv_add(int memdom_id, int smv_id, int privs);
 int memdom_priv_del(int memdom_id, int smv_id, int privs);
 int memdom_priv_get(int memdom_id, int smv_id);
 int memdom_mmap_register(int memdom_id);
 unsigned long memdom_munmap(unsigned long addr);
-int memdom_main_id(void);
-int memdom_query_id(unsigned long addr);
-int memdom_private_id(void);
-*/
+
+
 #endif
 
