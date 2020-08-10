@@ -102,6 +102,12 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
 
+#ifdef CONFIG_MMU_TPT_ENABLED
+#include <linux/tpt.h>
+#include <linux/mdom.h>
+
+#endif
+
 static int kernel_init(void *);
 
 extern void init_IRQ(void);
@@ -589,6 +595,11 @@ asmlinkage __visible void __init start_kernel(void)
 	trap_init();
 	mm_init();
 
+#ifdef CONFIG_MMU_TPT_ENABLED
+	init_task.smv_id = -1;
+	smv_init();
+    memdom_init();
+#endif
 	ftrace_init();
 
 	/* trace_printk can be enabled here */
