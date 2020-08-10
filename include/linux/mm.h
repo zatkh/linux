@@ -1331,6 +1331,11 @@ struct zap_details {
 	struct address_space *check_mapping;	/* Check page->mapping if set */
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+	int smv_id; //which tpt zap_page_range() cleanup
+#endif
+	
 };
 
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -1874,7 +1879,16 @@ static inline spinlock_t *ptlock_ptr(struct page *page)
 
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
-	return ptlock_ptr(pmd_page(*pmd));
+	
+	//ztodo: check possible problem with the seperate lock
+	#ifndef CONFIG_MMU_TPT_ENABLED
+		return ptlock_ptr(pmd_page(*pmd));
+	#else 
+	if (mm->using_smv) {
+		return &mm->page_table_lock_smv[current->smv_id];
+	}
+	#endif
+
 }
 
 static inline bool ptlock_init(struct page *page)
@@ -1906,7 +1920,13 @@ static inline void pte_lock_deinit(struct page *page)
  */
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
+	#ifndef CONFIG_MMU_TPT_ENABLED
 	return &mm->page_table_lock;
+	#else 
+	if (mm->using_smv) {
+		return &mm->page_table_lock_smv[current->smv_id];
+	}
+	#endif
 }
 static inline void ptlock_cache_init(void) {}
 static inline bool ptlock_init(struct page *page) { return true; }

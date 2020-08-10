@@ -49,7 +49,7 @@ int is_smv_joined_mdom(int memdom_id, int smv_id);
 int smv_leave_mdom(int memdom_id, int smv_id, struct mm_struct *mm);
 int smv_attach_mdom(int memdom_id, int smv_id);
 int register_smv_thread(int smv_id);
-//int smv_main_init(void);
+int smv_main_init(void);
 
 
 

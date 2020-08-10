@@ -435,7 +435,7 @@ EXPORT_SYMBOL(register_smv_thread);
 
 // initalisation so current task would have the secure memory view 
 // global thread and mdom that will have entier vma at first, and will be comparmentalsed by each new smv thread
-/*
+
 int smv_main_init(void){
     struct mm_struct *mm = current->mm;
     int smv_id = -1;
@@ -472,4 +472,4 @@ int smv_main_init(void){
 }
 EXPORT_SYMBOL(smv_main_init);
 
-*/
+

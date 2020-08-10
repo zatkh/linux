@@ -269,6 +269,7 @@ static void cond_ibpb(struct task_struct *next)
 	}
 }
 
+//ztodo check asids for tpts
 void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 			struct task_struct *tsk)
 {
@@ -336,7 +337,12 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 		 * currently use it.
 		 */
 		if (WARN_ON_ONCE(real_prev != &init_mm &&
-				 !cpumask_test_cpu(cpu, mm_cpumask(next))))
+				 (!cpumask_test_cpu(cpu, mm_cpumask(next))
+#ifdef CONFIG_MMU_TPT_ENABLED
+			|| (next->using_smv))))
+#else			
+		)))
+#endif		
 			cpumask_set_cpu(cpu, mm_cpumask(next));
 
 		return;
@@ -387,7 +393,17 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 		if (need_flush) {
 			this_cpu_write(cpu_tlbstate.ctxs[new_asid].ctx_id, next->context.ctx_id);
 			this_cpu_write(cpu_tlbstate.ctxs[new_asid].tlb_gen, next_tlb_gen);
+		#ifndef CONFIG_MMU_TPT_ENABLED
 			load_new_mm_cr3(next->pgd, new_asid, true);
+		#else
+			if (next->using_smv && tsk->smv_id != MAIN_THREAD) {
+				load_new_mm_cr3(next->pgd_smv[tsk->smv_id], new_asid, true);
+				} 
+			else {
+				load_new_mm_cr3(next->pgd, new_asid, true);
+				}
+
+		#endif
 
 			/*
 			 * NB: This gets called via leave_mm() in the idle path
@@ -399,8 +415,22 @@ void switch_mm_irqs_off(struct mm_struct *prev, struct mm_struct *next,
 			 */
 			trace_tlb_flush_rcuidle(TLB_FLUSH_ON_TASK_SWITCH, TLB_FLUSH_ALL);
 		} else {
-			/* The new ASID is already up to date. */
+
+		#ifndef CONFIG_MMU_TPT_ENABLED
+		/* The new ASID is already up to date. */
 			load_new_mm_cr3(next->pgd, new_asid, false);
+
+		#else
+			if (next->using_smv && tsk->smv_id != MAIN_THREAD) {
+				load_new_mm_cr3(next->pgd_smv[tsk->smv_id], new_asid, false);
+				} 
+			else {
+			load_new_mm_cr3(next->pgd, new_asid, false);
+				}
+
+		#endif
+
+	
 
 			/* See above wrt _rcuidle. */
 			trace_tlb_flush_rcuidle(TLB_FLUSH_ON_TASK_SWITCH, 0);

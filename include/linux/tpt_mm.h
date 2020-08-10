@@ -14,9 +14,9 @@
 /* Called by copy_pte_smv to locate the current pgd */
 #define pgd_offset_smv(mm, address, smv_id) ((mm)->pgd_smv[smv_id]  + pgd_index((address)))
 
-//int smv_valid_fault(int smv_id, struct vm_area_struct *vma, unsigned long error_code);
-//int copy_pgtable_smv(int dst_smv, int src_smv, 
-//                     unsigned long addr, unsigned int flags,
-//                     struct vm_area_struct *vma);
+int valid_smv_fault(int smv_id, struct vm_area_struct *vma, unsigned long error_code);
+int smv_tptcpy(int dst_smv, int src_smv, 
+                     unsigned long addr, unsigned int flags,
+                     struct vm_area_struct *vma);
 
 #endif //_LINUX_TPT_MM_H//
