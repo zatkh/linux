@@ -207,11 +207,20 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_WIPEONFORK	0x02000000	/* Wipe VMA contents in child. */
 #define VM_DONTDUMP	0x04000000	/* Do not include in the core dump */
 
-#ifdef CONFIG_MEM_SOFT_DIRTY
+#ifdef CONFIG_MEM_SOFT_DIRTY 
+#ifndef CONFIG_MMU_TPT_ENABLED
 # define VM_SOFTDIRTY	0x08000000	/* Not soft dirty clean area */
+#else 
+# define VM_SOFTDIRTY	0
+#endif
 #else
 # define VM_SOFTDIRTY	0
 #endif
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+# define VM_MEMDOM	0x08000000	/* Not soft dirty clean area */
+#endif
+
 
 #define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages */
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
