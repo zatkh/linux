@@ -602,9 +602,11 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 static void check_mm(struct mm_struct *mm)
 {
 	int i;
+#ifdef CONFIG_MMU_TPT_ENABLED	
 	if (mm->using_smv) {
 		slog(KERN_INFO "[%s] %s smv %d checking mm %p\n", __func__, current->comm, current->smv_id, mm);
 	}
+#endif	
 
 	for (i = 0; i < NR_MM_COUNTERS; i++) {
 		long x = atomic_long_read(&mm->rss_stat.count[i]);
@@ -633,9 +635,11 @@ static void check_mm(struct mm_struct *mm)
  */
 void __mmdrop(struct mm_struct *mm)
 {
+#ifdef CONFIG_MMU_TPT_ENABLED	
 	if (mm->using_smv) {
 		slog(KERN_INFO "[%s] %s in smv %d mm: %p\n", __func__, current->comm, current->smv_id, mm);
 	}
+#endif	
 	BUG_ON(mm == &init_mm);
 	WARN_ON_ONCE(mm == current->mm);
 	WARN_ON_ONCE(mm == current->active_mm);

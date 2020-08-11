@@ -229,7 +229,7 @@ config MMU
 	def_bool y
 
 config MMU_TPT_ENABLED
-	def_bool y	
+	def_bool n	
 
 config ARCH_MMAP_RND_BITS_MIN
 	default 28 if 64BIT
