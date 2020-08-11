@@ -1347,8 +1347,15 @@ struct page *vm_normal_page_pmd(struct vm_area_struct *vma, unsigned long addr,
 
 void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 		  unsigned long size);
+
+#ifndef CONFIG_MMU_TPT_ENABLED
 void zap_page_range(struct vm_area_struct *vma, unsigned long address,
 		    unsigned long size);
+#else
+void zap_page_range(struct vm_area_struct *vma, unsigned long start,
+		unsigned long size,struct zap_details *details);
+#endif
+
 void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
 		unsigned long start, unsigned long end);
 

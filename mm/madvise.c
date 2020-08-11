@@ -507,7 +507,14 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
 static long madvise_dontneed_single_vma(struct vm_area_struct *vma,
 					unsigned long start, unsigned long end)
 {
+#ifndef CONFIG_MMU_TPT_ENABLED
 	zap_page_range(vma, start, end - start);
+
+#else
+	zap_page_range(vma, start, end - start, NULL);
+
+#endif
+
 	return 0;
 }
 

@@ -1776,7 +1776,14 @@ static int tcp_zerocopy_receive(struct sock *sk,
 	zc->length = min_t(u32, zc->length, tcp_inq(sk));
 	zc->length &= ~(PAGE_SIZE - 1);
 
+
+	
+
+#ifndef CONFIG_MMU_TPT_ENABLED
 	zap_page_range(vma, address, zc->length);
+#else
+	zap_page_range(vma, address, zc->length, NULL);
+#endif
 
 	zc->recv_skip_hint = 0;
 	ret = 0;
