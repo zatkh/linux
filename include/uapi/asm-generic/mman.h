@@ -14,6 +14,10 @@
 #define MAP_STACK	0x20000		/* give out an address that is best suited for process/thread stacks */
 #define MAP_HUGETLB	0x40000		/* create a huge page mapping */
 #define MAP_SYNC	0x80000		/* perform synchronous page faults for the mapping */
+#ifdef CONFIG_MMU_TPT_ENABLED
+#define MAP_MEMDOM  0x08000000  /* Protected by memory domain */
+#endif
+
 
 /* Bits [26:31] are reserved, see mman-common.h for MAP_HUGETLB usage */
 

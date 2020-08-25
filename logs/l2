@@ -1,0 +1,111 @@
+[Aug24 10:21] Entering: recv_msg
+[  +0.000003] parsing: smv,maininit
+[  +0.000002] smv token 2 (op): maininit
+[  +0.000004] [smv_main_init] ------------------ privilage_test pid 2266 ------------------
+[  +0.000003] (pid 2266) [tpt]: [smv_create]:  Before smv_create mm: 00000000b8515a45
+[  +0.000004] (pid 2266) [tpt]: [smv_alloc_pgd]: smv 0 pgd 000000007bd50639
+[  +0.000002] (pid 2266) [tpt]: [smv_create]: Created new smv with ID 0, #smvs: 1 / 1025
+[  +0.000002] (pid 2266) [tpt]: [smv_create]: After smv_create mm: 00000000b8515a45
+[  +0.000003] (pid 2266) [tpt]: [memdom_create]: Created new memdom with ID 0, #memdom: 1 / 1025
+[  +0.000002] (pid 2266) [tpt]: [smv_attach_mdom]:  smv id 0 joined memdom 0
+[  +0.000002] (pid 2266) [tpt]: [memdom_priv_add]: Added read privilege for smv 0 in memdmo 0
+[  +0.000002] (pid 2266) [tpt]: [memdom_priv_add]: Added write privilege for smv 0 in memdmo 0
+[  +0.000002] (pid 2266) [tpt]: [memdom_priv_add]:  Added execute privilege for smv 0 in memdmo 0
+[  +0.000002] (pid 2266) [tpt]: [memdom_priv_add]:  Added allocate privilege for smv 0 in memdmo 0
+[  +0.000003] (pid 2266) [tpt]: [memdom_claim_all_vmas]: Initialized 28 vmas to be in memdom 0
+[  +0.000002] Netlink after parsing received msg payload:smv
+[  +0.000001] PID: 2266
+[  +0.000022] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000006] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241ef2df81 failed
+[  +0.000063] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000005] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000002] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241ed8eda0 done
+[  +0.000009] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000005] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241ee1dad0 failed
+[  +0.000005] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000004] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000002] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241ed8dfb8 done
+[  +0.000062] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000005] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000002] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241e58dda0 done
+[  +0.000005] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000003] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000002] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241e58cfb8 done
+[  +0.000052] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000011] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000003] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241dd8cda0 done
+[  +0.000008] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000004] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000003] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f241dd8bfb8 done
+[  +0.000062] (pid 2267) [tpt]: [unmap_region]: 6[unmap_region] smv 0 [0x    55e882e6f000 to 0x    7f2418000000]
+[  +0.000021] (pid 2267) [tpt]: [unmap_region]: 6[unmap_region] smv 0 [0x    7f241c000000 to 0x    7f241d58c000]
+[  +0.000020] (pid 2268) [tpt]: [unmap_region]: 6[unmap_region] smv 0 [0x    55e882e6f000 to 0x    7f2410000000]
+[  +0.000031] (pid 2268) [tpt]: [unmap_region]: 6[unmap_region] smv 0 [0x    7f2414000000 to 0x    7f24177ff000]
+[  +0.000061] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000010] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000003] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f2417fffda0 done
+[  +0.000039] BUG: unable to handle kernel paging request at ffffffff43934e72
+[  +0.000007] PGD a6c0e067 P4D a6c0e067 PUD 0 
+[  +0.000008] Oops: 0002 [#1] SMP PTI
+[  +0.000006] CPU: 3 PID: 2267 Comm: privilage_test Tainted: G           OE     4.19.42+ #1
+[  +0.000003] Hardware name: innotek GmbH VirtualBox/VirtualBox, BIOS VirtualBox 12/01/2006
+[  +0.000020] RIP: 0010:__pv_queued_spin_lock_slowpath+0x1ae/0x290
+[  +0.000005] Code: ea 12 4d 8d 6c 24 44 48 c1 e0 04 41 bf 01 00 00 00 4c 8d b0 40 3e 02 00 8d 42 ff ba 00 80 00 00 48 98 4c 03 34 c5 00 77 ba b5 <4d> 89 26 41 8b 44 24 08 85 c0 75 45 84 d2 75 6f 41 0f b6 46 44 84
+[  +0.000003] RSP: 0000:ffffbf3ec4e53d48 EFLAGS: 00010286
+[  +0.000004] RAX: 0000000000003ffe RBX: ffff97e933e9414c RCX: 0000000000000001
+[  +0.000003] RDX: 0000000000008000 RSI: 0000000000000000 RDI: ffff97e933e9414c
+[  +0.000003] RBP: ffffbf3ec4e53d80 R08: 0000000000000000 R09: fffff8c38047f180
+[  +0.000003] R10: 0000000000000000 R11: 0000000000000000 R12: ffff97e99bba3e40
+[  +0.000003] R13: ffff97e99bba3e84 R14: ffffffff43934e72 R15: 0000000000000001
+[  +0.000004] FS:  00007f241ed8e700(0000) GS:ffff97e99bb80000(0000) knlGS:0000000000000000
+[  +0.000003] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[  +0.000003] CR2: ffffffff43934e72 CR3: 00000000b0482004 CR4: 00000000000606e0
+[  +0.000007] DR0: 0000000000000000 DR1: 0000000000000000 DR2: 0000000000000000
+[  +0.000003] DR3: 0000000000000000 DR6: 00000000fffe0ff0 DR7: 0000000000000400
+[  +0.000002] Call Trace:
+[  +0.000029]  _raw_spin_lock+0x21/0x30
+[  +0.000011]  __handle_mm_fault+0x12ab/0x17c0
+[  +0.000005]  handle_mm_fault+0xe3/0x220
+[  +0.000006]  __do_page_fault+0x27b/0x600
+[  +0.000005]  do_page_fault+0x2d/0xf0
+[  +0.000005]  ? page_fault+0x8/0x30
+[  +0.000004]  page_fault+0x1e/0x30
+[  +0.000004] RIP: 0033:0x7f241ee1fcb6
+[  +0.000003] Code: 05 7b cc 35 00 00 00 00 00 74 46 a9 ff ff ff 03 75 32 ba 03 00 00 00 48 89 ee 48 89 df e8 52 af 08 00 85 c0 0f 85 fa 00 00 00 <48> 89 6b 10 48 89 6b 18 90 48 83 c4 08 48 89 d8 5b 5d 41 5c 41 5d
+[  +0.000003] RSP: 002b:00007f241ed8ddc0 EFLAGS: 00010246
+[  +0.000004] RAX: 0000000000000000 RBX: 00007f2418000000 RCX: 00007f241eeaac07
+[  +0.000002] RDX: 0000000000000003 RSI: 0000000000021000 RDI: 00007f2418000000
+[  +0.000003] RBP: 0000000000021000 R08: 00000000ffffffff R09: 0000000000000000
+[  +0.000002] R10: 0000000000004022 R11: 0000000000000217 R12: 00007f241c000000
+[  +0.000003] R13: 0000000002a74000 R14: 0000000000000000 R15: 00007ffe5c2a6d10
+[  +0.000003] Modules linked in: netlinktest(OE) nls_utf8 isofs vboxvideo(OE) snd_intel8x0 snd_ac97_codec ac97_bus snd_pcm vmwgfx snd_seq_midi snd_seq_midi_event snd_rawmidi crct10dif_pclmul crc32_pclmul ttm snd_seq ghash_clmulni_intel pcbc drm_kms_helper snd_seq_device snd_timer aesni_intel aes_x86_64 drm crypto_simd snd cryptd joydev glue_helper soundcore intel_rapl_perf input_leds serio_raw vboxguest(OE) fb_sys_fops syscopyarea video sysfillrect mac_hid sysimgblt sch_fq_codel parport_pc ppdev lp parport ip_tables x_tables autofs4 hid_generic usbhid hid e1000 psmouse ahci libahci i2c_piix4 pata_acpi
+[  +0.000065] CR2: ffffffff43934e72
+[  +0.000004] ---[ end trace a9271c93c864128e ]---
+[  +0.000004] RIP: 0010:__pv_queued_spin_lock_slowpath+0x1ae/0x290
+[  +0.000003] Code: ea 12 4d 8d 6c 24 44 48 c1 e0 04 41 bf 01 00 00 00 4c 8d b0 40 3e 02 00 8d 42 ff ba 00 80 00 00 48 98 4c 03 34 c5 00 77 ba b5 <4d> 89 26 41 8b 44 24 08 85 c0 75 45 84 d2 75 6f 41 0f b6 46 44 84
+[  +0.000003] RSP: 0000:ffffbf3ec4e53d48 EFLAGS: 00010286
+[  +0.000003] RAX: 0000000000003ffe RBX: ffff97e933e9414c RCX: 0000000000000001
+[  +0.000003] RDX: 0000000000008000 RSI: 0000000000000000 RDI: ffff97e933e9414c
+[  +0.000002] RBP: ffffbf3ec4e53d80 R08: 0000000000000000 R09: fffff8c38047f180
+[  +0.000002] R10: 0000000000000000 R11: 0000000000000000 R12: ffff97e99bba3e40
+[  +0.000003] R13: ffff97e99bba3e84 R14: ffffffff43934e72 R15: 0000000000000001
+[  +0.000003] FS:  00007f241ed8e700(0000) GS:ffff97e99bb80000(0000) knlGS:0000000000000000
+[  +0.000003] CS:  0010 DS: 0000 ES: 0000 CR0: 0000000080050033
+[  +0.000002] CR2: ffffffff43934e72 CR3: 00000000b0482004 CR4: 00000000000606e0
+[  +0.000003] DR0: 0000000000000000 DR1: 0000000000000000 DR2: 0000000000000000
+[  +0.000002] DR3: 0000000000000000 DR6: 00000000fffe0ff0 DR7: 0000000000000400
+[  +7.149286] (pid 2266) [tpt]: [memdom_priv_get]: smv 0 has privs f in memdom 0
+[  +0.000014] (pid 2266) [tpt]: [smv_tptcpy]: smv 0 attempts to overwrite main thread's page table. Skip
+[  +0.000005] (pid 2266) [tpt]: [__handle_mm_fault]: 6[__handle_mm_fault] addr 0x    7f2417ffefb8 done
+[  +0.000064] (pid 2266) [tpt]: [exit_mmap]: 6[exit_mmap] privilage_test in smv 0 mm: 00000000b8515a45
+[  +0.000012] (pid 2266) [tpt]: [free_all_smvs]:  killing smv 0, remaining #smvs: 1
+[  +0.000004] (pid 2266) [tpt]: [smv_kill]:  killing smv metadata 0000000051f82351 with ID 0
+[  +0.000003] (pid 2266) [tpt]: [smv_kill]:  leaving all the joined memdoms
+[  +0.000003] (pid 2266) [tpt]: [smv_leave_mdom]:  smv 0 leaving memdom 0
+[  +0.000003] (pid 2266) [tpt]: [smv_leave_mdom]:  memdom 00000000e889735b, smv 0000000051f82351
+[  +0.000003] (pid 2266) [tpt]: [smv_kill]:  skip killing main thread's page tables. Will be done in exit_mmap()
+[  +0.000004] (pid 2266) [tpt]: [smv_kill]:  Deleted smv with ID 0, #smvs: 0 / 1025
+[  +0.000004] (pid 2266) [tpt]: [free_all_memdoms]: killing memdom 0, remaining #memdom: 1
+[  +0.000004] (pid 2266) [tpt]: [memdom_kill]:  Deleted memdom with ID 0, #memdoms: 0 / 1025
+[  +0.001609] (pid 631) [tpt]: [__mmdrop]: 6[__mmdrop] in:imklog in smv -1 mm: 00000000b8515a45
+[  +0.000012] (pid 631) [tpt]: [check_mm]: 6[check_mm] in:imklog smv -1 checking mm 00000000b8515a45

@@ -1897,18 +1897,7 @@ static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
 	
 	//ztodo: check for possible sync problem and kernel panic, 
-	
-	#ifndef CONFIG_MMU_TPT_ENABLED
-		return ptlock_ptr(pmd_page(*pmd));
-	#else 
-	if (mm->using_smv) {
-		return &mm->page_table_lock_smv[current->smv_id];
-	}
-	else {
-		return ptlock_ptr(pmd_page(*pmd));
-
-	}
-	#endif
+	return ptlock_ptr(pmd_page(*pmd));
 	
 
 }

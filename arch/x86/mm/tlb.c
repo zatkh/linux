@@ -502,7 +502,19 @@ void initialize_tlbstate_and_flush(void)
 	unsigned long cr3 = __read_cr3();
 
 	/* Assert that CR3 already references the right mm. */
+#ifndef CONFIG_MMU_TPT_ENABLED
 	WARN_ON((cr3 & CR3_ADDR_MASK) != __pa(mm->pgd));
+#else
+
+	if (mm->using_smv && current->smv_id != MAIN_THREAD) {
+		WARN_ON((cr3 & CR3_ADDR_MASK) != __pa(mm->pgd_smv[current->smv_id]));
+
+	} else {
+		WARN_ON((cr3 & CR3_ADDR_MASK) != __pa(mm->pgd));
+	}
+
+
+#endif
 
 	/*
 	 * Assert that CR4.PCIDE is set if needed.  (CR4.PCIDE initialization
@@ -513,6 +525,7 @@ void initialize_tlbstate_and_flush(void)
 		!(cr4_read_shadow() & X86_CR4_PCIDE));
 
 	/* Force ASID 0 and force a TLB flush. */
+	//ztodo, per cpu check
 	write_cr3(build_cr3(mm->pgd, 0));
 
 	/* Reinitialize tlbstate. */

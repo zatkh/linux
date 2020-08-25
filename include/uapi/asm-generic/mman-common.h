@@ -21,9 +21,8 @@
 #define MAP_TYPE	0x0f		/* Mask for type of mapping */
 #define MAP_FIXED	0x10		/* Interpret addr exactly */
 #define MAP_ANONYMOUS	0x20		/* don't use a file */
-#define MAP_MEMDOM 0x00800000   /* Protected by memory domain */
 #ifdef CONFIG_MMU_TPT_ENABLED
-
+#define MAP_MEMDOM  0x08000000  /* Protected by memory domain */
 #endif
 
 #ifdef CONFIG_MMAP_ALLOW_UNINITIALIZED
