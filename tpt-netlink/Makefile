@@ -2,7 +2,10 @@
 KDIR := /lib/modules/4.19.42+/build
 
 
-obj-m += netlinktest.o 
+obj-m += tpt_module.o 
+
+tpt_module-objs+= door.o netlinktest.o
+
 
 EXTCFLAGS = -Wall -Wextra -g
 

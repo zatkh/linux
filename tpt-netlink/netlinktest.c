@@ -10,6 +10,7 @@
 #include <linux/mdom.h>
 #include <linux/sched.h>
 #include "nlink.h"
+#include "door.h"
 
 struct sock *nl_sk = NULL;
 struct nlmsghdr *nlh;
@@ -93,6 +94,8 @@ int tpt_internal_functions(int tpt_op, long smv_id, int smv_domain_op,
 }
 
 
+
+    
 int parse_message(char* message){
     char **buf;
     char *token;
@@ -122,15 +125,14 @@ int parse_message(char* message){
     while( (token = strsep(buf, ",")) ){
 
         i++;
-//        printk("token %d = %s\n", i, token);
-        
-        /* token 1 */
-        // decide message type
+
         if(message_type == -1){
             if( (strcmp(token, "memdom")) == 0)
                 message_type = 0;
             else if( (strcmp(token, "smv")) == 0)
                 message_type = 1;
+            else if( (strcmp(token, "door")) == 0)
+                message_type = 2;    
             else if( (strcmp(token, "gdb_breakpoint")) == 0){
                 message_type = 9;
                 break;
@@ -139,9 +141,22 @@ int parse_message(char* message){
             continue;
         }
         
-        /* token 2 */
         // decide operation
-        if( message_type == 0 && memdom_op == -1){  // memdom
+
+        if(message_type ==2)
+        {
+            printk(KERN_INFO "door ops: %s\n");
+            if( (strcmp(token, "open")) == 0 )
+               door_internal_functions(0,0,0);
+            else if( (strcmp(token, "close")) == 0 )
+                door_internal_functions(1,0,0);
+             else if( (strcmp(token, "call")) == 0 )
+               door_internal_functions(2,0,0);
+
+
+
+        }
+        else if( message_type == 0 && memdom_op == -1){  // memdom
             printk(KERN_INFO "memdom token 2 (op): %s\n", token);
 
             if( (strcmp(token, "create")) == 0 )
