@@ -10,6 +10,9 @@
 #include <linux/mount.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/cred.h>
+#include <linux/blkdev.h>
+
 
 #include <asm/uaccess.h>
 #include <asm/string.h>
@@ -41,6 +44,7 @@
 
 #define min( x, y ) ( ( ( x ) < ( y ) ) ? ( x ) : ( y ) )
 
+#define DOOR_DEFAULT_MODE 0600
 
 typedef enum { door_scalar_arg, 
 	       door_buffer_arg, 
@@ -173,6 +177,16 @@ typedef struct door_trespasser
 
 static LIST_HEAD( doors );
 static spinlock_t doors_spinlock;
+
+struct door_inode_info {
+	struct door		*di_door;
+};
+static struct vfsmount *door_mnt;
+static struct inode_operations door_inode_ops = {
+};
+
+static int door_open( struct inode *inode, struct file *file );
+extern struct file *alloc_empty_file(int, const struct cred *);
 
 static struct file_operations door_fops = {
 	open:		door_open,
@@ -347,11 +361,12 @@ static int put_door( door *door )
 }
 
 
-static int door_open( struct file *file )
+static int door_open( struct inode *inode, struct file *file )
 {
 	door *door;
 	int result;
 
+	HASSERT( inode != NULL );
 	HASSERT( file != NULL );
 
 
@@ -513,21 +528,96 @@ static int door_init( door *door, door_setup *setup )
 	return result;
 }
 
+/*
+static int _alloc_door_fd(int __user *filde)
+{
+	struct file *file;
+	int fd;
+	int error;
+
+	error = __do_pipe_flags(fd, file, 0);
+	if (!error) {
+		if (unlikely(copy_to_user(filde, fd, sizeof(fd)))) {
+			fput(file);
+			put_unused_fd(fd);
+			error = -EFAULT;
+		} else {
+			fd_install(fd, file);
+		}
+	}
+	return error;
+}
+*/
+
+static struct inode *door_inode_alloc(struct door *dr)
+{
+	struct inode *ino;
+	//struct door_inode_info *info;
+
+	ino = new_inode(door_mnt->mnt_sb);
+	if (!ino)
+		return 0;
+
+	ino->i_mode = S_IFIFO | DOOR_DEFAULT_MODE;
+	ino->i_uid = current_fsuid();
+	ino->i_gid = current_fsgid();
+
+	ino->i_atime = ino->i_mtime = ino->i_ctime = current_time(ino);
+	ino->i_op = &door_inode_ops;
+	ino->i_fop = &door_fops;
+	ino->i_blkbits = blksize_bits(PAGE_SIZE);
+
+	/*
+	 * A useful suggestion from linux/fs/pipe.c:
+	 *
+	 * Mark the inode dirty from the very beginning,
+	 * that way it will never be moved to the dirty
+	 * list because "mark_inode_dirty()" will think
+	 * that it already _is_ on the dirty list.
+	 */
+	ino->i_state = I_DIRTY;
+
+	//info = get_door_inode_info(ino);
+	//info->di_door = dr;
+
+	return ino;
+}
+
+static struct dentry *door_dentry_alloc(struct inode *ino)
+{
+	struct dentry *dent;
+	struct qstr this;
+	char name[32];
+
+	sprintf(name, "[%lu]", ino->i_ino);
+	this.name = name;
+	this.len = strlen(name);
+	this.hash = ino->i_ino; /* will go */
+	dent = d_alloc(door_mnt->mnt_sb->s_root, &this);
+	if (!dent)
+		goto bad_d_alloc;
+	d_add(dent, ino);
+
+bad_d_alloc:
+	return dent;
+}
 
 static int door_create_fd(struct door *dr)
 {
 	int fd;
 	struct file *filp;
 	struct inode *ino;
+    struct path path;
 	int error;
 
-	fd = get_unused_fd();
+	fd = get_unused_fd_flags(0);
+
 	if (fd < 0)
 		return fd;
 
 	error = -ENFILE;
-	filp = get_empty_filp();
-	if (!filp)
+	filp = alloc_empty_file(0, current_cred());
+	if (IS_ERR(filp))
 		goto bad_filp;
 
 	filp->f_op = &door_fops;
@@ -541,22 +631,24 @@ static int door_create_fd(struct door *dr)
 		goto bad_inode_alloc;
 
 	error = -ENOMEM;
-	filp->f_path.dentry->d_inode = door_dentry_alloc(ino);
+	filp->f_path.dentry = door_dentry_alloc(ino);
 	if (!filp->f_path.dentry->d_inode)
 		goto bad_dent;
 
-	filp->f_vfsmnt = mntget(door_mnt);
+	filp->f_path.mnt = mntget(door_mnt);
 
-	current->files->fd[fd] = filp;
+	//current->files->fd[fd] = filp;
 	dr->ref_count++;
 
-	DOOR_DENTRY_COUNTS("door_create_fd", filp->f_path.dentry->d_inode);
+	//DOOR_DENTRY_COUNTS("door_create_fd", filp->f_path.dentry->d_inode);
 
+
+    fd_install(fd, filp);
 	return fd;
 
 bad_dent:
 bad_inode_alloc:
-	put_filp(filp);
+	fput(filp);
 bad_filp:
 	put_unused_fd(fd);
 	return error;
@@ -723,3 +815,5 @@ int door_internal_functions(int door_ops, int fd , unsigned long arg)
 
 
 }
+
+
