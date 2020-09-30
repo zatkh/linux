@@ -107,7 +107,7 @@
 #ifdef CONFIG_MMU_TPT_ENABLED
 #include <linux/tpt.h>
 #include <linux/mdom.h>
-
+#define NUM_CLONE_MEMVIEWS 10
 #endif
 
 /*
@@ -604,7 +604,7 @@ static void check_mm(struct mm_struct *mm)
 	int i;
 #ifdef CONFIG_MMU_TPT_ENABLED	
 	if (mm->using_smv) {
-		slog(KERN_INFO "[%s] %s smv %d checking mm %p\n", __func__, current->comm, current->smv_id, mm);
+		tpt_debug(" %s smv %d checking mm %p\n",  current->comm, current->smv_id, mm);
 	}
 #endif	
 
@@ -637,7 +637,7 @@ void __mmdrop(struct mm_struct *mm)
 {
 #ifdef CONFIG_MMU_TPT_ENABLED	
 	if (mm->using_smv) {
-		slog(KERN_INFO "[%s] %s in smv %d mm: %p\n", __func__, current->comm, current->smv_id, mm);
+		tpt_debug(" %s in smv %d mm: %p\n",  current->comm, current->smv_id, mm);
 	}
 #endif	
 	BUG_ON(mm == &init_mm);
@@ -2179,6 +2179,8 @@ struct task_struct *fork_idle(int cpu)
  *
  * It copies the process, and if successful kick-starts
  * it and waits for it to finish using the VM if required.
+ * for now use parent_tidptr for mem_view tables and child_tidptr for mdoms in case of using CLONE_MEM_VIEW
+ * we need more clean way of doing that later.  if mvs are empty we create one and add it to the thread's tpts.
  */
 long _do_fork(unsigned long clone_flags,
 	      unsigned long stack_start,
@@ -2192,6 +2194,11 @@ long _do_fork(unsigned long clone_flags,
 	struct task_struct *p;
 	int trace = 0;
 	long nr;
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+	int mvs[NUM_CLONE_MEMVIEWS];
+	int i=0;
+#endif	
 
 	/*
 	 * Determine whether and which event to report to ptracer.  When
@@ -2227,8 +2234,36 @@ long _do_fork(unsigned long clone_flags,
 	pid = get_task_pid(p, PIDTYPE_PID);
 	nr = pid_vnr(pid);
 
-	if (clone_flags & CLONE_PARENT_SETTID)
+
+#ifdef CONFIG_MMU_TPT_ENABLED
+	if (clone_flags & CLONE_MEM_VIEW)
+		{
+		
+			copy_from_user( mvs,parent_tidptr, sizeof(mvs));
+			if(mvs!=NULL && mvs[0] !=0 )
+			{
+				//create mvs[0] mvs 
+				for(i=0; i<NUM_CLONE_MEMVIEWS;i++)
+				tpt_debug("mv[%d]: ,",mvs[i]);
+			}
+			else if(mvs[0] ==0){
+				//attach the global mv to the coproc
+			}
+			else{
+				//create one mv nad attach to a mdom
+			}
+			
+		}
+
+	else if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, parent_tidptr);
+
+#else
+
+if (clone_flags & CLONE_PARENT_SETTID)
+		put_user(nr, parent_tidptr);
+
+#endif
 
 	if (clone_flags & CLONE_VFORK) {
 		p->vfork_done = &vfork;
@@ -2255,7 +2290,7 @@ long _do_fork(unsigned long clone_flags,
 	 */
 	if (current->mm) {
 		if ( current->mm->standby_smv_id != -1 ) {
-			slog(KERN_INFO "[%s] forked smv thread running in smv %d\n", __func__, current->mm->standby_smv_id);
+			tpt_debug(" forked smv thread running in smv %d\n",  current->mm->standby_smv_id);
   			p->smv_id = current->mm->standby_smv_id;
 			current->mm->standby_smv_id = -1;
 		}

@@ -50,37 +50,37 @@ int memdom_internal_functions(int memdom_op, long memdom_id1,
     int rc = 0;
     unsigned long memdom_data_addr = 0;
     if(memdom_op == 0){        
-        printk( "[%s] memdom_create()\n", __func__);
+        tpt_debug("memdom_create()\n");
         rc = memdom_create();        
     }
     else if(memdom_op == 1){        
-        printk( "[%s] memdom_kill(%ld)\n", __func__, memdom_id1);
+        tpt_debug( "memdom_kill(%ld)\n", memdom_id1);
         rc = memdom_kill(memdom_id1, NULL);        
     }
     else if(memdom_op == 2){        
-        printk(KERN_CRIT "[%s] memdom_mmap_register(%ld)\n", __func__, memdom_id1);
+        tpt_debug( " memdom_mmap_register(%ld)\n", memdom_id1);
         rc = memdom_mmap_register(memdom_id1);
     }
     else if(memdom_op == 3){
 
         rc = kstrtoul(memdom_data, 10, &memdom_data_addr);
           if (rc) {
-              printk("[%s] Error: convert memdom_data address to unsigned long failed, returned %d\n", __func__, rc);
+              tpt_debug("Error: convert memdom_data address to unsigned long failed, returned %d\n",  rc);
           }
-          printk("[%s] memdom_munmap(%ld, 0x%08lx)\n", __func__, memdom_id1, memdom_data_addr);
+          tpt_debug("memdom_munmap(%ld, 0x%08lx)\n",  memdom_id1, memdom_data_addr);
         rc = memdom_munmap(memdom_data_addr);
     }
     else if(memdom_op == 4){      
         if(memdom_priv_op == 0){            
-            printk(KERN_CRIT "[%s] memdom_priv_get(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            tpt_debug( "memdom_priv_get(%ld, %ld)\n",  memdom_id1, smv_id);
             rc = memdom_priv_get(memdom_id1, smv_id);            
         }        
         else if(memdom_priv_op == 1){            
-            printk(KERN_CRIT "[%s] memdom_priv_add(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            tpt_debug( "memdom_priv_add(%ld, %ld, %ld)\n",  memdom_id1, smv_id, memdom_priv_value);
             rc = memdom_priv_add(memdom_id1, smv_id, memdom_priv_value);            
         }        
         else if(memdom_priv_op == 2){            
-            printk(KERN_CRIT "[%s] memdom_priv_del(%ld, %ld, %ld)\n", __func__, memdom_id1, smv_id, memdom_priv_value);
+            tpt_debug( "memdom_priv_del(%ld, %ld, %ld)\n",  memdom_id1, smv_id, memdom_priv_value);
             rc = memdom_priv_del(memdom_id1, smv_id, memdom_priv_value);            
         }        
     }
@@ -94,22 +94,22 @@ int tpt_internal_functions(int tpt_op, long smv_id, int smv_domain_op,
     int rc = 0;
 
     if(tpt_op == 0){
-        printk( "[%s] smv_create()\n", __func__);
+        tpt_debug( "smv_create()\n");
         rc = smv_create();
     }else if(tpt_op == 1){
-        printk( "[%s] smv_kill(%ld)\n", __func__, smv_id);
+        tpt_debug( "smv_kill(%ld)\n",  smv_id);
         rc = smv_kill(smv_id, NULL);
     }else if(tpt_op == 2){
-        printk( "[%s] smv_run(%ld)\n", __func__, smv_id);
+        tpt_debug( "smv_run(%ld)\n",  smv_id);
     }else if(tpt_op == 3){
         if(smv_domain_op == 0){
-            printk( "[%s] smv_join_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            tpt_debug( "smv_join_domain(%ld, %ld)\n",  memdom_id1, smv_id);
             rc = smv_attach_mdom(memdom_id1, smv_id);
         }else if(smv_domain_op == 1){
-            printk( "[%s] smv_leave_domain(%ld, %ld)\n", __func__, smv_id, memdom_id1);
+            tpt_debug( "smv_leave_domain(%ld, %ld)\n",  smv_id, memdom_id1);
             rc = smv_leave_mdom(memdom_id1, smv_id, NULL);
         }else if(smv_domain_op == 2){
-            printk("[%s] smv_is_in_domain(%ld, %ld)\n", __func__, memdom_id1, smv_id);
+            tpt_debug("smv_is_in_domain(%ld, %ld)\n",  memdom_id1, smv_id);
             rc = is_smv_joined_mdom(memdom_id1, smv_id);
         }
     }
@@ -139,12 +139,12 @@ int parse_message(char* message){
         return 0;
     buf = &message;
 
-    printk(KERN_CRIT "parsing: %s\n", message);
+    tpt_debug( "parsing: %s\n", message);
 
     while( (token = strsep(buf, ",")) ){
 
         i++;
-//        printk("token %d = %s\n", i, token);
+//        tpt_debug("token %d = %s\n", i, token);
         
         /* token 1 */
         // decide message type
@@ -164,7 +164,7 @@ int parse_message(char* message){
         /* token 2 */
         // decide operation
         if( message_type == 0 && memdom_op == -1){  // memdom
-            printk(KERN_CRIT "memdom token 2 (op): %s\n", token);
+            tpt_debug( "memdom token 2 (op): %s\n", token);
 
             if( (strcmp(token, "create")) == 0 )
                 memdom_op = 0;
@@ -186,13 +186,13 @@ int parse_message(char* message){
             else if( (strcmp(token, "dumppgtable")) == 0) 
                 memdom_op = 9;
             else {
-                printk(KERN_CRIT "Error: received undefined memdom ops: %s\n", token);
+                tpt_debug( "Error: received undefined memdom ops: %s\n", token);
                 return -1;
             }
             continue;
         }
         else if( message_type == 1 && tpt_op == -1){ // smv
-            printk(KERN_CRIT "smv token 2 (op): %s\n", token);
+            tpt_debug( "smv token 2 (op): %s\n", token);
             if( (strcmp(token, "create")) == 0 )
                 tpt_op = 0;
             else if( (strcmp(token, "kill")) == 0 )
@@ -214,7 +214,7 @@ int parse_message(char* message){
             else if ((strcmp(token, "getsmvid")) == 0) 
                 tpt_op = 10; //get smv id
             else {
-                printk(KERN_CRIT "Error: received undefined smv ops: %s\n", token);
+                tpt_debug( "Error: received undefined smv ops: %s\n", token);
                 return -1;
             }
             continue;
@@ -223,7 +223,7 @@ int parse_message(char* message){
         /* token 3 */
         // memdom: get memdom id
         if( message_type == 0 && (memdom_op >= 1 && memdom_op <=4) && memdom_id1 == -1 ){
-            printk(KERN_CRIT "memdom token 3 (memdom_id): %s\n", token);
+            tpt_debug( "memdom token 3 (memdom_id): %s\n", token);
             if( kstrtol(token, 10, &memdom_id1) ){
                 return -1;
             }
@@ -232,17 +232,17 @@ int parse_message(char* message){
         // memdom: get query addr
         else if( message_type == 0 && memdom_op == 5 ){
             unsigned long address = 0;
-            printk(KERN_CRIT "memdom token 3 (addr): %s\n", token);
+            tpt_debug( "memdom token 3 (addr): %s\n", token);
             if( kstrtoul(token, 10, &address) ){
                 return -1;
             }
-            printk(KERN_CRIT "addr: 0x%16lx\n", address);
+            tpt_debug( "addr: 0x%16lx\n", address);
             return memdom_query_id(address);
         }
         
         // smv: get smv id
         else if( message_type == 1 && (tpt_op >= 1 || tpt_op <= 6) && smv_id == -1){
-            printk(KERN_CRIT "memdom token 3 (smv_id): %s\n", token);
+            tpt_debug( "memdom token 3 (smv_id): %s\n", token);
             if( kstrtol(token, 10, &smv_id) ){
                 return -1;
             }
@@ -252,7 +252,7 @@ int parse_message(char* message){
         /* token 4*/
         // memdom
         if( message_type == 0 && (memdom_nbytes == -1 && memdom_data == NULL && smv_id == -1)){
-            printk(KERN_CRIT "memdom token 4: %s\n", token);
+            tpt_debug( "memdom token 4: %s\n", token);
 
             // memdom allocate, get nbytes
             // deprecated, implemented in user space library
@@ -282,7 +282,7 @@ int parse_message(char* message){
             else if( (strcmp(token, "switch")) == 0)
                 smv_domain_op = 3;
             else {
-                printk(KERN_CRIT "Error: received undefined smv domain ops: %s\n", token);
+                tpt_debug( "Error: received undefined smv domain ops: %s\n", token);
                 return -1;
             }
             continue;
@@ -293,7 +293,7 @@ int parse_message(char* message){
         if(message_type == 0){
             /* Get memdom privilege operations */
             if(memdom_op == 4 && memdom_priv_op == -1){
-                printk(KERN_CRIT "memdom token 5 (memdom_priv_op): %s\n", token);
+                tpt_debug( "memdom token 5 (memdom_priv_op): %s\n", token);
 
                 if( (strcmp(token, "get")) == 0)
                     memdom_priv_op = 0;
@@ -304,16 +304,16 @@ int parse_message(char* message){
                 else if( (strcmp(token, "mod")) == 0)
                     memdom_priv_op = 3;
                 else{
-                    printk(KERN_CRIT "Error: received undefined memdom priv ops: %s\n", token);
+                    tpt_debug( "Error: received undefined memdom priv ops: %s\n", token);
                     return -1;
                 }
                 continue;           
             }
             /* Get the starting address of malloced memory block*/
             else if (memdom_op == 2 && malloc_start == 0) {
-                printk(KERN_CRIT "memdom token 5 (starting address of malloced memory block): %s\n", token);
+                tpt_debug( "memdom token 5 (starting address of malloced memory block): %s\n", token);
                 if(kstrtoul(token, 10, &malloc_start)){
-                    printk(KERN_CRIT "Error: failed to convert malloc addr: %lu\n", malloc_start);
+                    tpt_debug( "Error: failed to convert malloc addr: %lu\n", malloc_start);
                     return -1;
                 }
                 continue;           
@@ -322,7 +322,7 @@ int parse_message(char* message){
         }
             // smv gets memory domain id
         else if(message_type == 1 && tpt_op == 3 && memdom_id1 == -1){
-            printk(KERN_CRIT "smv gets memdom_id1: %s\n", token);
+            tpt_debug( "smv gets memdom_id1: %s\n", token);
             if( kstrtol(token, 10, &memdom_id1) )
                 return -1;
             continue;
@@ -332,17 +332,17 @@ int parse_message(char* message){
         /* token 6*/
         // memdom gets memdom privilege value 
         if( message_type == 0 && smv_id != -1 && memdom_priv_op != -1 && memdom_priv_value == -1){
-            printk(KERN_CRIT "memdom token 6 (memdom_priv_value): %s\n", token);
+            tpt_debug( "memdom token 6 (memdom_priv_value): %s\n", token);
 
             if( kstrtol(token, 10, &memdom_priv_value) ){
-                printk(KERN_CRIT "Error: received undefined memdom priv value: %s\n", token);
+                tpt_debug( "Error: received undefined memdom priv value: %s\n", token);
                 return -1;
             }
             continue;
         }
         // smv gets 2nd memory domain id
         else if( message_type == 1 && memdom_id1 != -1 && memdom_id2 == -1){
-            printk(KERN_CRIT "smv gets memdom_id2: %s\n", token);
+            tpt_debug( "smv gets memdom_id2: %s\n", token);
             if( kstrtol(token, 10, &memdom_id2) )
                 return -1;
             continue;
@@ -371,19 +371,19 @@ int parse_message(char* message){
             return 0;
         }
         else if (tpt_op == 7) {
-            printk(KERN_INFO "[%s] empty op\n", __func__);
+            tpt_debug( "empty op\n");
         } 
         else if (tpt_op == 4) {
             /* Check whether a smv exists */
             return smv_exists(smv_id);
         } 
         else if (tpt_op == 5) {
-            printk(KERN_INFO "[%s] register smv thread running in smv %ld\n", __func__, smv_id);
+            tpt_debug( "register smv thread running in smv %ld\n",  smv_id);
             register_smv_thread(smv_id);
             return 0;
         } 
         else if (tpt_op == 6) {
-            printk(KERN_INFO "[%s] empty op\n", __func__);
+            tpt_debug( "empty op\n");
 //          smv_print_pgtables(smv_id);
             return 0;
         } 
@@ -399,7 +399,7 @@ int parse_message(char* message){
     }
 
     
-//    printk(KERN_DEBUG "[%s] unknown message: %s\n", __func__, message);
+//    tpt_debug(KERN_DEBUG "unknown message: %s\n",  message);
     
     return -1;
     
@@ -426,10 +426,10 @@ int main_handler(struct sk_buff *skb_2,  struct genl_info *info)
     if (na) {
 		mydata = (char *)nla_data(na);
 		if (mydata == NULL)
-			printk(KERN_ERR "[smv_netlink.c] error while receiving data\n");
+			tpt_debug(KERN_ERR "[smv_netlink.c] error while receiving data\n");
     }
 	else
-		printk(KERN_CRIT "no info->attrs %i\n", DOC_EXMPL_A_MSG);
+		tpt_debug( "no info->attrs %i\n", DOC_EXMPL_A_MSG);
     
     /* Parse the received message here */
     result = parse_message(mydata);
@@ -463,7 +463,7 @@ int main_handler(struct sk_buff *skb_2,  struct genl_info *info)
 	return 0;
     
 out:
-    printk("an error occured in main_handler:\n");
+    tpt_debug("an error occured in main_handler:\n");
     
     return 0;
 }
@@ -480,30 +480,30 @@ static const struct genl_ops doc_exmpl_gnl_ops_echo[] = {
 static int __init kernel_comm_init(void)
 {
 	int rc;
-    printk(KERN_INFO "[tpt] initializing the module\n");
+    tpt_debug( "[tpt] initializing the module\n");
 
     rc = genl_register_family(&tpt_gnl_family);
 	if (rc != 0){
-        printk("register ops: %i\n",rc);
+        tpt_debug("register ops: %i\n",rc);
         genl_unregister_family(&tpt_gnl_family);
 		goto failure;
     }    
 	return 0;
 	
 failure:
-    printk(KERN_CRIT "[tpt] error occured while inserting the netlink module\n");
+    tpt_debug( "[tpt] error occured while inserting the netlink module\n");
 	return -1;	
 }
 
 static void __exit kernel_comm_exit(void)
 {
     int ret;
-    printk(KERN_INFO "[tpt] KERNEL COMMUNICATION MODULE EXIT\n");
+    tpt_debug( "[tpt] KERNEL COMMUNICATION MODULE EXIT\n");
 
     /*unregister the family*/
 	ret = genl_unregister_family(&tpt_gnl_family);
 	if(ret !=0){
-        printk("unregister family %i\n",ret);
+        tpt_debug("unregister family %i\n",ret);
     }
 }
 

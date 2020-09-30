@@ -20,6 +20,9 @@
 #define CLONE_PARENT_SETTID	0x00100000	/* set the TID in the parent */
 #define CLONE_CHILD_CLEARTID	0x00200000	/* clear the TID in the child */
 #define CLONE_DETACHED		0x00400000	/* Unused, ignored */
+#else
+#define CLONE_MEM_VIEW		0x00400000	/* create a thread with separate memory views*/
+#endif
 #define CLONE_UNTRACED		0x00800000	/* set if the tracing process can't force CLONE_PTRACE on this clone */
 #define CLONE_CHILD_SETTID	0x01000000	/* set the TID in the child */
 #define CLONE_NEWCGROUP		0x02000000	/* New cgroup namespace */

@@ -1237,10 +1237,10 @@ static noinline void fault_info(unsigned long addr, struct vm_area_struct *vma, 
 		return;
 	}
 
-    slog(KERN_INFO "\n-- [%s] pid %d smv %d page fault at 0x%16lx, page_aligned_addr: 0x%16lx, vma->memdom_id: %d--\n",
-    					__func__, tsk->pid, tsk->smv_id, addr, page_aligned_addr, vma->memdom_id);
-    slog(KERN_INFO "-- [%s] prot: %d, write: %d, user: %d, rsvd: %d, instr_code: %d, vma->memdom_id: %d --\n",
-    		__func__, prot_code, write_code, user_code, rsvd_code, instr_code, vma->memdom_id);
+    tpt_debug( "\n-- smv %d page fault at 0x%16lx, page_aligned_addr: 0x%16lx, vma->memdom_id: %d--\n",
+    					tsk->smv_id, addr, page_aligned_addr, vma->memdom_id);
+    tpt_debug( "-- [%s] prot: %d, write: %d, user: %d, rsvd: %d, instr_code: %d, vma->memdom_id: %d --\n",
+    		 prot_code, write_code, user_code, rsvd_code, instr_code, vma->memdom_id);
 
 	*showed = 1;
 }

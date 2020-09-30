@@ -7,7 +7,7 @@
 #define DOOR_ARG_INOUT ( DOOR_ARG_IN | DOOR_ARG_OUT )
 
 // open door and initialize it if nt before
-#define DOOR_OPEN  0xd001d001
+#define DOOR_CREATE  0xd001d001
 // close the door
 #define DOOR_CLOSE  0xd001d002
 // door call invocation and switch to another domain

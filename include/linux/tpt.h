@@ -7,14 +7,18 @@
 #include <linux/types.h>
 #include <linux/tpt_mm.h>
 
-//#define TPT_LOGGING
-#ifdef TPT_LOGGING
-#define slog(level, fmt, args...) printk(level fmt, ## args...)
-#else
-#define slog(level, fmt, args...) do{ }while(0)
-#endif
 
-/// Ribbons struct metadata ///
+static int __debug = 1;
+
+#define tpt_debug(fmt, arg...)					\
+	do {							\
+		if (__debug)					\
+			printk(KERN_INFO "(pid %d) %s: [%s]: " fmt ,	\
+			       current->pid, "[tpt]" , __FUNCTION__ , 	\
+				## arg);			\
+	} while (0)
+
+
 struct smv_struct {
     int smv_id;
     atomic_t ntask;       // number of tasks running in this smv

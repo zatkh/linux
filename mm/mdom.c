@@ -17,9 +17,9 @@ void memdom_init(void){
                                       sizeof(struct memdom_struct), 0,
                                       SLAB_HWCACHE_ALIGN , NULL);
     if( !memdom_cachep ) {
-        printk(KERN_INFO "[%s] memdom slabs initialization failed...\n", __func__);
+        tpt_debug( " memdom slabs initialization failed...\n");
     } else{
-        printk(KERN_INFO "[%s] memdom slabs initialized\n", __func__);
+        tpt_debug( " memdom slabs initialized\n");
     }
 }
 
@@ -30,7 +30,7 @@ int memdom_claim_all_vmas(int memdom_id){
     int vma_count = 0;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        tpt_debug( " Error, out of bound: memdom %d\n", memdom_id);
         return -1;
     }
     
@@ -41,7 +41,7 @@ int memdom_claim_all_vmas(int memdom_id){
     }
    	up_write(&mm->mmap_sem);
 
-    slog(KERN_INFO "[%s] Initialized %d vmas to be in memdom %d\n", __func__, vma_count, memdom_id);
+    tpt_debug( " Initialized %d vmas to be in memdom %d\n", vma_count, memdom_id);
     return 0;
 }
 
@@ -103,7 +103,7 @@ int memdom_query_id(unsigned long addr){
     vma = find_vma(current->mm, addr);
     if( !vma ) {
         /* Debugging info, should remove printk to avoid information leakage and just go to out label. */
-        printk(KERN_INFO "[%s] addr 0x%16lx is not in any memdom\n", __func__, addr);
+        tpt_debug( " addr 0x%16lx is not in any memdom\n", addr);
         goto out;    
     }
 
@@ -111,11 +111,11 @@ int memdom_query_id(unsigned long addr){
     smv_id = current->smv_id;
     memdom_id = vma->memdom_id;
     if( is_smv_joined_mdom(memdom_id, smv_id) ) {
-        printk(KERN_INFO "[%s] addr 0x%16lx is in memdom %d\n", __func__, addr, memdom_id);        
+        tpt_debug( " addr 0x%16lx is in memdom %d\n", addr, memdom_id);        
     } else {
         /* Debugging info, should remove to avoid information leakage, just set memdom_id to 0 (lying to the caller)*/
-        printk(KERN_ERR "[%s] hey you don't have the privilege to query this address (smv %d, memdom %d)\n", 
-               __func__, smv_id, memdom_id);
+        tpt_debug( " hey you don't have the privilege to query this address (smv %d, memdom %d)\n", 
+                smv_id, memdom_id);
         memdom_id = 0;        
     }
 out:
@@ -162,12 +162,12 @@ int memdom_create(void){
     /* Increase total number of memdom count in mm_struct */
     atomic_inc(&mm->num_memdoms);
 
-    slog(KERN_INFO "Created new memdom with ID %d, #memdom: %d / %d\n", 
+    tpt_debug( "Created new memdom with ID %d, #memdom: %d / %d\n", 
             memdom_id, atomic_read(&mm->num_memdoms), TPT_ARRAY_SIZE);
     goto out;
 
 err:
-    printk(KERN_ERR "Too many memdoms, cannot create more.\n");
+    tpt_debug( "Too many memdoms, cannot create more.\n");
     memdom_id = -1;
 out:
     mutex_unlock(&mm->smv_metadataMutex);
@@ -181,7 +181,7 @@ int memdom_kill(int memdom_id, struct mm_struct *mm){
     int smv_id = 0;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        tpt_debug( " Error, out of bound: memdom %d\n", memdom_id);
         return -1;
     }
 
@@ -202,7 +202,7 @@ int memdom_kill(int memdom_id, struct mm_struct *mm){
         clear_bit(memdom_id, mm->memdom_bitmapInUse);  
         mutex_unlock(&mm->smv_metadataMutex);
     } else {
-        printk(KERN_ERR "Error, trying to delete a memdom that does not exist: memdom %d, #memdoms: %d\n", memdom_id, atomic_read(&mm->num_memdoms));
+        tpt_debug( "Error, trying to delete a memdom that does not exist: memdom %d, #memdoms: %d\n", memdom_id, atomic_read(&mm->num_memdoms));
         mutex_unlock(&mm->smv_metadataMutex);
         return -1;
     }
@@ -224,8 +224,7 @@ int memdom_kill(int memdom_id, struct mm_struct *mm){
     atomic_dec(&mm->num_memdoms);
     mutex_unlock(&mm->smv_metadataMutex);
 
-    slog(KERN_INFO "[%s] Deleted memdom with ID %d, #memdoms: %d / %d\n", 
-            __func__, memdom_id, atomic_read(&mm->num_memdoms), TPT_ARRAY_SIZE);
+    tpt_debug( " Deleted memdom with ID %d, #memdoms: %d / %d\n", memdom_id, atomic_read(&mm->num_memdoms), TPT_ARRAY_SIZE);
 
     return 0;
 }
@@ -236,7 +235,7 @@ void free_all_memdoms(struct mm_struct *mm){
     int index = 0;
     while( atomic_read(&mm->num_memdoms) > 0 ){
         index = find_first_bit(mm->memdom_bitmapInUse, TPT_ARRAY_SIZE);
-        slog(KERN_INFO "[%s] killing memdom %d, remaining #memdom: %d\n", __func__, index, atomic_read(&mm->num_memdoms));
+        tpt_debug( " killing memdom %d, remaining #memdom: %d\n", index, atomic_read(&mm->num_memdoms));
         memdom_kill(index, mm);
     }
 }
@@ -248,7 +247,7 @@ int memdom_priv_add(int memdom_id, int smv_id, int privs){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Error, out of bound: smv %d / memdom %d\n", smv_id, memdom_id);
         return -1;
     }
 
@@ -258,11 +257,11 @@ int memdom_priv_add(int memdom_id, int smv_id, int privs){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        tpt_debug( " memdom %p || smv %p not found\n", memdom, smv);
         return -1;
     }       
     if( !is_smv_joined_mdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        tpt_debug( " smv %d is not in memdom %d, please make smv join memdom first.\n", smv_id, memdom_id);
         return -1;  
     }
     
@@ -272,19 +271,19 @@ int memdom_priv_add(int memdom_id, int smv_id, int privs){
     mutex_lock(&memdom->memdom_mutex);
     if( privs & MEMDOM_READ ) {
         set_bit(smv_id, memdom->smv_bitmapRead);
-        slog(KERN_INFO "[%s] Added read privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Added read privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_WRITE ) {
         set_bit(smv_id, memdom->smv_bitmapWrite);
-        slog(KERN_INFO "[%s] Added write privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Added write privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_EXECUTE ) {
         set_bit(smv_id, memdom->smv_bitmapExecute);
-        slog(KERN_INFO "[%s] Added execute privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Added execute privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_ALLOCATE ) {
         set_bit(smv_id, memdom->smv_bitmapAllocate);
-        slog(KERN_INFO "[%s] Added allocate privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Added allocate privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }    
     mutex_unlock(&memdom->memdom_mutex);     
      
@@ -299,7 +298,7 @@ int memdom_priv_del(int memdom_id, int smv_id, int privs){
     struct mm_struct *mm = current->mm;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Error, out of bound: smv %d / memdom %d\n", smv_id, memdom_id);
         return -1;
     }
 
@@ -309,11 +308,11 @@ int memdom_priv_del(int memdom_id, int smv_id, int privs){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        tpt_debug( " memdom %p || smv %p not found\n", memdom, smv);
         return -1;
     }       
     if( !is_smv_joined_mdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        tpt_debug( " smv %d is not in memdom %d, please make smv join memdom first.\n", smv_id, memdom_id);
         return -1;  
     }
     
@@ -323,19 +322,19 @@ int memdom_priv_del(int memdom_id, int smv_id, int privs){
     mutex_lock(&memdom->memdom_mutex);
     if( privs & MEMDOM_READ ) {
         clear_bit(smv_id, memdom->smv_bitmapRead);
-        slog(KERN_INFO "[%s] Revoked read privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Revoked read privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_WRITE ) {
         clear_bit(smv_id, memdom->smv_bitmapWrite);
-        slog(KERN_INFO "[%s] Revoked write privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Revoked write privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_EXECUTE ) {
         clear_bit(smv_id, memdom->smv_bitmapExecute);
-        slog(KERN_INFO "[%s] Revoked execute privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Revoked execute privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }
     if( privs & MEMDOM_ALLOCATE ) {
         clear_bit(smv_id, memdom->smv_bitmapAllocate);
-        slog(KERN_INFO "[%s] Revoked allocate privilege for smv %d in memdmo %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Revoked allocate privilege for smv %d in memdmo %d\n", smv_id, memdom_id);
     }            
     mutex_unlock(&memdom->memdom_mutex);
 
@@ -351,7 +350,7 @@ int memdom_priv_get(int memdom_id, int smv_id){
     int privs = 0;
 
     if( smv_id > LAST_RIBBON_INDEX || memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: smv %d / memdom %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " Error, out of bound: smv %d / memdom %d\n", smv_id, memdom_id);
         return -1;
     }
 
@@ -361,11 +360,11 @@ int memdom_priv_get(int memdom_id, int smv_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom || !smv ) {
-        printk(KERN_ERR "[%s] memdom %p || smv %p not found\n", __func__, memdom, smv);
+        tpt_debug( " memdom %p || smv %p not found\n", memdom, smv);
         return -1;
     }       
     if( !is_smv_joined_mdom(memdom_id, smv->smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d, please make smv join memdom first.\n", __func__, smv_id, memdom_id);
+        tpt_debug( " smv %d is not in memdom %d, please make smv join memdom first.\n", smv_id, memdom_id);
         return -1;  
     }
     
@@ -387,7 +386,7 @@ int memdom_priv_get(int memdom_id, int smv_id){
     }
     mutex_unlock(&memdom->memdom_mutex);
 
-    slog(KERN_INFO "[%s] smv %d has privs %x in memdom %d\n", __func__, smv_id, privs, memdom_id);
+    tpt_debug( " smv %d has privs %x in memdom %d\n", smv_id, privs, memdom_id);
     return privs;
 }
 EXPORT_SYMBOL(memdom_priv_get);
@@ -398,7 +397,7 @@ int memdom_mmap_register(int memdom_id){
     struct mm_struct *mm = current->mm;
 
     if( memdom_id > LAST_MEMDOM_INDEX ) {
-        printk(KERN_ERR "[%s] Error, out of bound: memdom %d\n", __func__, memdom_id);
+        tpt_debug( " Error, out of bound: memdom %d\n", memdom_id);
         return -1;
     }
 
@@ -407,7 +406,7 @@ int memdom_mmap_register(int memdom_id){
     mutex_unlock(&mm->smv_metadataMutex);
 
     if( !memdom ) {
-        printk(KERN_ERR "[%s] memdom %p not found\n", __func__, memdom);
+        tpt_debug( " memdom %p not found\n", memdom);
         return -1;
     }       
     

@@ -607,7 +607,6 @@ static int door_create_fd(struct door *dr)
 	int fd;
 	struct file *filp;
 	struct inode *ino;
-    struct path path;
 	int error;
 
 	fd = get_unused_fd_flags(0);
@@ -779,7 +778,7 @@ static int door_msg( struct file *file,
 	get_door( gate );
 	door_lock( gate );
 	switch( cmd ) {
-	case DOOR_OPEN: {
+	case DOOR_CREATE: {
 		door_setup setup;
 
 		if( !copy_from_user( &setup, ( void * ) arg, sizeof setup ) ) {

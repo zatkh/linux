@@ -2646,7 +2646,7 @@ static void unmap_region(struct mm_struct *mm,
 		do {
 			smv_id = find_next_bit(mm->smv_bitmapInUse, TPT_ARRAY_SIZE, (smv_id + 1) );		
 			if (smv_id != TPT_ARRAY_SIZE) {
-				slog(KERN_INFO "[%s] smv %d [0x%16lx to 0x%16lx]\n", __func__, smv_id, 
+				tpt_debug("smv %d [0x%16lx to 0x%16lx]\n", smv_id, 
 						prev ? prev->vm_end : FIRST_USER_ADDRESS,
 						next ? next->vm_start : USER_PGTABLES_CEILING );
 				tlb.smv_id = smv_id;
@@ -3163,7 +3163,7 @@ void exit_mmap(struct mm_struct *mm)
 #ifdef CONFIG_MMU_TPT_ENABLED
 	//for debugging
 	if (mm->using_smv) {
-		slog(KERN_INFO "[%s] %s in smv %d mm: %p\n", __func__, current->comm, current->smv_id, mm);
+		tpt_debug("%s in smv %d mm: %p\n", current->comm, current->smv_id, mm);
 	}
 #endif	
 	/* mm's last user has gone, and its about to be pulled down */

@@ -26,7 +26,7 @@ int valid_smv_fault(int smv_id, struct vm_area_struct *vma, unsigned long error_
 
     /* A fault is valid only if the smv has joined this vma's memdom */
     if ( !is_smv_joined_mdom(memdom_id, smv_id) ) {
-        printk(KERN_ERR "[%s] smv %d is not in memdom %d\n", __func__, smv_id, memdom_id);
+        tpt_debug( " smv %d is not in memdom %d\n",  smv_id, memdom_id);
         return 0;
     }
 
@@ -42,7 +42,7 @@ int valid_smv_fault(int smv_id, struct vm_area_struct *vma, unsigned long error_
         if ( privs & MEMDOM_WRITE ) {
             rv = 1;
         } else{
-            printk(KERN_ERR "[%s] smv %d cannot write memdom %d\n", __func__, smv_id, memdom_id);
+            tpt_debug( " smv %d cannot write memdom %d\n",  smv_id, memdom_id);
             rv = 0; // Try to write a unwrittable address
         }
         
@@ -52,7 +52,7 @@ int valid_smv_fault(int smv_id, struct vm_area_struct *vma, unsigned long error_
         if ( privs & MEMDOM_READ ) {
             rv = 1;
         } else{
-            printk(KERN_ERR "[%s] smv %d cannot read memdom %d\n", __func__, smv_id, memdom_id);
+            tpt_debug( " smv %d cannot read memdom %d\n",  smv_id, memdom_id);
             rv = 0; // Try to read a unreadable address
         }
     }
@@ -111,17 +111,17 @@ int smv_tptcpy(int dst_smv, int src_smv,
 
     /* Don't copy page table to the main thread */
     if ( dst_smv == MAIN_THREAD ) {
-        slog(KERN_INFO "[%s] smv %d attempts to overwrite main thread's page table. Skip\n", __func__, src_smv);
+        tpt_debug( " smv %d attempts to overwrite main thread's page table. Skip\n",  src_smv);
         return 0;
     }
     /* Source and destination smvs cannot be the same */
     if ( dst_smv == src_smv ) {
-        slog(KERN_INFO "[%s] smv %d attempts to copy its own page table. Skip.\n", __func__, src_smv);
+        tpt_debug( " smv %d attempts to copy its own page table. Skip.\n",  src_smv);
         return 0;
     }
     /* Main thread should not call this function */
     if ( current->smv_id == MAIN_THREAD ) {
-        slog(KERN_INFO "[%s] main thread smv %d, skip\n", __func__, current->smv_id);
+        tpt_debug( " main thread smv %d, skip\n",  current->smv_id);
         return 0;
     }
 
@@ -148,25 +148,25 @@ int smv_tptcpy(int dst_smv, int src_smv,
     dst_p4d = p4d_alloc(mm, dst_pgd, address);
         if ( !dst_p4d ) {
         rv = VM_FAULT_OOM;
-        printk(KERN_ERR "[%s] Error: !dst_p4d, address 0x%16lx\n", __func__, address);
+        tpt_debug( " Error: !dst_p4d, address 0x%16lx\n",  address);
         goto unlock_src;
     }
     dst_pud = pud_alloc(mm, dst_p4d, address);
     if ( !dst_pud ) {
         rv = VM_FAULT_OOM;
-        printk(KERN_ERR "[%s] Error: !dst_pud, address 0x%16lx\n", __func__, address);
+        tpt_debug( " Error: !dst_pud, address 0x%16lx\n",  address);
         goto unlock_src;
     }
     dst_pmd = pmd_alloc(mm, dst_pud, address);
     if ( !dst_pmd ) {
         rv = VM_FAULT_OOM;
-        printk(KERN_ERR "[%s] Error: !dst_pmd, address 0x%16lx\n", __func__, address);
+        tpt_debug( " Error: !dst_pmd, address 0x%16lx\n",  address);
         goto unlock_src;
     }
     if ( unlikely(pmd_none(*dst_pmd)) &&
          unlikely(__pte_alloc(mm, dst_pmd, address))) {    
          rv = VM_FAULT_OOM;
-         printk(KERN_ERR "[%s] Error: pmd_none(*dst_pud) && __pte_alloc() failed, address 0x%16lx\n", __func__, address);
+         tpt_debug( " Error: pmd_none(*dst_pud) && __pte_alloc() failed, address 0x%16lx\n",  address);
          goto unlock_src;
     }
     dst_pte = pte_offset_map(dst_pmd, address);
@@ -189,18 +189,18 @@ int smv_tptcpy(int dst_smv, int src_smv,
             }
     	    add_mm_rss_vec(mm, rss);
         }
-        slog(KERN_INFO "[%s] src_pte 0x%16lx(smv %d) != dst_pte 0x%16lx (smv %d) for addr 0x%16lx\n", __func__, pte_val(*src_pte), src_smv, pte_val(*dst_pte), dst_smv, address);
+        tpt_debug( " src_pte 0x%16lx(smv %d) != dst_pte 0x%16lx (smv %d) for addr 0x%16lx\n",  pte_val(*src_pte), src_smv, pte_val(*dst_pte), dst_smv, address);
     } else{
-        slog(KERN_INFO "[%s] src_pte (smv %d) == dst_pte (smv %d) for addr 0x%16lx\n", __func__, src_smv, dst_smv, address);
+        tpt_debug( " src_pte (smv %d) == dst_pte (smv %d) for addr 0x%16lx\n",  src_smv, dst_smv, address);
     }
 
     /* Set the actual value to be the same as the source pgtables for destination  */   
     set_pte_at(mm, address, dst_pte, *src_pte);
 
-    slog(KERN_INFO "[%s] src smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
-                __func__, src_smv, pgd_val(*src_pgd), pud_val(*src_pud), pmd_val(*src_pmd), pte_val(*src_pte));
-    slog(KERN_INFO "[%s] dst smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
-                __func__, dst_smv, pgd_val(*dst_pgd), pud_val(*dst_pud), pmd_val(*dst_pmd), pte_val(*dst_pte));
+    tpt_debug( " src smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
+                 src_smv, pgd_val(*src_pgd), pud_val(*src_pud), pmd_val(*src_pmd), pte_val(*src_pte));
+    tpt_debug( " dst smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
+                 dst_smv, pgd_val(*dst_pgd), pud_val(*dst_pud), pmd_val(*dst_pmd), pte_val(*dst_pte));
   
     spin_unlock(dst_ptl);
     pte_unmap(dst_pte);    
@@ -213,10 +213,10 @@ unlock_src:
     pte_unmap(src_pte);
 
     if ( rv != 0 ) {
-        slog(KERN_ERR "[%s] Error: !dst_pud, address 0x%16lx\n", __func__, address);
+        tpt_debug( " Error: !dst_pud, address 0x%16lx\n",  address);
     } else{
-        slog(KERN_INFO "[%s] smv %d copied pte from MAIN_THREAD. addr 0x%16lx, *src_pte 0x%16lx, *dst_pte 0x%16lx\n", 
-               __func__, dst_smv, address, pte_val(*src_pte), pte_val(*dst_pte));
+        tpt_debug( " smv %d copied pte from MAIN_THREAD. addr 0x%16lx, *src_pte 0x%16lx, *dst_pte 0x%16lx\n", 
+                dst_smv, address, pte_val(*src_pte), pte_val(*dst_pte));
     }
 	mutex_unlock(&mm->smv_metadataMutex);
     return rv;

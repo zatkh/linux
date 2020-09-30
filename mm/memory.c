@@ -4341,16 +4341,15 @@ out:
 			smv_tptcpy(current->smv_id, MAIN_THREAD, address, flags, vma);
 		}
 		if (rv == 0) {
-			slog(KERN_INFO "[%s] addr 0x%16lx done\n", __func__, address);
+			tpt_debug( "addr 0x%16lx done\n", address);
 		} else{
-			slog(KERN_INFO "[%s] addr 0x%16lx failed\n", __func__, address);
+			tpt_debug( "addr 0x%16lx failed\n", address);
 		}
 		if ( current->smv_id == MAIN_THREAD) {
-			slog(KERN_INFO "[%s] smv %d: pgd_val:0x%16lx, pud_val:0x%16lx, pmd_val:0x%16lx, pte_val:0x%16lx\n", 
-					__func__, current->smv_id, pgd_val(*pgd), pud_val(*pud), pmd_val(*pmd), pte_val(*pte));
+			tpt_debug( "smv %d: pgd_val:0x%16lx\n", current->smv_id, pgd_val(*pgd));
 		}
-		slog(KERN_INFO "[%s] cr3: 0x%16lx, smv %d: mm->pgd: %p, mm->pgd_smv[%d]: %p, mm->pgd_smv[MAIN_THREAD]: %p\n", 
-				__func__, read_cr3(), current->smv_id, mm->pgd, current->smv_id, 
+		tpt_debug(" cr3: 0x%16lx, smv %d: mm->pgd: %p, mm->pgd_smv[%d]: %p, mm->pgd_smv[MAIN_THREAD]: %p\n", 
+				__read_cr3(), current->smv_id, mm->pgd, current->smv_id, 
 				mm->pgd_smv[current->smv_id], mm->pgd_smv[MAIN_THREAD]);
 
 	}
