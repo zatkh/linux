@@ -441,7 +441,7 @@ int smv_main_init(void){
         tpt_debug("current task does not have mm\n");
         return -1;
     }
-    tpt_debug("------------------------------------\n";
+    tpt_debug("------------------------------------\n");
     mm->using_smv = 1;
 
     // Create a global smv and memdom with ID: MAIN_THREAD, and set up metadata 
