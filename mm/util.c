@@ -364,6 +364,33 @@ unsigned long vm_mmap_pgoff(struct file *file, unsigned long addr,
 	return ret;
 }
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+unsigned long udom_vm_mmap_pgoff(unsigned long udom_id, struct file *file, unsigned long addr,
+	unsigned long len, unsigned long prot,
+	unsigned long flag, unsigned long pgoff)
+{
+	unsigned long ret;
+	struct mm_struct *mm = current->mm;
+	unsigned long populate;
+	LIST_HEAD(uf);
+
+	ret = security_mmap_file(file, prot, flag);
+	if (!ret) {
+		if (down_write_killable(&mm->mmap_sem))
+			return -EINTR;
+	ret = udom_do_mmap_pgoff(udom_id,file, addr, len, prot, flag, pgoff,
+				    &populate, &uf);
+		up_write(&mm->mmap_sem);
+		userfaultfd_unmap_complete(mm, &uf);
+		if (populate)
+			mm_populate(ret, populate);
+	}
+	return ret;
+}
+
+#endif // CONFIG_EXTENDED_LSM_DIFC
+
 unsigned long vm_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot,
 	unsigned long flag, unsigned long offset)

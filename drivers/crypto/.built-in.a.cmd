@@ -1,0 +1,1 @@
+cmd_drivers/crypto/built-in.a := rm -f drivers/crypto/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/crypto/built-in.a drivers/crypto/hisilicon/built-in.a

@@ -1,0 +1,1 @@
+cmd_drivers/net/built-in.a := rm -f drivers/net/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/net/built-in.a drivers/net/mii.o drivers/net/Space.o drivers/net/loopback.o drivers/net/phy/built-in.a drivers/net/virtio_net.o drivers/net/ethernet/built-in.a drivers/net/usb/built-in.a drivers/net/net_failover.o

@@ -1,0 +1,1 @@
+cmd_kernel/power/built-in.a := rm -f kernel/power/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD kernel/power/built-in.a kernel/power/qos.o kernel/power/main.o kernel/power/console.o kernel/power/process.o kernel/power/suspend.o kernel/power/poweroff.o

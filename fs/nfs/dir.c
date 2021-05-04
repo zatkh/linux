@@ -1693,8 +1693,14 @@ EXPORT_SYMBOL_GPL(nfs_instantiate);
  * that the operation succeeded on the server, but an error in the
  * reply path made it appear to have failed.
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int nfs_create(struct inode *dir, struct dentry *dentry,
 		umode_t mode, bool excl)
+#else
+int nfs_create(struct inode *dir, struct dentry *dentry,
+		umode_t mode, bool excl,void* label)
+#endif		
 {
 	struct iattr attr;
 	int open_flags = excl ? O_CREAT | O_EXCL : O_CREAT;
@@ -1721,8 +1727,14 @@ EXPORT_SYMBOL_GPL(nfs_create);
 /*
  * See comments for nfs_proc_create regarding failed operations.
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int
 nfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+#else
+int
+nfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev,void* label)
+#endif
 {
 	struct iattr attr;
 	int status;
@@ -1748,7 +1760,12 @@ EXPORT_SYMBOL_GPL(nfs_mknod);
 /*
  * See comments for nfs_proc_create regarding failed operations.
  */
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int nfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+int nfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct iattr attr;
 	int error;

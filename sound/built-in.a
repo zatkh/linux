@@ -1,0 +1,49 @@
+!<thin>
+//                                              360       `
+sound_core.o/
+core/sound.o/
+core/init.o/
+core/memory.o/
+core/control.o/
+core/misc.o/
+core/device.o/
+core/info.o/
+core/vmaster.o/
+core/timer.o/
+core/pcm.o/
+core/pcm_native.o/
+core/pcm_lib.o/
+core/pcm_misc.o/
+core/pcm_memory.o/
+core/memalloc.o/
+core/pcm_timer.o/
+pci/ac97/ac97_codec.o/
+pci/ac97/ac97_pcm.o/
+pci/ac97/ac97_proc.o/
+arm/aaci.o/
+ac97_bus.o/
+last.o/
+
+/0              0           0     0     644     66180     `
+/14             0           0     0     644     119312    `
+/28             0           0     0     644     159200    `
+/41             0           0     0     644     63720     `
+/56             0           0     0     644     240568    `
+/72             0           0     0     644     56908     `
+/85             0           0     0     644     69232     `
+/100            0           0     0     644     155924    `
+/113            0           0     0     644     83180     `
+/129            0           0     0     644     273592    `
+/143            0           0     0     644     192060    `
+/155            0           0     0     644     321232    `
+/174            0           0     0     644     250120    `
+/190            0           0     0     644     121636    `
+/207            0           0     0     644     130068    `
+/226            0           0     0     644     113076    `
+/243            0           0     0     644     114852    `
+/261            0           0     0     644     392588    `
+/284            0           0     0     644     138828    `
+/305            0           0     0     644     138640    `
+/327            0           0     0     644     171512    `
+/339            0           0     0     644     125488    `
+/351            0           0     0     644     55636     `

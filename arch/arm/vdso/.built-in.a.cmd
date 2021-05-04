@@ -1,0 +1,1 @@
+cmd_arch/arm/vdso/built-in.a := rm -f arch/arm/vdso/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD arch/arm/vdso/built-in.a arch/arm/vdso/vdso.o

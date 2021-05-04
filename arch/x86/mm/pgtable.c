@@ -442,14 +442,7 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 	if (pgd == NULL)
 		goto out;
 
-#ifndef CONFIG_MMU_TPT_ENABLED
-
 	mm->pgd = pgd;
-#else
-	if (mm->using_smv == 0) {
-		mm->pgd = pgd;
-	}
-#endif	
 
 	if (preallocate_pmds(mm, pmds, PREALLOCATED_PMDS) != 0)
 		goto out_free_pgd;

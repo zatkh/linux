@@ -457,6 +457,15 @@ extern unsigned long  __must_check vm_mmap_pgoff(struct file *, unsigned long,
         unsigned long, unsigned long,
         unsigned long, unsigned long);
 
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+unsigned long udom_vm_mmap_pgoff(unsigned long udom_id, struct file *file, unsigned long addr,
+	unsigned long len, unsigned long prot,
+	unsigned long flag, unsigned long pgoff);
+
+#endif		
+
 extern void set_pageblock_order(void);
 unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 					    struct list_head *page_list);

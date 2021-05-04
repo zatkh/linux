@@ -1,0 +1,1 @@
+cmd_drivers/irqchip/built-in.a := rm -f drivers/irqchip/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/irqchip/built-in.a drivers/irqchip/irqchip.o drivers/irqchip/irq-gic.o drivers/irqchip/irq-gic-common.o

@@ -113,6 +113,25 @@ union bpf_attr;
 #define __MAP6(m,t,a,...) m(t,a), __MAP5(m,__VA_ARGS__)
 #define __MAP(n,...) __MAP##n(__VA_ARGS__)
 
+
+#define __COMPARGS6
+#define __COMPARGS5 , 0
+#define __COMPARGS4 , 0, 0
+#define __COMPARGS3 , 0, 0, 0
+#define __COMPARGS2 , 0, 0, 0, 0
+#define __COMPARGS1 , 0, 0, 0, 0, 0
+#define __COMPARGS0 0, 0, 0, 0, 0, 0
+#define __COMPARGS(n) __COMPARGS##n
+
+#define __COMPDECL6
+#define __COMPDECL5
+#define __COMPDECL4
+#define __COMPDECL3
+#define __COMPDECL2
+#define __COMPDECL1
+#define __COMPDECL0 void
+#define __COMPDECL(n) __COMPDECL##n
+
 #define __SC_DECL(t, a)	t a
 #define __TYPE_AS(t, v)	__same_type((__force t)0, v)
 #define __TYPE_IS_L(t)	(__TYPE_AS(t, 0L))
@@ -202,6 +221,51 @@ static inline int is_syscall_trace_event(struct trace_event_call *tp_event)
 	return 0;
 }
 #endif
+
+#ifdef CONFIG_EXTENDED_LSM
+/*
+ * storing syscall args from seccomp filters
+ * 
+ * @addr: syscall address
+ * @args: syscall arguments C type (i.e. __SACT__* values)
+ */
+struct syscall_argdesc {
+	const void *addr;
+	u8 args[6];
+};
+
+/* Syscall Argument C Type (none means no argument) */
+#define __SACT__NONE			0
+#define __SACT__OTHER			1
+#define __SACT__CONST_CHAR_PTR		2
+#define __SACT__CHAR_PTR		3
+
+#define __SC_ARGDESC_TYPE(t, a)						\
+	__builtin_types_compatible_p(typeof(t), const char *) ?		\
+	__SACT__CONST_CHAR_PTR :					\
+	__builtin_types_compatible_p(typeof(t), char *) ?		\
+	__SACT__CHAR_PTR :						\
+	__SACT__OTHER
+
+#define SYSCALL_FILL_ARGDESC_SECTION(_section, sname, nb, ...)		\
+	asmlinkage long sname(__MAP(nb, __SC_DECL, __VA_ARGS__)		\
+			__COMPDECL(nb));				\
+	static struct syscall_argdesc __used				\
+		__attribute__((section(_section)))			\
+		syscall_argdesc_##sname = {				\
+			.addr = sname,					\
+			.args = {					\
+				__MAP(nb, __SC_ARGDESC_TYPE, __VA_ARGS__)\
+				__COMPARGS(nb)				\
+			},						\
+		};
+
+#define SYSCALL_FILL_ARGDESC(...)	\
+	SYSCALL_FILL_ARGDESC_SECTION("__syscalls_argdesc", __VA_ARGS__)
+
+#else
+#define SYSCALL_FILL_ARGDESC(...)
+#endif /* CONFIG_EXTENDED_LSM */
 
 #ifndef SYSCALL_DEFINE0
 #define SYSCALL_DEFINE0(sname)					\
@@ -900,6 +964,15 @@ asmlinkage long sys_pwritev2(unsigned long fd, const struct iovec __user *vec,
 			    rwf_t flags);
 asmlinkage long sys_pkey_mprotect(unsigned long start, size_t len,
 				  unsigned long prot, int pkey);
+
+asmlinkage long sys_udom_mprotect(unsigned long start, size_t len,
+				  unsigned long prot, int udom);
+
+
+asmlinkage long sys_udom_mmap_pgoff (unsigned long udom_id, unsigned long addr, unsigned long len,
+		unsigned long prot, unsigned long flags,
+		unsigned long fd);				  
+				  
 asmlinkage long sys_pkey_alloc(unsigned long flags, unsigned long init_val);
 asmlinkage long sys_pkey_free(int pkey);
 asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags,

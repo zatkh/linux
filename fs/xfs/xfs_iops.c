@@ -213,33 +213,67 @@ xfs_generic_create(
 	goto out_free_acl;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 STATIC int
 xfs_vn_mknod(
 	struct inode	*dir,
 	struct dentry	*dentry,
 	umode_t		mode,
 	dev_t		rdev)
+#else
+
+STATIC int
+xfs_vn_mknod(
+	struct inode	*dir,
+	struct dentry	*dentry,
+	umode_t		mode,
+	dev_t		rdev,void* label)
+#endif
+
 {
 	return xfs_generic_create(dir, dentry, mode, rdev, false);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 STATIC int
 xfs_vn_create(
 	struct inode	*dir,
 	struct dentry	*dentry,
 	umode_t		mode,
 	bool		flags)
+#else
+STATIC int
+xfs_vn_create(
+	struct inode	*dir,
+	struct dentry	*dentry,
+	umode_t		mode,
+	bool		flags,void* label)
+#endif
+
+
 {
-	return xfs_vn_mknod(dir, dentry, mode, 0);
+	return xfs_vn_mknod(dir, dentry, mode, 0,NULL);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 STATIC int
 xfs_vn_mkdir(
 	struct inode	*dir,
 	struct dentry	*dentry,
 	umode_t		mode)
+#else
+STATIC int
+xfs_vn_mkdir(
+	struct inode	*dir,
+	struct dentry	*dentry,
+	umode_t		mode,void* label)
+#endif
+
 {
-	return xfs_vn_mknod(dir, dentry, mode|S_IFDIR, 0);
+	return xfs_vn_mknod(dir, dentry, mode|S_IFDIR, 0,NULL);
 }
 
 STATIC struct dentry *

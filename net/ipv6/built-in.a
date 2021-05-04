@@ -1,0 +1,21 @@
+!<thin>
+//                                              140       `
+addrconf_core.o/
+exthdrs_core.o/
+ip6_checksum.o/
+ip6_icmp.o/
+output_core.o/
+protocol.o/
+ip6_offload.o/
+tcpv6_offload.o/
+exthdrs_offload.o/
+
+/0             /0           0     0     644     227780    `
+/17             0           0     0     644     217384    `
+/33             0           0     0     644     219264    `
+/49             0           0     0     644     201588    `
+/61             0           0     0     644     227104    `
+/76             0           0     0     644     173468    `
+/88             0           0     0     644     240176    `
+/103           /0           0     0     644     226872    `
+/120            0           0     0     644     163680    `

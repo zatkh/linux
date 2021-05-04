@@ -1,0 +1,1 @@
+cmd_drivers/media/tuners/built-in.a := rm -f drivers/media/tuners/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/media/tuners/built-in.a 

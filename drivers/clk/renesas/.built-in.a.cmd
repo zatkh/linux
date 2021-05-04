@@ -1,0 +1,1 @@
+cmd_drivers/clk/renesas/built-in.a := rm -f drivers/clk/renesas/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/clk/renesas/built-in.a 

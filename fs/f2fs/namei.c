@@ -262,8 +262,14 @@ int f2fs_update_extension_list(struct f2fs_sb_info *sbi, const char *name,
 	return 0;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 						bool excl)
+#else
+static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+						bool excl,void* label)
+#endif						
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;
@@ -631,7 +637,15 @@ out_free_encrypted_link:
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+
+#endif	
+
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;
@@ -684,8 +698,15 @@ static int f2fs_rmdir(struct inode *dir, struct dentry *dentry)
 	return -ENOTEMPTY;
 }
 
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int f2fs_mknod(struct inode *dir, struct dentry *dentry,
 				umode_t mode, dev_t rdev)
+#else
+static int f2fs_mknod(struct inode *dir, struct dentry *dentry,
+				umode_t mode, dev_t rdev,void* label)
+#endif				
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
 	struct inode *inode;

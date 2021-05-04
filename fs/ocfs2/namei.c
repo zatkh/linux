@@ -235,10 +235,18 @@ static void ocfs2_cleanup_add_entry_failure(struct ocfs2_super *osb,
 	iput(inode);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ocfs2_mknod(struct inode *dir,
 		       struct dentry *dentry,
 		       umode_t mode,
 		       dev_t dev)
+#else
+static int ocfs2_mknod(struct inode *dir,
+		       struct dentry *dentry,
+		       umode_t mode,
+		       dev_t dev,void* label)
+#endif				   
 {
 	int status = 0;
 	struct buffer_head *parent_fe_bh = NULL;
@@ -653,31 +661,46 @@ static int ocfs2_mknod_locked(struct ocfs2_super *osb,
 	return status;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ocfs2_mkdir(struct inode *dir,
 		       struct dentry *dentry,
 		       umode_t mode)
+#else
+static int ocfs2_mkdir(struct inode *dir,
+		       struct dentry *dentry,
+		       umode_t mode,void* label)
+#endif			   
 {
 	int ret;
 
 	trace_ocfs2_mkdir(dir, dentry, dentry->d_name.len, dentry->d_name.name,
 			  OCFS2_I(dir)->ip_blkno, mode);
-	ret = ocfs2_mknod(dir, dentry, mode | S_IFDIR, 0);
+	ret = ocfs2_mknod(dir, dentry, mode | S_IFDIR, 0,NULL);
 	if (ret)
 		mlog_errno(ret);
 
 	return ret;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ocfs2_create(struct inode *dir,
 			struct dentry *dentry,
 			umode_t mode,
 			bool excl)
+#else
+static int ocfs2_create(struct inode *dir,
+			struct dentry *dentry,
+			umode_t mode,
+			bool excl,void* label)
+#endif
+
 {
 	int ret;
 
 	trace_ocfs2_create(dir, dentry, dentry->d_name.len, dentry->d_name.name,
 			   (unsigned long long)OCFS2_I(dir)->ip_blkno, mode);
-	ret = ocfs2_mknod(dir, dentry, mode | S_IFREG, 0);
+	ret = ocfs2_mknod(dir, dentry, mode | S_IFREG, 0,NULL);
 	if (ret)
 		mlog_errno(ret);
 

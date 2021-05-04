@@ -572,8 +572,15 @@ out_free_xid:
 	return rc;
 }
 
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int cifs_create(struct inode *inode, struct dentry *direntry, umode_t mode,
-		bool excl)
+		bool excl))
+#else
+int cifs_create(struct inode *inode, struct dentry *direntry, umode_t mode,
+		bool excl,void* label)
+#endif		
 {
 	int rc;
 	unsigned int xid = get_xid();
@@ -616,8 +623,16 @@ out_free_xid:
 	return rc;
 }
 
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int cifs_mknod(struct inode *inode, struct dentry *direntry, umode_t mode,
 		dev_t device_number)
+#else
+int cifs_mknod(struct inode *inode, struct dentry *direntry, umode_t mode,
+		dev_t device_number,void* label)
+#endif
+
 {
 	int rc = -EPERM;
 	unsigned int xid;

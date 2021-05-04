@@ -1196,12 +1196,12 @@ nfsd_create_locked(struct svc_rqst *rqstp, struct svc_fh *fhp,
 	host_err = 0;
 	switch (type) {
 	case S_IFREG:
-		host_err = vfs_create(dirp, dchild, iap->ia_mode, true);
+		host_err = vfs_create(dirp, dchild, iap->ia_mode, true,NULL);
 		if (!host_err)
 			nfsd_check_ignore_resizing(iap);
 		break;
 	case S_IFDIR:
-		host_err = vfs_mkdir(dirp, dchild, iap->ia_mode);
+		host_err = vfs_mkdir(dirp, dchild, iap->ia_mode,NULL);
 		if (!host_err && unlikely(d_unhashed(dchild))) {
 			struct dentry *d;
 			d = lookup_one_len(dchild->d_name.name,
@@ -1229,7 +1229,7 @@ nfsd_create_locked(struct svc_rqst *rqstp, struct svc_fh *fhp,
 	case S_IFBLK:
 	case S_IFIFO:
 	case S_IFSOCK:
-		host_err = vfs_mknod(dirp, dchild, iap->ia_mode, rdev);
+		host_err = vfs_mknod(dirp, dchild, iap->ia_mode, rdev,NULL);
 		break;
 	default:
 		printk(KERN_WARNING "nfsd: bad file type %o in nfsd_create\n",
@@ -1425,7 +1425,7 @@ do_nfsd_create(struct svc_rqst *rqstp, struct svc_fh *fhp,
 		goto out;
 	}
 
-	host_err = vfs_create(dirp, dchild, iap->ia_mode, true);
+	host_err = vfs_create(dirp, dchild, iap->ia_mode, true,NULL);
 	if (host_err < 0) {
 		fh_drop_write(fhp);
 		goto out_nfserr;

@@ -14,12 +14,6 @@
 #include <asm/paravirt.h>
 #include <asm/mpx.h>
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-#include <linux/tpt.h>
-
-#endif //CONFIG_MMU_TPT_ENABLED
-
-
 extern atomic64_t last_mm_ctx_id;
 
 #ifndef CONFIG_PARAVIRT
@@ -350,29 +344,10 @@ static inline bool arch_vma_access_permitted(struct vm_area_struct *vma,
  * It's intended to be used for code like KVM that sneakily changes CR3
  * and needs to restore it.  It needs to be used very carefully.
  */
-//ztodo
 static inline unsigned long __get_current_cr3_fast(void)
 {
-	unsigned long cr3;
-
-#ifndef CONFIG_MMU_TPT_ENABLED
-
-		cr3 = build_cr3(this_cpu_read(cpu_tlbstate.loaded_mm)->pgd,
-		 this_cpu_read(cpu_tlbstate.loaded_mm_asid));
-#else
-
-	if (cpu_tlbstate.loaded_mm->using_smv && current->smv_id != MAIN_THREAD) {
-		cr3 = build_cr3(this_cpu_read(cpu_tlbstate.loaded_mm)->pgd_smv[current->smv_id],
-		 this_cpu_read(cpu_tlbstate.loaded_mm_asid));
-
-				} 
-	else {
-		cr3 = build_cr3(this_cpu_read(cpu_tlbstate.loaded_mm)->pgd,
+	unsigned long cr3 = build_cr3(this_cpu_read(cpu_tlbstate.loaded_mm)->pgd,
 		this_cpu_read(cpu_tlbstate.loaded_mm_asid));
-				}			
-
-#endif
-
 
 	/* For now, be very restrictive about when this can be called. */
 	VM_WARN_ON(in_nmi() || preemptible());

@@ -620,8 +620,14 @@ static int udf_add_nondir(struct dentry *dentry, struct inode *inode)
 	return 0;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int udf_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      bool excl)
+#else
+static int udf_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		      bool excl,void* label)
+#endif			  
 {
 	struct inode *inode = udf_new_inode(dir, mode);
 
@@ -658,8 +664,14 @@ static int udf_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 	return 0;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int udf_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		     dev_t rdev)
+#else
+static int udf_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
+		     dev_t rdev,void* label)
+#endif
 {
 	struct inode *inode;
 
@@ -674,7 +686,12 @@ static int udf_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return udf_add_nondir(dentry, inode);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int udf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int udf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct inode *inode;
 	struct udf_fileident_bh fibh;

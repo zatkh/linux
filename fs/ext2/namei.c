@@ -92,7 +92,7 @@ struct dentry *ext2_get_parent(struct dentry *child)
  * If the create succeeds, we fill in the inode information
  * with d_instantiate(). 
  */
-static int ext2_create (struct inode * dir, struct dentry * dentry, umode_t mode, bool excl)
+static int ext2_create (struct inode * dir, struct dentry * dentry, umode_t mode, bool excl, void* label)
 {
 	struct inode *inode;
 	int err;
@@ -123,7 +123,7 @@ static int ext2_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 	return 0;
 }
 
-static int ext2_mknod (struct inode * dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+static int ext2_mknod (struct inode * dir, struct dentry *dentry, umode_t mode, dev_t rdev, void* label)
 {
 	struct inode * inode;
 	int err;
@@ -219,7 +219,7 @@ static int ext2_link (struct dentry * old_dentry, struct inode * dir,
 	return err;
 }
 
-static int ext2_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
+static int ext2_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode, void* label)
 {
 	struct inode * inode;
 	int err;

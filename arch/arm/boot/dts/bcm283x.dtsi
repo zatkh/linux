@@ -400,7 +400,7 @@
 			reg = <0x7e202000 0x100>;
 			interrupts = <2 24>;
 			clocks = <&clocks BCM2835_CLOCK_VPU>;
-			dmas = <&dma 13>;
+			dmas = <&dma (13|(1<<29))>;
 			dma-names = "rx-tx";
 			status = "disabled";
 		};
@@ -562,6 +562,32 @@
 					     "dsi1_ddr2",
 					     "dsi1_ddr";
 
+			status = "disabled";
+		};
+
+		csi0: csi@7e800000 {
+			compatible = "brcm,bcm2835-unicam";
+			reg = <0x7e800000 0x800>,
+			      <0x7e802000 0x4>;
+			interrupts = <2 6>;
+			clocks = <&clocks BCM2835_CLOCK_CAM0>;
+			clock-names = "lp";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#clock-cells = <1>;
+			status = "disabled";
+		};
+
+		csi1: csi@7e801000 {
+			compatible = "brcm,bcm2835-unicam";
+			reg = <0x7e801000 0x800>,
+			      <0x7e802004 0x4>;
+			interrupts = <2 7>;
+			clocks = <&clocks BCM2835_CLOCK_CAM1>;
+			clock-names = "lp";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			#clock-cells = <1>;
 			status = "disabled";
 		};
 

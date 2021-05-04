@@ -27,6 +27,10 @@
 
 #include <asm/tlb.h>
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv_mm.h>
+#endif
+
 #include "internal.h"
 
 /*
@@ -504,30 +508,47 @@ static int madvise_free_single_vma(struct vm_area_struct *vma,
  * An interface that causes the system to free clean pages and flush
  * dirty pages is already available as msync(MS_INVALIDATE).
  */
-
 static long madvise_dontneed_single_vma(struct vm_area_struct *vma,
 					unsigned long start, unsigned long end)
 {
-#ifndef CONFIG_MMU_TPT_ENABLED
-	zap_page_range(vma, start, end - start);
-#else	
-	zap_page_range(vma, start, end - start,NULL);
-#endif
+		#ifdef CONFIG_SW_UDOM
 
+	struct zap_details zap;
+	struct mm_struct *mm = current->mm;
+
+
+
+	if ( mm->using_smv ) {	
+		memset(&zap, 0, sizeof(struct zap_details));
+		zap.smv_id = -1;
+		/* Call zap_page_range for all smvs */
+		do {
+			zap.smv_id = find_next_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE, (zap.smv_id+1));
+			if (zap.smv_id != SMV_ARRAY_SIZE) {
+				slog(KERN_INFO "[%s] smv %d [0x%16lx to 0x%16lx]\n", __func__, zap.smv_id, start, end);
+				zap_page_range(vma, start, end - start, &zap);
+			}
+		} while (zap.smv_id != SMV_ARRAY_SIZE);
+	} else {
+			zap_page_range(vma, start, end - start,NULL);
+
+	}
+
+	#else
+
+	zap_page_range(vma, start, end - start);
+
+	#endif
+	
+	
 	return 0;
 }
-
 
 static long madvise_dontneed_free(struct vm_area_struct *vma,
 				  struct vm_area_struct **prev,
 				  unsigned long start, unsigned long end,
 				  int behavior)
 {
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-	struct zap_details zap;
-	struct mm_struct *mm = current->mm;
-#endif
 	*prev = vma;
 	if (!can_madv_dontneed_vma(vma))
 		return -EINVAL;
@@ -572,30 +593,7 @@ static long madvise_dontneed_free(struct vm_area_struct *vma,
 	}
 
 	if (behavior == MADV_DONTNEED)
-		{
-#ifndef CONFIG_MMU_TPT_ENABLED
-			return madvise_dontneed_single_vma(vma, start, end);
-#else
-		
-		if ( mm->using_smv ) {	
-				memset(&zap, 0, sizeof(struct zap_details));
-				zap.smv_id = -1;
-				/* Call zap_page_range for all smvs */
-			do {
-				zap.smv_id = find_next_bit(mm->smv_bitmapInUse, TPT_ARRAY_SIZE, (zap.smv_id+1));
-				if (zap.smv_id != TPT_ARRAY_SIZE) {
-					tpt_debug("smv %d [0x%16lx to 0x%16lx]\n", zap.smv_id, start, end);
-					zap_page_range(vma, start, end - start, &zap);
-				}
-			} while (zap.smv_id != TPT_ARRAY_SIZE);
-		} else {
 		return madvise_dontneed_single_vma(vma, start, end);
-	}
-
-#endif	
-		return 0;
-		}
-
 	else if (behavior == MADV_FREE)
 		return madvise_free_single_vma(vma, start, end);
 	else

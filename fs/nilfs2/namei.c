@@ -72,8 +72,14 @@ nilfs_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
  * If the create succeeds, we fill in the inode information
  * with d_instantiate().
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			bool excl)
+#else
+static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			bool excl,void* label)
+#endif			
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;
@@ -99,8 +105,14 @@ static int nilfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 nilfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev)
+#else
+static int
+nilfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t rdev,void* label)
+#endif
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;
@@ -201,7 +213,15 @@ static int nilfs_link(struct dentry *old_dentry, struct inode *dir,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int nilfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int nilfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
+
+
 {
 	struct inode *inode;
 	struct nilfs_transaction_info ti;

@@ -1,0 +1,1 @@
+cmd_drivers/misc/lis3lv02d/built-in.a := rm -f drivers/misc/lis3lv02d/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/misc/lis3lv02d/built-in.a 

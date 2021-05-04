@@ -1,0 +1,1 @@
+cmd_drivers/dma-buf/built-in.a := rm -f drivers/dma-buf/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/dma-buf/built-in.a drivers/dma-buf/dma-buf.o drivers/dma-buf/dma-fence.o drivers/dma-buf/dma-fence-array.o drivers/dma-buf/reservation.o drivers/dma-buf/seqno-fence.o

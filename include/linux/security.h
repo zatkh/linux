@@ -32,6 +32,22 @@
 #include <linux/mm.h>
 #include <linux/fs.h>
 
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+typedef uint64_t label_t;
+enum label_types {OWNERSHIP_ADD = 0, OWNERSHIP_DROP, SEC_LABEL, INT_LABEL, SEC_LABEL_FLOATING, INT_LABEL_FLOATING, NO_OP};
+
+
+#define SECRECY_LABEL  0
+#define INTEGRITY_LABEL  1
+
+#define ADD_LABEL     0
+#define REMOVE_LABEL  1
+#define REPLACE_LABEL 2
+
+#define CAPS_INIT 1
+
+#endif
+
 struct linux_binprm;
 struct cred;
 struct rlimit;
@@ -69,6 +85,19 @@ struct timezone;
 enum lsm_event {
 	LSM_POLICY_CHANGE,
 };
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+extern void *security_copy_user_label(const char __user *label);
+extern int security_inode_set_security(struct inode *inode, const char *name, void* label, size_t size, int flags);
+//extern int security_inode_set_label(struct inode *inode, void __user *label);
+extern int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk);
+extern int security_check_task_labeled(struct task_struct *tsk);
+extern unsigned long security_set_task_label (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label);
+
+
+#endif /*CONFIG_EXTENDED_LSM_DIFC */
+
 
 /* These functions are in security/commoncap.c */
 extern int cap_capable(const struct cred *cred, struct user_namespace *ns,
@@ -335,6 +364,9 @@ int security_task_alloc(struct task_struct *task, unsigned long clone_flags);
 void security_task_free(struct task_struct *task);
 int security_cred_alloc_blank(struct cred *cred, gfp_t gfp);
 void security_cred_free(struct cred *cred);
+//void security_test_cred_free(struct cred *cred);
+//int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label);
+
 int security_prepare_creds(struct cred *new, const struct cred *old, gfp_t gfp);
 void security_transfer_creds(struct cred *new, const struct cred *old);
 void security_cred_getsecid(const struct cred *c, u32 *secid);
@@ -898,6 +930,9 @@ static inline int security_cred_alloc_blank(struct cred *cred, gfp_t gfp)
 {
 	return 0;
 }
+
+static inline void security_cred_free(struct cred *cred)
+{ }
 
 static inline void security_cred_free(struct cred *cred)
 { }
@@ -1842,6 +1877,9 @@ static inline char *alloc_secdata(void)
 static inline void free_secdata(void *secdata)
 { }
 #endif /* CONFIG_SECURITY */
+
+
+
 
 #endif /* ! __LINUX_SECURITY_H */
 

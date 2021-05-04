@@ -1,0 +1,1 @@
+cmd_drivers/media/platform/meson/built-in.a := rm -f drivers/media/platform/meson/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/media/platform/meson/built-in.a 

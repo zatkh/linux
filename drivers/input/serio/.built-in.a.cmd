@@ -1,0 +1,1 @@
+cmd_drivers/input/serio/built-in.a := rm -f drivers/input/serio/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/input/serio/built-in.a drivers/input/serio/serio.o drivers/input/serio/ambakmi.o drivers/input/serio/libps2.o

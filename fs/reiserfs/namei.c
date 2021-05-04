@@ -616,8 +616,14 @@ static int new_inode_init(struct inode *inode, struct inode *dir, umode_t mode)
 	return dquot_initialize(inode);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int reiserfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			   bool excl)
+#else
+static int reiserfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			   bool excl,void* label)
+#endif			   
 {
 	int retval;
 	struct inode *inode;
@@ -695,8 +701,14 @@ out_failed:
 	return retval;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int reiserfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 			  dev_t rdev)
+#else
+static int reiserfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
+			  dev_t rdev,void* label)
+#endif			  
 {
 	int retval;
 	struct inode *inode;
@@ -778,7 +790,12 @@ out_failed:
 	return retval;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int reiserfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int reiserfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	int retval;
 	struct inode *inode;

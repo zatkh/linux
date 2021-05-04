@@ -1,0 +1,1 @@
+cmd_fs/kernfs/built-in.a := rm -f fs/kernfs/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD fs/kernfs/built-in.a fs/kernfs/mount.o fs/kernfs/inode.o fs/kernfs/dir.o fs/kernfs/file.o fs/kernfs/symlink.o

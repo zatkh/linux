@@ -487,7 +487,13 @@ out_err:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int fuse_mknod(struct inode *, struct dentry *, umode_t, dev_t);
+
+#else
+static int fuse_mknod(struct inode *, struct dentry *, umode_t, dev_t,void* label);
+#endif
+
 static int fuse_atomic_open(struct inode *dir, struct dentry *entry,
 			    struct file *file, unsigned flags,
 			    umode_t mode)
@@ -524,7 +530,14 @@ out_dput:
 	return err;
 
 mknod:
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 	err = fuse_mknod(dir, entry, mode, 0);
+
+	#else
+	err = fuse_mknod(dir, entry, mode, 0,NULL);
+
+#endif
+
 	if (err)
 		goto out_dput;
 no_open:
@@ -591,8 +604,14 @@ static int create_new_entry(struct fuse_conn *fc, struct fuse_args *args,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
 		      dev_t rdev)
+#else
+static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
+		      dev_t rdev,void* label)
+#endif			  
 {
 	struct fuse_mknod_in inarg;
 	struct fuse_conn *fc = get_fuse_conn(dir);
@@ -613,14 +632,32 @@ static int fuse_mknod(struct inode *dir, struct dentry *entry, umode_t mode,
 	args.in.args[1].value = entry->d_name.name;
 	return create_new_entry(fc, &args, dir, entry, mode);
 }
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 
 static int fuse_create(struct inode *dir, struct dentry *entry, umode_t mode,
 		       bool excl)
+#else
+static int fuse_create(struct inode *dir, struct dentry *entry, umode_t mode,
+		       bool excl,void* label)
+#endif
+
 {
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 	return fuse_mknod(dir, entry, mode, 0);
+
+#else
+	return fuse_mknod(dir, entry, mode, 0,NULL);
+
+#endif
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int fuse_mkdir(struct inode *dir, struct dentry *entry, umode_t mode)
+
+#else
+static int fuse_mkdir(struct inode *dir, struct dentry *entry, umode_t mode,void* label)
+#endif
 {
 	struct fuse_mkdir_in inarg;
 	struct fuse_conn *fc = get_fuse_conn(dir);

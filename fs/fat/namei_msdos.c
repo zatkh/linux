@@ -260,8 +260,14 @@ static int msdos_add_entry(struct inode *dir, const unsigned char *name,
 }
 
 /***** Create a file */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int msdos_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			bool excl)
+#else
+static int msdos_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			bool excl,void* label)
+#endif			
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode = NULL;
@@ -338,7 +344,15 @@ out:
 }
 
 /***** Make a directory */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int msdos_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+
+static int msdos_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct fat_slot_info sinfo;

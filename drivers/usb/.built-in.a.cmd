@@ -1,0 +1,1 @@
+cmd_drivers/usb/built-in.a := rm -f drivers/usb/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/usb/built-in.a drivers/usb/core/built-in.a drivers/usb/phy/built-in.a drivers/usb/isp1760/built-in.a drivers/usb/mon/built-in.a drivers/usb/storage/built-in.a drivers/usb/misc/built-in.a drivers/usb/common/built-in.a

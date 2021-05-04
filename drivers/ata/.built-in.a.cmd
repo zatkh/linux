@@ -1,0 +1,1 @@
+cmd_drivers/ata/built-in.a := rm -f drivers/ata/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/ata/built-in.a drivers/ata/libata-core.o drivers/ata/libata-scsi.o drivers/ata/libata-eh.o drivers/ata/libata-transport.o drivers/ata/libata-trace.o drivers/ata/libata-sff.o

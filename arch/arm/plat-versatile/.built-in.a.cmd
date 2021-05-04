@@ -1,0 +1,1 @@
+cmd_arch/arm/plat-versatile/built-in.a := rm -f arch/arm/plat-versatile/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD arch/arm/plat-versatile/built-in.a arch/arm/plat-versatile/headsmp.o arch/arm/plat-versatile/platsmp.o

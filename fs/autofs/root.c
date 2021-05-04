@@ -16,7 +16,11 @@
 static int autofs_dir_symlink(struct inode *, struct dentry *, const char *);
 static int autofs_dir_unlink(struct inode *, struct dentry *);
 static int autofs_dir_rmdir(struct inode *, struct dentry *);
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int autofs_dir_mkdir(struct inode *, struct dentry *, umode_t);
+#else
+static int autofs_dir_mkdir(struct inode *, struct dentry *, umode_t,void* label);
+#endif
 static long autofs_root_ioctl(struct file *, unsigned int, unsigned long);
 #ifdef CONFIG_COMPAT
 static long autofs_root_compat_ioctl(struct file *,
@@ -744,8 +748,14 @@ static int autofs_dir_rmdir(struct inode *dir, struct dentry *dentry)
 	return 0;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int autofs_dir_mkdir(struct inode *dir,
 			    struct dentry *dentry, umode_t mode)
+#else
+static int autofs_dir_mkdir(struct inode *dir,
+			    struct dentry *dentry, umode_t mode,void* label)
+#endif
+
 {
 	struct autofs_sb_info *sbi = autofs_sbi(dir->i_sb);
 	struct autofs_info *ino = autofs_dentry_ino(dentry);

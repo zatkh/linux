@@ -22,6 +22,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA
  * 02111-1307, USA.
  */
+//ZTODO PROPER LABELING
 
 #include <linux/file.h>
 #include <linux/vmalloc.h>
@@ -186,7 +187,15 @@ ecryptfs_do_create(struct inode *directory_inode,
 
 	lower_dentry = ecryptfs_dentry_to_lower(ecryptfs_dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_create(d_inode(lower_dir_dentry), lower_dentry, mode, true);
+
+#else
+	rc = vfs_create(d_inode(lower_dir_dentry), lower_dentry, mode, true,NULL);
+
+#endif
+
 	if (rc) {
 		printk(KERN_ERR "%s: Failure to create dentry in lower fs; "
 		       "rc = [%d]\n", __func__, rc);
@@ -259,9 +268,17 @@ out:
  *
  * Returns zero on success; non-zero on error condition
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 ecryptfs_create(struct inode *directory_inode, struct dentry *ecryptfs_dentry,
 		umode_t mode, bool excl)
+#else
+static int
+ecryptfs_create(struct inode *directory_inode, struct dentry *ecryptfs_dentry,
+		umode_t mode, bool excl,void* label)
+#endif		
+
 {
 	struct inode *ecryptfs_inode;
 	int rc;
@@ -498,7 +515,11 @@ out_lock:
 	return rc;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	int rc;
 	struct dentry *lower_dentry;
@@ -506,7 +527,14 @@ static int ecryptfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_mkdir(d_inode(lower_dir_dentry), lower_dentry, mode);
+
+	#else
+	rc = vfs_mkdir(d_inode(lower_dir_dentry), lower_dentry, mode,NULL);
+
+	#endif
 	if (rc || d_really_is_negative(lower_dentry))
 		goto out;
 	rc = ecryptfs_interpose(lower_dentry, dentry, dir->i_sb);
@@ -545,8 +573,14 @@ static int ecryptfs_rmdir(struct inode *dir, struct dentry *dentry)
 	return rc;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int
 ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
+#else
+static int
+ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev,void* label)
+#endif
 {
 	int rc;
 	struct dentry *lower_dentry;
@@ -554,7 +588,15 @@ ecryptfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev
 
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
+
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
 	rc = vfs_mknod(d_inode(lower_dir_dentry), lower_dentry, mode, dev);
+
+	#else
+	rc = vfs_mknod(d_inode(lower_dir_dentry), lower_dentry, mode, dev,NULL);
+
+	#endif
+
 	if (rc || d_really_is_negative(lower_dentry))
 		goto out;
 	rc = ecryptfs_interpose(lower_dentry, dentry, dir->i_sb);

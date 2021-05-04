@@ -19,10 +19,6 @@
 
 #include "pelt.h"
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-#include <linux/tpt.h>
-#endif
-
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
@@ -2803,10 +2799,6 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 */
 	arch_start_context_switch(prev);
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-	switch_smv(prev, next, oldmm, mm);
-#endif
-
 	/*
 	 * If mm is non-NULL, we pass through switch_mm(). If mm is
 	 * NULL, we will pass through mmdrop() in finish_task_switch().
@@ -2814,7 +2806,6 @@ context_switch(struct rq *rq, struct task_struct *prev,
 	 * membarrier after storing to rq->curr, before returning to
 	 * user-space.
 	 */
-
 	if (!mm) {
 		next->active_mm = oldmm;
 		mmgrab(oldmm);

@@ -2428,10 +2428,16 @@ static int ext4_add_nondir(handle_t *handle,
  * is so far negative - it has no inode.
  *
  * If the create succeeds, we fill in the inode information
- * with d_instantiate().
+ * with d_instantiate().//ZTODO/proper labeling
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ext4_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		       bool excl)
+#else
+static int ext4_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		       bool excl,void* label)
+#endif			   
 {
 	handle_t *handle;
 	struct inode *inode;
@@ -2463,8 +2469,15 @@ retry:
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ext4_mknod(struct inode *dir, struct dentry *dentry,
 		      umode_t mode, dev_t rdev)
+#else
+static int ext4_mknod(struct inode *dir, struct dentry *dentry,
+		      umode_t mode, dev_t rdev,void* label)
+#endif
+
 {
 	handle_t *handle;
 	struct inode *inode;
@@ -2607,7 +2620,12 @@ out:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ext4_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int ext4_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	handle_t *handle;
 	struct inode *inode;

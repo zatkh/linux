@@ -1,0 +1,1 @@
+cmd_sound/pci/ac97/built-in.a := rm -f sound/pci/ac97/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD sound/pci/ac97/built-in.a sound/pci/ac97/ac97_codec.o sound/pci/ac97/ac97_pcm.o sound/pci/ac97/ac97_proc.o

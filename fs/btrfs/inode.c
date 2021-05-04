@@ -46,6 +46,7 @@
 #include "qgroup.h"
 #include "dedupe.h"
 
+//ZTODO proper labeling
 struct btrfs_iget_args {
 	struct btrfs_key *location;
 	struct btrfs_root *root;
@@ -6468,8 +6469,14 @@ static int btrfs_add_nondir(struct btrfs_trans_handle *trans,
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int btrfs_mknod(struct inode *dir, struct dentry *dentry,
 			umode_t mode, dev_t rdev)
+#else
+static int btrfs_mknod(struct inode *dir, struct dentry *dentry,
+			umode_t mode, dev_t rdev,void* label)
+#endif			
 {
 	struct btrfs_fs_info *fs_info = btrfs_sb(dir->i_sb);
 	struct btrfs_trans_handle *trans;
@@ -6532,8 +6539,16 @@ out_unlock:
 	return err;
 }
 
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int btrfs_create(struct inode *dir, struct dentry *dentry,
 			umode_t mode, bool excl)
+#else
+static int btrfs_create(struct inode *dir, struct dentry *dentry,
+			umode_t mode, bool excl,void* label)
+#endif
+
 {
 	struct btrfs_fs_info *fs_info = btrfs_sb(dir->i_sb);
 	struct btrfs_trans_handle *trans;
@@ -6685,7 +6700,11 @@ fail:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int btrfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int btrfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct btrfs_fs_info *fs_info = btrfs_sb(dir->i_sb);
 	struct inode *inode = NULL;

@@ -1,0 +1,71 @@
+!<thin>
+//                                              474       `
+hid-core.o/
+hid-input.o/
+hid-quirks.o/
+hid-debug.o/
+hid-generic.o/
+hid-a4tech.o/
+hid-apple.o/
+hid-belkin.o/
+hid-bigbenff.o/
+hid-cherry.o/
+hid-chicony.o/
+hid-cypress.o/
+hid-dr.o/
+hid-ezkey.o/
+hid-gyration.o/
+hid-ite.o/
+hid-kensington.o/
+hid-lg.o/
+hid-microsoft.o/
+hid-monterey.o/
+hid-ntrig.o/
+hid-pl.o/
+hid-petalynx.o/
+hid-redragon.o/
+hid-samsung.o/
+hid-sjoy.o/
+hid-sony.o/
+hid-sunplus.o/
+hid-gaff.o/
+hid-tmff.o/
+hid-topseed.o/
+hid-twinhan.o/
+hid-zpff.o/
+usbhid/hid-core.o/
+
+/0              0           0     0     644     236776    `
+/12             0           0     0     644     277580    `
+/25             0           0     0     644     121124    `
+/39             0           0     0     644     179116    `
+/52             0           0     0     644     108744    `
+/67             0           0     0     644     111564    `
+/81             0           0     0     644     123352    `
+/94             0           0     0     644     110600    `
+/108            0           0     0     644     124180    `
+/124            0           0     0     644     109460    `
+/138            0           0     0     644     120088    `
+/153            0           0     0     644     112076    `
+/168            0           0     0     644     109652    `
+/178            0           0     0     644     109012    `
+/191            0           0     0     644     114092    `
+/207            0           0     0     644     107324    `
+/218            0           0     0     644     107676    `
+/236            0           0     0     644     151940    `
+/246           /0           0     0     644     122576    `
+/263            0           0     0     644     109936    `
+/279            0           0     0     644     162844    `
+/292            0           0     0     644     107676    `
+/302            0           0     0     644     112328    `
+/318            0           0     0     644     107004    `
+/334            0           0     0     644     121212    `
+/349            0           0     0     644     107696    `
+/361            0           0     0     644     229316    `
+/373            0           0     0     644     109120    `
+/388            0           0     0     644     107612    `
+/400            0           0     0     644     108084    `
+/412            0           0     0     644     115080    `
+/427            0           0     0     644     119468    `
+/442            0           0     0     644     107620    `
+/454            0           0     0     644     234056    `

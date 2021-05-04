@@ -290,8 +290,14 @@ done:
 	return d_splice_alias(inode, dentry);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ubifs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			bool excl)
+#else
+static int ubifs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			bool excl,void* label)
+#endif
+
 {
 	struct inode *inode;
 	struct ubifs_info *c = dir->i_sb->s_fs_info;
@@ -956,7 +962,12 @@ out_fname:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ubifs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int ubifs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct inode *inode;
 	struct ubifs_inode *dir_ui = ubifs_inode(dir);
@@ -1027,8 +1038,14 @@ out_budg:
 	return err;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ubifs_mknod(struct inode *dir, struct dentry *dentry,
 		       umode_t mode, dev_t rdev)
+#else
+static int ubifs_mknod(struct inode *dir, struct dentry *dentry,
+		       umode_t mode, dev_t rdev,void* label)
+#endif			   
 {
 	struct inode *inode;
 	struct ubifs_inode *ui;

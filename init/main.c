@@ -99,14 +99,14 @@
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
 
+
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv.h>
+#endif
+
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/initcall.h>
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-#include <linux/tpt.h>
-#include <linux/mdom.h>
-
-#endif
 
 static int kernel_init(void *);
 
@@ -595,11 +595,16 @@ asmlinkage __visible void __init start_kernel(void)
 	trap_init();
 	mm_init();
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-	init_task.smv_id = -1;
+	#ifdef CONFIG_SW_UDOM
+
+	    /* Initialize smvs and memory domains for the secure memory views model */
+    init_task.smv_id = -1;
 	smv_init();
     memdom_init();
-#endif
+
+	#endif
+
+
 	ftrace_init();
 
 	/* trace_printk can be enabled here */

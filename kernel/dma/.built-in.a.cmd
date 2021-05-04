@@ -1,0 +1,1 @@
+cmd_kernel/dma/built-in.a := rm -f kernel/dma/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD kernel/dma/built-in.a kernel/dma/mapping.o kernel/dma/coherent.o

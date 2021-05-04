@@ -1,0 +1,1 @@
+cmd_drivers/staging/android/built-in.a := rm -f drivers/staging/android/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/staging/android/built-in.a drivers/staging/android/ion/built-in.a

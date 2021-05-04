@@ -1,0 +1,1 @@
+cmd_drivers/video/backlight/built-in.a := rm -f drivers/video/backlight/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/video/backlight/built-in.a drivers/video/backlight/backlight.o drivers/video/backlight/generic_bl.o

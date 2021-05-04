@@ -70,7 +70,11 @@ static char *get_dname(struct dentry *dentry)
 	return name;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int tracefs_syscall_mkdir(struct inode *inode, struct dentry *dentry, umode_t mode)
+#else
+static int tracefs_syscall_mkdir(struct inode *inode, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	char *name;
 	int ret;

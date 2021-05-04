@@ -1,0 +1,1 @@
+cmd_net/netlink/built-in.a := rm -f net/netlink/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD net/netlink/built-in.a net/netlink/af_netlink.o net/netlink/genetlink.o

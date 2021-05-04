@@ -1,0 +1,1 @@
+cmd_lib/lzo/built-in.a := rm -f lib/lzo/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD lib/lzo/built-in.a lib/lzo/lzo1x_compress.o lib/lzo/lzo1x_decompress_safe.o

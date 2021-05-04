@@ -26,8 +26,14 @@ static const struct file_operations bad_file_ops =
 	.open		= bad_file_open,
 };
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bad_inode_create (struct inode *dir, struct dentry *dentry,
 		umode_t mode, bool excl)
+#else
+static int bad_inode_create (struct inode *dir, struct dentry *dentry,
+		umode_t mode, bool excl,void* label)
+#endif
+
 {
 	return -EIO;
 }
@@ -55,8 +61,11 @@ static int bad_inode_symlink (struct inode *dir, struct dentry *dentry,
 	return -EIO;
 }
 
-static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,
-			umode_t mode)
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,umode_t mode)
+#else
+static int bad_inode_mkdir(struct inode *dir, struct dentry *dentry,umode_t mode,void* label)
+#endif
 {
 	return -EIO;
 }
@@ -65,9 +74,13 @@ static int bad_inode_rmdir (struct inode *dir, struct dentry *dentry)
 {
 	return -EIO;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bad_inode_mknod (struct inode *dir, struct dentry *dentry,
 			umode_t mode, dev_t rdev)
+#else
+static int bad_inode_mknod (struct inode *dir, struct dentry *dentry,
+			umode_t mode, dev_t rdev,void* label)
+#endif
 {
 	return -EIO;
 }

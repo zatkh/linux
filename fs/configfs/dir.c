@@ -1251,7 +1251,14 @@ out_root_unlock:
 }
 EXPORT_SYMBOL(configfs_depend_item_unlocked);
 
+//ZTODO proper labeling
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int configfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int configfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
+
 {
 	int ret = 0;
 	int module_got = 0;

@@ -1,0 +1,1 @@
+cmd_drivers/hwtracing/intel_th/built-in.a := rm -f drivers/hwtracing/intel_th/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/hwtracing/intel_th/built-in.a 

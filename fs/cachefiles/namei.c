@@ -566,7 +566,14 @@ lookup_again:
 			if (ret < 0)
 				goto create_error;
 			start = jiffies;
-			ret = vfs_mkdir(d_inode(dir), next, 0);
+			#ifndef CONFIG_EXTENDED_LSM_DIFC
+				ret = vfs_mkdir(d_inode(dir), next, 0);
+
+			#else
+				ret = vfs_mkdir(d_inode(dir), next, 0,NULL);
+
+			#endif
+
 			cachefiles_hist(cachefiles_mkdir_histogram, start);
 			if (!key)
 				trace_cachefiles_mkdir(object, next, ret);
@@ -602,7 +609,14 @@ lookup_again:
 			if (ret < 0)
 				goto create_error;
 			start = jiffies;
-			ret = vfs_create(d_inode(dir), next, S_IFREG, true);
+			#ifndef CONFIG_EXTENDED_LSM_DIFC
+				ret = vfs_create(d_inode(dir), next, S_IFREG, true);
+
+			#else
+			ret = vfs_create(d_inode(dir), next, S_IFREG, true,NULL);
+
+			#endif
+
 			cachefiles_hist(cachefiles_create_histogram, start);
 			trace_cachefiles_create(object, next, ret);
 			if (ret < 0)
@@ -796,7 +810,13 @@ retry:
 		ret = security_path_mkdir(&path, subdir, 0700);
 		if (ret < 0)
 			goto mkdir_error;
+			#ifndef CONFIG_EXTENDED_LSM_DIFC
 		ret = vfs_mkdir(d_inode(dir), subdir, 0700);
+
+			#else
+		ret = vfs_mkdir(d_inode(dir), subdir, 0700,NULL);
+
+			#endif
 		if (ret < 0)
 			goto mkdir_error;
 

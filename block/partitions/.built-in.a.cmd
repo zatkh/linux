@@ -1,0 +1,1 @@
+cmd_block/partitions/built-in.a := rm -f block/partitions/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD block/partitions/built-in.a block/partitions/check.o block/partitions/msdos.o block/partitions/efi.o

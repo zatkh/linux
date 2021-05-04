@@ -624,20 +624,36 @@ out_drop_write:
 out:
 	return err;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ovl_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      bool excl)
+#else
+static int ovl_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		      bool excl,void* label)
+#endif
+
 {
 	return ovl_create_object(dentry, (mode & 07777) | S_IFREG, 0, NULL);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ovl_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int ovl_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	return ovl_create_object(dentry, (mode & 07777) | S_IFDIR, 0, NULL);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int ovl_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		     dev_t rdev)
+#else
+static int ovl_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
+		     dev_t rdev,void* label)
+#endif			 
 {
 	/* Don't allow creation of "whiteout" on overlay */
 	if (S_ISCHR(mode) && rdev == WHITEOUT_DEV)

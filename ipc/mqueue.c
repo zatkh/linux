@@ -478,8 +478,14 @@ out_unlock:
 	return error;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int mqueue_create(struct inode *dir, struct dentry *dentry,
 				umode_t mode, bool excl)
+#else
+static int mqueue_create(struct inode *dir, struct dentry *dentry,
+				umode_t mode, bool excl,void* label)
+#endif
 {
 	return mqueue_create_attr(dentry, mode, NULL);
 }

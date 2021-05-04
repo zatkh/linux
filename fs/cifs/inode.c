@@ -1565,7 +1565,11 @@ posix_mkdir_get_info:
 	goto posix_mkdir_out;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 int cifs_mkdir(struct inode *inode, struct dentry *direntry, umode_t mode)
+#else
+int cifs_mkdir(struct inode *inode, struct dentry *direntry, umode_t mode,void* label)
+#endif
 {
 	int rc = 0;
 	unsigned int xid;

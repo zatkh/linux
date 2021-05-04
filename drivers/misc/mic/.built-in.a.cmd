@@ -1,0 +1,1 @@
+cmd_drivers/misc/mic/built-in.a := rm -f drivers/misc/mic/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/misc/mic/built-in.a drivers/misc/mic/bus/built-in.a

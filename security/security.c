@@ -230,6 +230,23 @@ EXPORT_SYMBOL(unregister_lsm_notifier);
 	RC;							\
 })
 
+
+#define call_int_hook_no_check(FUNC, ...) ({			\
+	int RC;						\
+	do {							\
+		struct security_hook_list *P;			\
+								\
+		hlist_for_each_entry(P, &security_hook_heads.FUNC, list) { \
+			RC = P->hook.FUNC(__VA_ARGS__);		\
+		}						\
+	} while (0);						\
+	RC;							\
+})
+
+
+
+
+
 /* Security operations */
 
 int security_binder_set_context_mgr(struct task_struct *mgr)
@@ -822,6 +839,7 @@ int security_inode_getsecurity(struct inode *inode, const char *name, void **buf
 			return rc;
 	}
 	return -EOPNOTSUPP;
+	
 }
 
 int security_inode_setsecurity(struct inode *inode, const char *name, const void *value, size_t size, int flags)
@@ -1012,6 +1030,100 @@ void security_cred_free(struct cred *cred)
 
 	call_void_hook(cred_free, cred);
 }
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+/*int security_set_task_label(struct task_struct *tsk, label_t label, int op_type, int label_type, void __user *bulk_label)
+{
+
+	return call_int_hook_no_check(set_task_label,tsk, label,  op_type, label_type, bulk_label);
+}
+*/
+
+
+void *security_copy_user_label(const char __user *label)
+{
+
+	struct security_hook_list *hp;
+
+	if(label)
+	{
+	hlist_for_each_entry(hp, &security_hook_heads.copy_user_label, list) {
+		return hp->hook.copy_user_label(label);
+	}
+	}
+	//printk(KERN_INFO "[security_copy_user_label]: returning null!\n");
+
+	return NULL;
+
+	
+}
+
+int security_tasks_labels_allowed (struct task_struct *s_tsk,struct task_struct *d_tsk)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.check_tasks_labels_allowed, list) {
+		rc = hp->hook.check_tasks_labels_allowed(s_tsk,d_tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
+
+
+
+int security_check_task_labeled (struct task_struct *tsk)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.check_task_labeled, list) {
+		rc = hp->hook.check_task_labeled(tsk);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+}
+
+unsigned long security_set_task_label (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label)
+{
+	struct security_hook_list *hp;
+	unsigned long rc;
+
+	hlist_for_each_entry(hp, &security_hook_heads.set_task_label, list) {
+		rc = hp->hook.set_task_label(tsk,label,ops,label_type,bulk_label);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+
+
+}
+
+
+int security_inode_set_security(struct inode *inode, const char *name, void *value, size_t size, int flags)
+{
+	struct security_hook_list *hp;
+	int rc;
+
+	if (unlikely(IS_PRIVATE(inode)))
+		return -EOPNOTSUPP;
+
+	hlist_for_each_entry(hp, &security_hook_heads.inode_set_security, list) {
+		rc = hp->hook.inode_set_security(inode, name, value, size,
+								flags);
+		if (rc != -EOPNOTSUPP)
+			return rc;
+	}
+	return -EOPNOTSUPP;
+
+return 0;
+}
+
+#endif /* CONFIG_EXTENDED_LSM_DIFC */
 
 int security_prepare_creds(struct cred *new, const struct cred *old, gfp_t gfp)
 {
@@ -1773,6 +1885,9 @@ int security_audit_rule_match(u32 secid, u32 field, u32 op, void *lsmrule,
 				actx);
 }
 #endif /* CONFIG_AUDIT */
+
+
+
 
 #ifdef CONFIG_BPF_SYSCALL
 int security_bpf(int cmd, union bpf_attr *attr, unsigned int size)

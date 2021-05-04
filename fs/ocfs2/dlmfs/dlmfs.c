@@ -463,9 +463,17 @@ static struct inode *dlmfs_get_inode(struct inode *parent,
  * File creation. Allocate an inode, and we're done..
  */
 /* SMP-safe */
+
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dlmfs_mkdir(struct inode * dir,
 		       struct dentry * dentry,
 		       umode_t mode)
+#else
+static int dlmfs_mkdir(struct inode * dir,
+		       struct dentry * dentry,
+		       umode_t mode,void* label)
+#endif
 {
 	int status;
 	struct inode *inode = NULL;
@@ -510,11 +518,18 @@ bail:
 		iput(inode);
 	return status;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dlmfs_create(struct inode *dir,
 			struct dentry *dentry,
 			umode_t mode,
 			bool excl)
+#else
+static int dlmfs_create(struct inode *dir,
+			struct dentry *dentry,
+			umode_t mode,
+			bool excl,void* label)
+#endif
+
 {
 	int status = 0;
 	struct inode *inode;

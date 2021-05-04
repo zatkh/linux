@@ -755,8 +755,16 @@ error:
 	return ERR_PTR(err);
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+
 static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 		       bool excl)
+#else
+
+static int vfat_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+		       bool excl,void* label)
+#endif			   
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;
@@ -845,7 +853,12 @@ out:
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int vfat_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct super_block *sb = dir->i_sb;
 	struct inode *inode;

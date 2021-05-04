@@ -1105,6 +1105,7 @@ int ptrace_request(struct task_struct *child, long request,
 
 	case PTRACE_SECCOMP_GET_METADATA:
 		ret = seccomp_get_metadata(child, addr, datavp);
+		//pr_info(" seccomp metadata\n");
 		break;
 
 	default:

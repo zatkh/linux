@@ -132,7 +132,11 @@ static void bpf_dentry_finalize(struct dentry *dentry, struct inode *inode,
 	dir->i_ctime = dir->i_mtime;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int bpf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else 
+static int bpf_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	struct inode *inode;
 

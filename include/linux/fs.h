@@ -1636,9 +1636,16 @@ extern bool inode_owner_or_capable(const struct inode *inode);
 /*
  * VFS helper functions..
  */
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 extern int vfs_create(struct inode *, struct dentry *, umode_t, bool);
 extern int vfs_mkdir(struct inode *, struct dentry *, umode_t);
 extern int vfs_mknod(struct inode *, struct dentry *, umode_t, dev_t);
+#else
+extern int vfs_create(struct inode *, struct dentry *, umode_t, bool,void*);
+extern int vfs_mkdir(struct inode *, struct dentry *, umode_t, void*);
+extern int vfs_mknod(struct inode *, struct dentry *, umode_t, dev_t,void*);
+#endif
 extern int vfs_symlink(struct inode *, struct dentry *, const char *);
 extern int vfs_link(struct dentry *, struct inode *, struct dentry *, struct inode **);
 extern int vfs_rmdir(struct inode *, struct dentry *);
@@ -1786,13 +1793,19 @@ struct inode_operations {
 
 	int (*readlink) (struct dentry *, char __user *,int);
 
-	int (*create) (struct inode *,struct dentry *, umode_t, bool);
 	int (*link) (struct dentry *,struct inode *,struct dentry *);
 	int (*unlink) (struct inode *,struct dentry *);
 	int (*symlink) (struct inode *,struct dentry *,const char *);
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
+	int (*create) (struct inode *,struct dentry *, umode_t, bool);
 	int (*mkdir) (struct inode *,struct dentry *,umode_t);
-	int (*rmdir) (struct inode *,struct dentry *);
 	int (*mknod) (struct inode *,struct dentry *,umode_t,dev_t);
+	#else
+	int (*create) (struct inode *,struct dentry *, umode_t, bool,void*);
+	int (*mkdir) (struct inode *,struct dentry *,umode_t, void*);
+	int (*mknod) (struct inode *,struct dentry *,umode_t,dev_t,void*);
+	#endif /* CONFIG_EXTENDED_LSM_DIFC */
+	int (*rmdir) (struct inode *,struct dentry *);
 	int (*rename) (struct inode *, struct dentry *,
 			struct inode *, struct dentry *, unsigned int);
 	int (*setattr) (struct dentry *, struct iattr *);

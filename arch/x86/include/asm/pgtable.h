@@ -993,17 +993,10 @@ static inline int pgd_none(pgd_t pgd)
  * pgd_index() is used get the offset into the pgd page's array of pgd_t's;
  */
 #define pgd_offset_pgd(pgd, address) (pgd + pgd_index((address)))
-
 /*
  * a shortcut to get a pgd_t in a given mm
  */
-#ifndef CONFIG_MMU_TPT_ENABLED
 #define pgd_offset(mm, address) pgd_offset_pgd((mm)->pgd, (address))
-#else
-#define pgd_offset(mm, address) \
-	( ((mm)->using_smv && (current)->smv_id != -1) ? \
-	  ((mm)->pgd_smv[(current)->smv_id] + pgd_index((address))) : ((mm)->pgd  + pgd_index((address))) )
-#endif
 /*
  * a shortcut which implies the use of the kernel's pgd, instead
  * of a process's

@@ -1777,13 +1777,14 @@ static int tcp_zerocopy_receive(struct sock *sk,
 	zc->length &= ~(PAGE_SIZE - 1);
 
 
-	
+		#ifdef CONFIG_SW_UDOM
 
-#ifndef CONFIG_MMU_TPT_ENABLED
-	zap_page_range(vma, address, zc->length);
-#else
-	zap_page_range(vma, address, zc->length, NULL);
-#endif
+			zap_page_range(vma, address, zc->length,NULL);
+
+		#else
+			zap_page_range(vma, address, zc->length);
+
+		#endif
 
 	zc->recv_skip_hint = 0;
 	ret = 0;

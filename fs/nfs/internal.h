@@ -356,16 +356,22 @@ extern unsigned long nfs_access_cache_count(struct shrinker *shrink,
 extern unsigned long nfs_access_cache_scan(struct shrinker *shrink,
 					   struct shrink_control *sc);
 struct dentry *nfs_lookup(struct inode *, struct dentry *, unsigned int);
-int nfs_create(struct inode *, struct dentry *, umode_t, bool);
-int nfs_mkdir(struct inode *, struct dentry *, umode_t);
+
 int nfs_rmdir(struct inode *, struct dentry *);
 int nfs_unlink(struct inode *, struct dentry *);
 int nfs_symlink(struct inode *, struct dentry *, const char *);
 int nfs_link(struct dentry *, struct inode *, struct dentry *);
-int nfs_mknod(struct inode *, struct dentry *, umode_t, dev_t);
 int nfs_rename(struct inode *, struct dentry *,
 	       struct inode *, struct dentry *, unsigned int);
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
+int nfs_create(struct inode *, struct dentry *, umode_t, bool);
+int nfs_mkdir(struct inode *, struct dentry *, umode_t);
+int nfs_mknod(struct inode *, struct dentry *, umode_t, dev_t);
+#else
+int nfs_create(struct inode *, struct dentry *, umode_t, bool,void *);
+int nfs_mkdir(struct inode *, struct dentry *, umode_t,void *);
+int nfs_mknod(struct inode *, struct dentry *, umode_t, dev_t,void *);
+#endif
 /* file.c */
 int nfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync);
 loff_t nfs_file_llseek(struct file *, loff_t, int);

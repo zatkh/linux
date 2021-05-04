@@ -116,7 +116,7 @@ static inline int ovl_do_link(struct dentry *old_dentry, struct inode *dir,
 static inline int ovl_do_create(struct inode *dir, struct dentry *dentry,
 				umode_t mode)
 {
-	int err = vfs_create(dir, dentry, mode, true);
+	int err = vfs_create(dir, dentry, mode, true,NULL);
 
 	pr_debug("create(%pd2, 0%o) = %i\n", dentry, mode, err);
 	return err;
@@ -125,7 +125,7 @@ static inline int ovl_do_create(struct inode *dir, struct dentry *dentry,
 static inline int ovl_do_mkdir(struct inode *dir, struct dentry *dentry,
 			       umode_t mode)
 {
-	int err = vfs_mkdir(dir, dentry, mode);
+	int err = vfs_mkdir(dir, dentry, mode,NULL);
 	pr_debug("mkdir(%pd2, 0%o) = %i\n", dentry, mode, err);
 	return err;
 }
@@ -133,7 +133,7 @@ static inline int ovl_do_mkdir(struct inode *dir, struct dentry *dentry,
 static inline int ovl_do_mknod(struct inode *dir, struct dentry *dentry,
 			       umode_t mode, dev_t dev)
 {
-	int err = vfs_mknod(dir, dentry, mode, dev);
+	int err = vfs_mknod(dir, dentry, mode, dev,NULL);
 
 	pr_debug("mknod(%pd2, 0%o, 0%o) = %i\n", dentry, mode, dev, err);
 	return err;

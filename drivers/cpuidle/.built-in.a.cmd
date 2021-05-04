@@ -1,0 +1,1 @@
+cmd_drivers/cpuidle/built-in.a := rm -f drivers/cpuidle/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/cpuidle/built-in.a drivers/cpuidle/cpuidle.o drivers/cpuidle/driver.o drivers/cpuidle/governor.o drivers/cpuidle/sysfs.o drivers/cpuidle/governors/built-in.a

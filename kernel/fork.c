@@ -101,14 +101,15 @@
 
 #include <trace/events/sched.h>
 
+#ifdef CONFIG_SW_UDOM
+#include <linux/smv.h>
+#include <linux/memdom.h>
+#include <azure-sphere/difc.h>
+
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-#include <linux/tpt.h>
-#include <linux/mdom.h>
-#define NUM_CLONE_MEMVIEWS 10
-#endif
 
 /*
  * Minimum number of threads to boot the kernel
@@ -415,7 +416,7 @@ void free_task(struct task_struct *tsk)
 #endif
 	rt_mutex_debug_task_free(tsk);
 	ftrace_graph_exit_task(tsk);
-	put_seccomp_filter(tsk);
+	put_seccomp(tsk);
 	arch_release_task_struct(tsk);
 	if (tsk->flags & PF_KTHREAD)
 		free_kthread_struct(tsk);
@@ -602,11 +603,10 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 static void check_mm(struct mm_struct *mm)
 {
 	int i;
-#ifdef CONFIG_MMU_TPT_ENABLED	
+
 	if (mm->using_smv) {
-		tpt_debug(" %s smv %d checking mm %p\n",  current->comm, current->smv_id, mm);
+		slog(KERN_INFO "[%s] %s smv %d checking mm %p\n", __func__, current->comm, current->smv_id, mm);
 	}
-#endif	
 
 	for (i = 0; i < NR_MM_COUNTERS; i++) {
 		long x = atomic_long_read(&mm->rss_stat.count[i]);
@@ -635,11 +635,9 @@ static void check_mm(struct mm_struct *mm)
  */
 void __mmdrop(struct mm_struct *mm)
 {
-#ifdef CONFIG_MMU_TPT_ENABLED	
 	if (mm->using_smv) {
-		tpt_debug(" %s in smv %d mm: %p\n",  current->comm, current->smv_id, mm);
+		slog(KERN_INFO "[%s] %s in smv %d mm: %p\n", __func__, current->comm, current->smv_id, mm);
 	}
-#endif	
 	BUG_ON(mm == &init_mm);
 	WARN_ON_ONCE(mm == current->mm);
 	WARN_ON_ONCE(mm == current->active_mm);
@@ -851,6 +849,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	 * the usage counts on the error path calling free_task.
 	 */
 	tsk->seccomp.filter = NULL;
+
+	#ifdef CONFIG_EXTENDED_LSM
+	
+		tsk->seccomp.checker_group = NULL;
+		tsk->seccomp.arg_cache = NULL;
+
+	#endif /*CONFIG_EXTENDED_LSM */
+
 #endif
 
 	setup_thread_stack(tsk, orig);
@@ -940,18 +946,20 @@ static void mm_init_uprobes_state(struct mm_struct *mm)
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p,
 	struct user_namespace *user_ns)
 {
-#ifdef CONFIG_MMU_TPT_ENABLED
-    atomic_set(&mm->num_smvs, 0);
+	#ifdef CONFIG_SW_UDOM
+	atomic_set(&mm->num_smvs, 0);
 	atomic_set(&mm->num_memdoms, 0);	  
-    bitmap_zero(mm->smv_bitmapInUse, TPT_ARRAY_SIZE); /* No smv is allocated yet */
-    bitmap_zero(mm->memdom_bitmapInUse, TPT_ARRAY_SIZE); /* No memdom is allocated yet */
+    bitmap_zero(mm->smv_bitmapInUse, SMV_ARRAY_SIZE); /* No smv is allocated yet */
+    bitmap_zero(mm->memdom_bitmapInUse, SMV_ARRAY_SIZE); /* No memdom is allocated yet */
     mutex_init(&mm->smv_metadataMutex);    /* Initialize mutex that protects smv */    
-	memset(mm->smv_metadata, 0, sizeof(struct smv_struct*) * TPT_ARRAY_SIZE);	/* If the first element is NULL, then no smv is created yet */
-	memset(mm->memdom_metadata, 0, sizeof(struct memdom_struct*) * TPT_ARRAY_SIZE); /* If the first element is NULL, then no memdom is created yet */
-	memset(mm->pgd_smv, 0, sizeof(pgd_t) * TPT_ARRAY_SIZE);	
+	memset(mm->smv_metadata, 0, sizeof(struct smv_struct*) * SMV_ARRAY_SIZE);	/* If the first element is NULL, then no smv is created yet */
+	memset(mm->memdom_metadata, 0, sizeof(struct memdom_struct*) * SMV_ARRAY_SIZE); /* If the first element is NULL, then no memdom is created yet */
+	memset(mm->pgd_smv, 0, sizeof(pgd_t) * SMV_ARRAY_SIZE);	
 	mm->using_smv = 0;
 	mm->standby_smv_id = -1;
-#endif
+
+	#endif
+
 	mm->mmap = NULL;
 	mm->mm_rb = RB_ROOT;
 	mm->vmacache_seqnum = 0;
@@ -1558,8 +1566,11 @@ static void copy_seccomp(struct task_struct *p)
 
 	/* Ref-count the new filter user, and assign it. */
 	get_seccomp_filter(current);
-	p->seccomp = current->seccomp;
-
+	//p->seccomp = current->seccomp;
+	#ifdef CONFIG_EXTENDED_LSM
+	p->seccomp.mode = current->seccomp.mode;
+	p->seccomp.filter = current->seccomp.filter;
+	#endif
 	/*
 	 * Explicitly enable no_new_privs here in case it got set
 	 * between the task_struct being duplicated and holding the
@@ -1861,7 +1872,8 @@ static __latent_entropy struct task_struct *copy_process(
 	p->sequential_io_avg	= 0;
 #endif
 
-#ifdef CONFIG_MMU_TPT_ENABLED
+#ifdef CONFIG_SW_UDOM
+
 	/* Get smv_id if any stored in mm */
 	if (current->mm) {
 		p->smv_id = current->mm->standby_smv_id; // Could be -1 if it's not smv thread
@@ -1870,7 +1882,9 @@ static __latent_entropy struct task_struct *copy_process(
 	}
 	/* Initialize mmap_memdom_id to -1 */
 	p->mmap_memdom_id = -1;
+
 #endif
+
 
 	/* Perform scheduler related setup. Assign this task to a CPU. */
 	retval = sched_fork(clone_flags, p);
@@ -2179,8 +2193,6 @@ struct task_struct *fork_idle(int cpu)
  *
  * It copies the process, and if successful kick-starts
  * it and waits for it to finish using the VM if required.
- * for now use parent_tidptr for mem_view tables and child_tidptr for mdoms in case of using CLONE_MEM_VIEW
- * we need more clean way of doing that later.  if mvs are empty we create one and add it to the thread's tpts.
  */
 long _do_fork(unsigned long clone_flags,
 	      unsigned long stack_start,
@@ -2195,18 +2207,13 @@ long _do_fork(unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-	int mvs[NUM_CLONE_MEMVIEWS];
-	int i=0;
-#endif	
-
 	/*
 	 * Determine whether and which event to report to ptracer.  When
 	 * called from kernel_thread or CLONE_UNTRACED is explicitly
 	 * requested, no event is reported; otherwise, report if the event
 	 * for the type of forking is enabled.
 	 */
-	if (!(clone_flags & CLONE_UNTRACED)) {
+	//if (!(clone_flags & CLONE_UNTRACED)) {
 		if (clone_flags & CLONE_VFORK)
 			trace = PTRACE_EVENT_VFORK;
 		else if ((clone_flags & CSIGNAL) != SIGCHLD)
@@ -2216,7 +2223,7 @@ long _do_fork(unsigned long clone_flags,
 
 		if (likely(!ptrace_event_enabled(current, trace)))
 			trace = 0;
-	}
+//	}
 
 	p = copy_process(clone_flags, stack_start, stack_size,
 			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
@@ -2234,36 +2241,8 @@ long _do_fork(unsigned long clone_flags,
 	pid = get_task_pid(p, PIDTYPE_PID);
 	nr = pid_vnr(pid);
 
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-	if (clone_flags & CLONE_MEM_VIEW)
-		{
-		
-			copy_from_user( mvs,parent_tidptr, sizeof(mvs));
-			if(mvs!=NULL && mvs[0] !=0 )
-			{
-				//create mvs[0] mvs 
-				for(i=0; i<NUM_CLONE_MEMVIEWS;i++)
-				tpt_debug("mv[%d]: ,",mvs[i]);
-			}
-			else if(mvs[0] ==0){
-				//attach the global mv to the coproc
-			}
-			else{
-				//create one mv nad attach to a mdom
-			}
-			
-		}
-
-	else if (clone_flags & CLONE_PARENT_SETTID)
+	if (clone_flags & CLONE_PARENT_SETTID)
 		put_user(nr, parent_tidptr);
-
-#else
-
-if (clone_flags & CLONE_PARENT_SETTID)
-		put_user(nr, parent_tidptr);
-
-#endif
 
 	if (clone_flags & CLONE_VFORK) {
 		p->vfork_done = &vfork;
@@ -2284,20 +2263,99 @@ if (clone_flags & CLONE_PARENT_SETTID)
 
 	put_pid(pid);
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-	/* Reset smv_id for smv_thread_create and assign smv_id to the child task p
-	 * User space guarantees the atomic operation of forking smv threads 
-	 */
-	if (current->mm) {
+	#ifdef CONFIG_SW_UDOM
+
+		if (current->mm) {
 		if ( current->mm->standby_smv_id != -1 ) {
-			tpt_debug(" forked smv thread running in smv %d\n",  current->mm->standby_smv_id);
+			slog(KERN_INFO "[%s] forked smv thread running in smv %d\n", __func__, current->mm->standby_smv_id);
   			p->smv_id = current->mm->standby_smv_id;
 			current->mm->standby_smv_id = -1;
 		}
 	}
-#endif
+	#endif
+
 	return nr;
 }
+
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+long _udom_do_fork(const char __user * label, unsigned long clone_flags,
+	      unsigned long stack_start,
+	      unsigned long stack_size,
+	      int __user *parent_tidptr,
+	      int __user *child_tidptr,
+	      unsigned long tls)
+{
+	struct completion vfork;
+	struct pid *pid;
+	struct task_struct *p;
+	int trace = 0;
+	long nr;
+
+
+void *lbl = security_copy_user_label(label);
+
+	/*
+	 * Determine whether and which event to report to ptracer.  When
+	 * called from kernel_thread or CLONE_UNTRACED is explicitly
+	 * requested, no event is reported; otherwise, report if the event
+	 * for the type of forking is enabled.
+	 */
+//	if (!(clone_flags & CLONE_UNTRACED)) {
+		if (clone_flags & CLONE_VFORK)
+			trace = PTRACE_EVENT_VFORK;
+		else if ((clone_flags & CSIGNAL) != SIGCHLD)
+			trace = PTRACE_EVENT_CLONE;
+		else
+			trace = PTRACE_EVENT_FORK;
+
+		if (likely(!ptrace_event_enabled(current, trace)))
+			trace = 0;
+//	}
+
+	p = copy_process(clone_flags, stack_start, stack_size,
+			 child_tidptr, NULL, trace, tls, NUMA_NO_NODE);
+	add_latent_entropy();
+
+	if (IS_ERR(p))
+		return PTR_ERR(p);
+
+	/*
+	 * Do this prior waking up the new thread - the thread pointer
+	 * might get invalid after that point, if the thread exits quickly.
+	 */
+	trace_sched_process_fork(current, p);
+
+	pid = get_task_pid(p, PIDTYPE_PID);
+	nr = pid_vnr(pid);
+
+	if (clone_flags & CLONE_PARENT_SETTID)
+		put_user(nr, parent_tidptr);
+
+	if (clone_flags & CLONE_VFORK) {
+		p->vfork_done = &vfork;
+		init_completion(&vfork);
+		get_task_struct(p);
+	}
+
+	wake_up_new_task(p);
+
+	/* forking complete and child started to run, tell ptracer */
+	if (unlikely(trace))
+		ptrace_event_pid(trace, pid);
+
+	if (clone_flags & CLONE_VFORK) {
+		if (!wait_for_vfork_done(p, &vfork))
+			ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);
+	}
+
+	put_pid(pid);
+	return nr;
+}
+
+#endif
 
 #ifndef CONFIG_HAVE_COPY_THREAD_TLS
 /* For compatibility with architectures that call do_fork directly rather than
@@ -2318,8 +2376,9 @@ long do_fork(unsigned long clone_flags,
  */
 pid_t kernel_thread(int (*fn)(void *), void *arg, unsigned long flags)
 {
-	return _do_fork(flags|CLONE_VM|CLONE_UNTRACED, (unsigned long)fn,
-		(unsigned long)arg, NULL, NULL, 0);
+		return _do_fork(flags|CLONE_VM, (unsigned long)fn,(unsigned long)arg, NULL, NULL, 0);
+
+	//return _do_fork(flags|CLONE_VM|CLONE_UNTRACED, (unsigned long)fn,(unsigned long)arg, NULL, NULL, 0);
 }
 
 #ifdef __ARCH_WANT_SYS_FORK
@@ -2368,6 +2427,21 @@ SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 {
 	return _do_fork(clone_flags, newsp, 0, parent_tidptr, child_tidptr, tls);
 }
+#endif
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+SYSCALL_DEFINE6(udom_clone, unsigned long, clone_flags, unsigned long, newsp,
+		 int __user *, parent_tidptr,
+		 int __user *, child_tidptr,
+		 unsigned long, tls,  const char __user *, label)
+{
+
+
+	return _udom_do_fork(label,clone_flags, newsp, 0, parent_tidptr, child_tidptr, tls);
+}
+
 #endif
 
 void walk_process_tree(struct task_struct *top, proc_visitor visitor, void *data)

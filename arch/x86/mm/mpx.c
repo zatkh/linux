@@ -683,13 +683,7 @@ static noinline int zap_bt_entries_mapping(struct mm_struct *mm,
 			return -EINVAL;
 
 		len = min(vma->vm_end, end) - addr;
-
-#ifndef CONFIG_MMU_TPT_ENABLED
 		zap_page_range(vma, addr, len);
-#else
-		zap_page_range(vma, addr, len, NULL);
-#endif
-	
 		trace_mpx_unmap_zap(addr, addr+len);
 
 		vma = vma->vm_next;

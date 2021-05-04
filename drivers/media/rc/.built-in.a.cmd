@@ -1,0 +1,1 @@
+cmd_drivers/media/rc/built-in.a := rm -f drivers/media/rc/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/media/rc/built-in.a drivers/media/rc/keymaps/built-in.a

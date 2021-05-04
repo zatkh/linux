@@ -1,0 +1,1 @@
+cmd_drivers/mtd/nand/onenand/built-in.a := rm -f drivers/mtd/nand/onenand/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/mtd/nand/onenand/built-in.a 

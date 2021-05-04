@@ -1,0 +1,1 @@
+cmd_drivers/leds/trigger/built-in.a := rm -f drivers/leds/trigger/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/leds/trigger/built-in.a drivers/leds/trigger/ledtrig-heartbeat.o drivers/leds/trigger/ledtrig-cpu.o

@@ -818,9 +818,14 @@ fail:
  *
  * Returns: errno
  */
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int gfs2_create(struct inode *dir, struct dentry *dentry,
 		       umode_t mode, bool excl)
+#else
+static int gfs2_create(struct inode *dir, struct dentry *dentry,
+		       umode_t mode, bool excl,void* label)
+#endif
+
 {
 	return gfs2_create_inode(dir, dentry, NULL, S_IFREG | mode, 0, NULL, 0, excl);
 }
@@ -1199,8 +1204,12 @@ static int gfs2_symlink(struct inode *dir, struct dentry *dentry,
  *
  * Returns: errno
  */
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int gfs2_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+
+#else
+static int gfs2_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
 {
 	unsigned dsize = gfs2_max_stuffed_size(GFS2_I(dir));
 	return gfs2_create_inode(dir, dentry, NULL, S_IFDIR | mode, 0, NULL, dsize, 0);
@@ -1214,9 +1223,14 @@ static int gfs2_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
  * @dev: The device specification of the special file
  *
  */
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int gfs2_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 		      dev_t dev)
+#else
+static int gfs2_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
+		      dev_t dev,void* label)
+#endif
+
 {
 	return gfs2_create_inode(dir, dentry, NULL, mode, dev, NULL, 0, 0);
 }

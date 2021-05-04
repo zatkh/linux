@@ -52,12 +52,15 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
+#include <azure-sphere/difc.h>
+
+#ifdef CONFIG_SW_UDOM
+#include <asm/udom.h>
+#include <linux/smv_mm.h>
+#endif
+
+
 #include "internal.h"
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-#include <linux/tpt_mm.h>
-
-#endif //CONFIG_MMU_TPT_ENABLED
 
 #ifndef arch_mmap_check
 #define arch_mmap_check(addr, len, flags)	(0)
@@ -1142,18 +1145,20 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	VM_WARN_ON(area && end > area->vm_end);
 	VM_WARN_ON(addr >= end);
 
-#ifdef CONFIG_MMU_TPT_ENABLED
+
+#ifdef CONFIG_SW_UDOM
+
 	/*
-	 * Do not merge a mdom protected vma
+	 * Do not merge a memdom protected vma
 	 */
 	if ( vm_flags & VM_MEMDOM ||
 		(prev && (prev->vm_flags & VM_MEMDOM)) ||
 		(next && (next->vm_flags & VM_MEMDOM))) {
-		printk(KERN_INFO "[%s] smv %d skip merging VM_MEMDOM vma\n", __func__, current->smv_id);
-    	printk(KERN_INFO "[%s] smv %d prev->vm_start: 0x%16lx to prev->vm_end: 0x%16lx, prev->memdom_id: %d\n",
-	        			 __func__, current->smv_id, prev->vm_start, prev->vm_end, prev->memdom_id);	
-    	printk(KERN_INFO "[%s] smv %d next->vm_start: 0x%16lx to next->vm_end: 0x%16lx, next->memdom_id: %d\n",
-	        			 __func__, current->smv_id, next->vm_start, next->vm_end, next->memdom_id);	
+		difc_lsm_debug("  smv %d skip merging VM_MEMDOM vma\n",  current->smv_id);
+    	difc_lsm_debug("  smv %d prev->vm_start: 0x%16lx to prev->vm_end: 0x%16lx, prev->memdom_id: %d\n",
+	        			  current->smv_id, prev->vm_start, prev->vm_end, prev->memdom_id);	
+    	difc_lsm_debug("  smv %d next->vm_start: 0x%16lx to next->vm_end: 0x%16lx, next->memdom_id: %d\n",
+	        			  current->smv_id, next->vm_start, next->vm_end, next->memdom_id);	
 		return NULL;
 	}
 #endif
@@ -1554,7 +1559,8 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 			vm_flags |= VM_NORESERVE;
 	}
 
-#ifdef CONFIG_MMU_TPT_ENABLED
+	#ifdef CONFIG_SW_UDOM
+
 	/*
 	 * Set MEMDOM flag if the vma is protected by a memory domain 
 	 */
@@ -1565,6 +1571,7 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	}
 #endif
 
+
 	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
@@ -1572,6 +1579,306 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 		*populate = len;
 	return addr;
 }
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+unsigned long udom_do_mmap(unsigned long udom_id, struct file *file, unsigned long addr,
+			unsigned long len, unsigned long prot,
+			unsigned long flags, vm_flags_t vm_flags,
+			unsigned long pgoff, unsigned long *populate,
+			struct list_head *uf)
+{
+	struct mm_struct *mm = current->mm;
+	unsigned int i;
+	pgd_t *pgd;
+    pud_t *pud;
+    pmd_t *pmd;
+	unsigned long counts=0;
+	unsigned long dacr = 0;
+	int domain_copy=udom_id;
+
+	int pkey = 0;
+
+	*populate = 0;
+
+
+	if (!len)
+		return -EINVAL;
+
+	counts=len/SECTION_SIZE;
+	//difc_lsm_debug("udom_do_mmap udom_id:%ld, counts: %ld\n",udom_id, counts);
+	
+
+	/*
+	 * Does the application expect PROT_READ to imply PROT_EXEC?
+	 *
+	 * (the exception is when the underlying filesystem is noexec
+	 *  mounted, in which case we dont add PROT_EXEC.)
+	 */
+	if ((prot & PROT_READ) && (current->personality & READ_IMPLIES_EXEC))
+		if (!(file && path_noexec(&file->f_path)))
+			prot |= PROT_EXEC;
+
+	/* force arch specific MAP_FIXED handling in get_unmapped_area */
+	if (flags & MAP_FIXED_NOREPLACE)
+		flags |= MAP_FIXED;
+
+	if (!(flags & MAP_FIXED))
+		addr = round_hint_to_min(addr);
+
+	/* Careful about overflows.. */
+	len = PAGE_ALIGN(len);
+	if (!len)
+		return -ENOMEM;
+
+	/* offset overflow? */
+	if ((pgoff + (len >> PAGE_SHIFT)) < pgoff)
+		return -EOVERFLOW;
+
+	/* Too many mappings? */
+	if (mm->map_count > sysctl_max_map_count)
+		return -ENOMEM;
+
+	/* Obtain the address to map to. we verify (or select) it and ensure
+	 * that it represents a valid section of the address space.
+	 */
+	addr = get_unmapped_area(file, addr, len, pgoff, flags);
+	if (offset_in_page(addr))
+		return addr;
+
+	if (flags & MAP_FIXED_NOREPLACE) {
+		struct vm_area_struct *vma = find_vma(mm, addr);
+
+		if (vma && vma->vm_start < addr + len)
+			return -EEXIST;
+	}
+
+	if (prot == PROT_EXEC) {
+		pkey = execute_only_pkey(mm);
+		if (pkey < 0)
+			pkey = 0;
+	}
+
+	/* Do simple checking here so the lower-level routines won't have
+	 * to. we assume access permissions have been handled by the open
+	 * of the memory object, so we don't do any here.
+	 */
+	vm_flags |= calc_vm_prot_bits(prot, pkey) | calc_vm_flag_bits(flags) |
+			mm->def_flags | VM_MAYREAD | VM_MAYWRITE | VM_MAYEXEC;
+
+	if (flags & MAP_LOCKED)
+		if (!can_do_mlock())
+			return -EPERM;
+
+	if (mlock_future_check(mm, vm_flags, len))
+		return -EAGAIN;
+
+	if (file) {
+		struct inode *inode = file_inode(file);
+		unsigned long flags_mask;
+
+		if (!file_mmap_ok(file, inode, pgoff, len))
+			return -EOVERFLOW;
+
+		flags_mask = LEGACY_MAP_MASK | file->f_op->mmap_supported_flags;
+
+		switch (flags & MAP_TYPE) {
+		case MAP_SHARED:
+			/*
+			 * Force use of MAP_SHARED_VALIDATE with non-legacy
+			 * flags. E.g. MAP_SYNC is dangerous to use with
+			 * MAP_SHARED as you don't know which consistency model
+			 * you will get. We silently ignore unsupported flags
+			 * with MAP_SHARED to preserve backward compatibility.
+			 */
+			flags &= LEGACY_MAP_MASK;
+			/* fall through */
+		case MAP_SHARED_VALIDATE:
+			if (flags & ~flags_mask)
+				return -EOPNOTSUPP;
+			if ((prot&PROT_WRITE) && !(file->f_mode&FMODE_WRITE))
+				return -EACCES;
+
+			/*
+			 * Make sure we don't allow writing to an append-only
+			 * file..
+			 */
+			if (IS_APPEND(inode) && (file->f_mode & FMODE_WRITE))
+				return -EACCES;
+
+			/*
+			 * Make sure there are no mandatory locks on the file.
+			 */
+			if (locks_verify_locked(file))
+				return -EAGAIN;
+
+			vm_flags |= VM_SHARED | VM_MAYSHARE;
+			if (!(file->f_mode & FMODE_WRITE))
+				vm_flags &= ~(VM_MAYWRITE | VM_SHARED);
+
+			/* fall through */
+		case MAP_PRIVATE:
+			if (!(file->f_mode & FMODE_READ))
+				return -EACCES;
+			if (path_noexec(&file->f_path)) {
+				if (vm_flags & VM_EXEC)
+					return -EPERM;
+				vm_flags &= ~VM_MAYEXEC;
+			}
+
+			if (!file->f_op->mmap)
+				return -ENODEV;
+			if (vm_flags & (VM_GROWSDOWN|VM_GROWSUP))
+				return -EINVAL;
+			break;
+
+		default:
+			return -EINVAL;
+		}
+	} else {
+		switch (flags & MAP_TYPE) {
+		case MAP_SHARED:
+			if (vm_flags & (VM_GROWSDOWN|VM_GROWSUP))
+				return -EINVAL;
+			/*
+			 * Ignore pgoff.
+			 */
+			pgoff = 0;
+			vm_flags |= VM_SHARED | VM_MAYSHARE;
+			break;
+		case MAP_PRIVATE:
+			/*
+			 * Set pgoff according to addr for anon_vma.
+			 */
+			pgoff = addr >> PAGE_SHIFT;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	/*
+	 * Set 'VM_NORESERVE' if we should not account for the
+	 * memory use of this mapping.
+	 */
+	if (flags & MAP_NORESERVE) {
+		/* We honor MAP_NORESERVE if allowed to overcommit */
+		if (sysctl_overcommit_memory != OVERCOMMIT_NEVER)
+			vm_flags |= VM_NORESERVE;
+
+		/* hugetlb applies strict overcommit unless MAP_NORESERVE */
+		if (file && is_file_hugepages(file))
+			vm_flags |= VM_NORESERVE;
+	}
+
+	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
+	if (!IS_ERR_VALUE(addr) &&
+	    ((vm_flags & VM_LOCKED) ||
+	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
+		*populate = len;
+
+// mapping the region to an uTiles
+	spin_lock(&mm->page_table_lock);
+    pgd = pgd_offset(mm, addr);
+    pud = pud_offset(pgd, addr);
+    pmd = pmd_offset(pud, addr);
+	//ptep = pte_offset_map(pmd, addr);
+	
+    if (addr & SECTION_SIZE)
+        pmd++;
+
+	for (i = 0; i < counts; ++i) {
+		//difc_lsm_debug(" pmd domain: %lx\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+        *pmd = (*pmd & 0xfffffe1f) | (domain_copy << 5);
+        flush_pmd_entry(pmd);
+		//difc_lsm_debug(" pmd domain: %ld\n",(pmd_val(*pmd) & PMD_DOMAIN_MASK));
+
+        pmd++;
+    }
+    spin_unlock(&mm->page_table_lock);	
+	//if labeld thread make it no access //DOMAIN_MANAGER
+		//dacr=get_dacr();
+		    //difc_lsm_debug("dacr=0x%lx\n", dacr);
+
+
+	if(prot ==PROT_NONE)
+		{
+			modify_udom(domain_copy,DOMAIN_NOACCESS);
+		}
+	else{
+			modify_udom(domain_copy,DOMAIN_CLIENT);
+		}	
+
+
+
+	//dacr=get_dacr();
+   // difc_lsm_debug("dacr=0x%lx\n", dacr);
+
+
+	return addr;
+}
+
+unsigned long udom_ksys_mmap_pgoff(unsigned long udom_id, unsigned long addr, unsigned long len,
+			      unsigned long prot, unsigned long flags,
+			      unsigned long fd)
+
+{
+	struct file *file = NULL;
+	unsigned long retval;
+
+	if (!(flags & MAP_ANONYMOUS)) {
+		audit_mmap_fd(fd, flags);
+		file = fget(fd);
+		if (!file)
+			return -EBADF;
+		if (is_file_hugepages(file))
+			len = ALIGN(len, huge_page_size(hstate_file(file)));
+		retval = -EINVAL;
+		if (unlikely(flags & MAP_HUGETLB && !is_file_hugepages(file)))
+			goto out_fput;
+	} else if (flags & MAP_HUGETLB) {
+		struct user_struct *user = NULL;
+		struct hstate *hs;
+
+		hs = hstate_sizelog((flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
+		if (!hs)
+			return -EINVAL;
+
+		len = ALIGN(len, huge_page_size(hs));
+		/*
+		 * VM_NORESERVE is used because the reservations will be
+		 * taken when vm_ops->mmap() is called
+		 * A dummy user value is used because we are not locking
+		 * memory so no accounting is necessary
+		 */
+		file = hugetlb_file_setup(HUGETLB_ANON_FILE, len,
+				VM_NORESERVE,
+				&user, HUGETLB_ANONHUGE_INODE,
+				(flags >> MAP_HUGE_SHIFT) & MAP_HUGE_MASK);
+		if (IS_ERR(file))
+			return PTR_ERR(file);
+	}
+
+	flags &= ~(MAP_EXECUTABLE | MAP_DENYWRITE);
+
+	//retval = vm_mmap_pgoff(file, addr, len, prot, flags, pgoff);
+		retval = udom_vm_mmap_pgoff(udom_id,file, addr, len, prot, flags, 0);
+
+out_fput:
+	if (file)
+		fput(file);
+	return retval;
+}
+
+SYSCALL_DEFINE6(udom_mmap_pgoff,unsigned long, udom_id, unsigned long, addr, unsigned long, len,
+		unsigned long, prot, unsigned long, flags,
+		unsigned long, fd)
+{
+	return udom_ksys_mmap_pgoff(udom_id, addr, len, prot, flags, fd);
+}
+
+#endif
 
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
@@ -1628,6 +1935,8 @@ SYSCALL_DEFINE6(mmap_pgoff, unsigned long, addr, unsigned long, len,
 {
 	return ksys_mmap_pgoff(addr, len, prot, flags, fd, pgoff);
 }
+
+
 
 #ifdef __ARCH_WANT_SYS_OLD_MMAP
 struct mmap_arg_struct {
@@ -1774,19 +2083,19 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 	vma->vm_page_prot = vm_get_page_prot(vm_flags);
 	vma->vm_pgoff = pgoff;
 
-#ifdef CONFIG_MMU_TPT_ENABLED
 
-	/* Set memdom_id correctly. 
+#ifdef CONFIG_SW_UDOM
+
+	/* mmap_region: Set memdom_id correctly. 
 	 * User space call memdom_mmap_register to store memdom_id for mmap in current */
 	if ( vm_flags & VM_MEMDOM ) {
 		vma->memdom_id = current->mmap_memdom_id;	
 		current->mmap_memdom_id = -1; // reset to -1
-		printk(KERN_INFO "[%s] smv %d allocated vma in memdom %d [0x%16lx - 0x%16lx)\n", 
-			   __func__, current->smv_id, vma->memdom_id, vma->vm_start, vma->vm_end);
+		difc_lsm_debug("  smv %d allocated vma in memdom %d [0x%16lx - 0x%16lx)\n", 
+			    current->smv_id, vma->memdom_id, vma->vm_start, vma->vm_end);
 	} else {
 		vma->memdom_id = MAIN_THREAD; 
 	}
-
 #endif
 
 	if (file) {
@@ -2609,26 +2918,6 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
  *
  * Called with the mm semaphore held.
  */
-
-#ifndef CONFIG_MMU_TPT_ENABLED
-static void unmap_region(struct mm_struct *mm,
-		struct vm_area_struct *vma, struct vm_area_struct *prev,
-		unsigned long start, unsigned long end)
-{
-	struct vm_area_struct *next = prev ? prev->vm_next : mm->mmap;
-	struct mmu_gather tlb;
-
-	lru_add_drain();
-	tlb_gather_mmu(&tlb, mm, start, end);
-	update_hiwater_rss(mm);
-	unmap_vmas(&tlb, vma, start, end);
-	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
-				 next ? next->vm_start : USER_PGTABLES_CEILING);
-	tlb_finish_mmu(&tlb, start, end);
-}
-
-#else
-
 static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		unsigned long start, unsigned long end)
@@ -2640,13 +2929,18 @@ static void unmap_region(struct mm_struct *mm,
 	tlb_gather_mmu(&tlb, mm, start, end);
 	update_hiwater_rss(mm);
 
-	// Get rid of all tpts information
+
+
+#ifdef CONFIG_SW_UDOM
+
+
+	/* Get rid of page table information for all smvs */
 	if (mm->using_smv) {
 		int smv_id = -1;
 		do {
-			smv_id = find_next_bit(mm->smv_bitmapInUse, TPT_ARRAY_SIZE, (smv_id + 1) );		
-			if (smv_id != TPT_ARRAY_SIZE) {
-				tpt_debug("smv %d [0x%16lx to 0x%16lx]\n", smv_id, 
+			smv_id = find_next_bit(mm->smv_bitmapInUse, SMV_ARRAY_SIZE, (smv_id + 1) );		
+			if (smv_id != SMV_ARRAY_SIZE) {
+				slog("  smv %d [0x%16lx to 0x%16lx]\n",  smv_id, 
 						prev ? prev->vm_end : FIRST_USER_ADDRESS,
 						next ? next->vm_start : USER_PGTABLES_CEILING );
 				tlb.smv_id = smv_id;
@@ -2663,7 +2957,7 @@ static void unmap_region(struct mm_struct *mm,
 										 next ? next->vm_start : USER_PGTABLES_CEILING);       
 				}
 			}
-		} while (smv_id != TPT_ARRAY_SIZE);
+		} while (smv_id != SMV_ARRAY_SIZE);
 	} 
 	else {
 		unmap_vmas(&tlb, vma, start, end);
@@ -2671,11 +2965,15 @@ static void unmap_region(struct mm_struct *mm,
 					 next ? next->vm_start : USER_PGTABLES_CEILING);
 	}
 
+#else
+
+	unmap_vmas(&tlb, vma, start, end);
+	free_pgtables(&tlb, vma, prev ? prev->vm_end : FIRST_USER_ADDRESS,
+				 next ? next->vm_start : USER_PGTABLES_CEILING);
 	tlb_finish_mmu(&tlb, start, end);
+#endif	
+
 }
-
-#endif
-
 
 /*
  * Create a list of vma's touched by the unmap, removing them from the mm's
@@ -2755,9 +3053,12 @@ int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	else
 		err = vma_adjust(vma, vma->vm_start, addr, vma->vm_pgoff, new);
 
-#ifdef CONFIG_MMU_TPT_ENABLED
+
+	#ifdef CONFIG_SW_UDOM
+
 	new->memdom_id = MAIN_THREAD; // make new vma the main thread's
-#endif
+	#endif
+
 	/* Success. */
 	if (!err)
 		return 0;
@@ -2879,13 +3180,13 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len,
 			tmp = tmp->vm_next;
 		}
 	}
-#ifdef CONFIG_MMU_TPT_ENABLED
-	//for debugging	
-	if (vma->memdom_id != MAIN_THREAD) {
-		printk(KERN_INFO "[%s] smv %d removing vma in memdom %d\n", __func__, current->smv_id, vma->memdom_id);
-	}
-#endif	
 
+	#ifdef CONFIG_SW_UDOM
+
+	if (vma->memdom_id != MAIN_THREAD) {
+		difc_lsm_debug("  smv %d removing vma in memdom %d\n",  current->smv_id, vma->memdom_id);
+	}	
+	#endif
 
 	/*
 	 * Remove the vma's, and unmap the actual pages
@@ -3105,10 +3406,9 @@ static int do_brk_flags(unsigned long addr, unsigned long len, unsigned long fla
 	vma->vm_pgoff = pgoff;
 	vma->vm_flags = flags;
 	vma->vm_page_prot = vm_get_page_prot(flags);
-#ifdef CONFIG_MMU_TPT_ENABLED
+	#ifdef CONFIG_SW_UDOM
 	vma->memdom_id = MAIN_THREAD; // make new vma the main thread's
-
-#endif
+	#endif
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 out:
 	perf_event_mmap(vma);
@@ -3160,12 +3460,6 @@ void exit_mmap(struct mm_struct *mm)
 	struct vm_area_struct *vma;
 	unsigned long nr_accounted = 0;
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-	//for debugging
-	if (mm->using_smv) {
-		tpt_debug("%s in smv %d mm: %p\n", current->comm, current->smv_id, mm);
-	}
-#endif	
 	/* mm's last user has gone, and its about to be pulled down */
 	mmu_notifier_release(mm);
 
@@ -3213,15 +3507,18 @@ void exit_mmap(struct mm_struct *mm)
 	tlb_gather_mmu(&tlb, mm, 0, -1);
 
 
-#ifdef CONFIG_MMU_TPT_ENABLED
+	#ifdef CONFIG_SW_UDOM
 
-		if (mm->using_smv) {
+	if (mm->using_smv) {
 		free_all_smvs(mm);   /* Free smvs and their mm */
 		free_all_memdoms(mm);   /* Free memdoms */
 		tlb.smv_id = MAIN_THREAD;	/* Set smv id in tlb for unmap_vmas and free_pgtables to use */
 	}
 
-#endif
+	#endif
+
+
+
 	/* update_hiwater_rss(mm) here? but nobody should be looking */
 	/* Use -1 here to ensure all VMAs in the mm are unmapped */
 	unmap_vmas(&tlb, vma, 0, -1);
@@ -3345,9 +3642,9 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 			new_vma->vm_ops->open(new_vma);
 		vma_link(mm, new_vma, prev, rb_link, rb_parent);
 		*need_rmap_locks = false;
-	#ifdef CONFIG_MMU_TPT_ENABLED
-		vma->memdom_id = vma->memdom_id; // copy memdom_id
-	#endif	
+		#ifdef CONFIG_SW_UDOM
+			vma->memdom_id = vma->memdom_id; // copy memdom_id
+		#endif
 	}
 	return new_vma;
 
@@ -3490,10 +3787,8 @@ static struct vm_area_struct *__install_special_mapping(
 
 	vma->vm_ops = ops;
 	vma->vm_private_data = priv;
-
-	#ifdef CONFIG_MMU_TPT_ENABLED
-	vma->memdom_id = MAIN_THREAD; // make new vma the main thread's
-
+	#ifdef CONFIG_SW_UDOM
+		vma->memdom_id = MAIN_THREAD; // make new vma the main thread's
 	#endif
 
 	ret = insert_vm_struct(mm, vma);

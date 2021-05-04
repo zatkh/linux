@@ -1,0 +1,1 @@
+cmd_drivers/hid/usbhid/built-in.a := rm -f drivers/hid/usbhid/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/hid/usbhid/built-in.a drivers/hid/usbhid/hid-core.o

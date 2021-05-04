@@ -1,0 +1,1 @@
+cmd_drivers/mfd/built-in.a := rm -f drivers/mfd/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/mfd/built-in.a drivers/mfd/mfd-core.o drivers/mfd/syscon.o drivers/mfd/vexpress-sysreg.o

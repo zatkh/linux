@@ -66,14 +66,14 @@
 static int xattr_create(struct inode *dir, struct dentry *dentry, int mode)
 {
 	BUG_ON(!inode_is_locked(dir));
-	return dir->i_op->create(dir, dentry, mode, true);
+	return dir->i_op->create(dir, dentry, mode, true,NULL);
 }
 #endif
 
 static int xattr_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 {
 	BUG_ON(!inode_is_locked(dir));
-	return dir->i_op->mkdir(dir, dentry, mode);
+	return dir->i_op->mkdir(dir, dentry, mode,NULL);
 }
 
 /*

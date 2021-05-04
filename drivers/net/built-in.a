@@ -1,0 +1,35 @@
+!<thin>
+//                                              256       `
+mii.o/
+Space.o/
+loopback.o/
+phy/mdio-boardinfo.o/
+phy/phy.o/
+phy/phy-c45.o/
+phy/phy-core.o/
+phy/phy_device.o/
+phy/mdio_bus.o/
+phy/mdio_device.o/
+phy/swphy.o/
+phy/fixed_phy.o/
+virtio_net.o/
+ethernet/smsc/smc91x.o/
+ethernet/smsc/smsc911x.o/
+net_failover.o/
+
+/0              0           0     0     644     195608    `
+/7              0           0     0     644     164804    `
+/16             0           0     0     644     223940    `
+/28             0           0     0     644     119400    `
+/50             0           0     0     644     228476    `
+/61             0           0     0     644     137308    `
+/76             0           0     0     644     145316    `
+/92             0           0     0     644     278820    `
+/110            0           0     0     644     270932    `
+/126            0           0     0     644     136000    `
+/145            0           0     0     644     116348    `
+/158            0           0     0     644     157772    `
+/175            0           0     0     644     533556    `
+/189            0           0     0     644     529096    `
+/213            0           0     0     644     368396    `
+/239            0           0     0     644     244848    `

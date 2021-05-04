@@ -1,0 +1,74 @@
+!<thin>
+//                                              590       `
+core/usb.o/
+core/hub.o/
+core/hcd.o/
+core/urb.o/
+core/message.o/
+core/driver.o/
+core/config.o/
+core/file.o/
+core/buffer.o/
+core/sysfs.o/
+core/endpoint.o/
+core/devio.o/
+core/notify.o/
+core/generic.o/
+core/quirks.o/
+core/devices.o/
+core/phy.o/
+core/port.o/
+core/of.o/
+phy/of.o/
+isp1760/isp1760-core.o/
+isp1760/isp1760-if.o/
+isp1760/isp1760-hcd.o/
+mon/mon_main.o/
+mon/mon_stat.o/
+mon/mon_text.o/
+mon/mon_bin.o/
+storage/scsiglue.o/
+storage/protocol.o/
+storage/transport.o/
+storage/usb.o/
+storage/initializers.o/
+storage/sierra_ms.o/
+storage/option_ms.o/
+storage/usual-tables.o/
+common/common.o/
+/0              0           0     0     644     178816    `
+/12             0           0     0     644     327136    `
+/24             0           0     0     644     254488    `
+/36             0           0     0     644     165504    `
+/48             0           0     0     644     226436    `
+/64             0           0     0     644     198324    `
+/79             0           0     0     644     153096    `
+/94             0           0     0     644     120368    `
+/107            0           0     0     644     136104    `
+/122            0           0     0     644     179188    `
+/136            0           0     0     644     112208    `
+/153            0           0     0     644     359024    `
+/167            0           0     0     644     103416    `
+/182            0           0     0     644     109100    `
+/198            0           0     0     644     120748    `
+/213            0           0     0     644     146252    `
+/229            0           0     0     644     68848     `
+/241            0           0     0     644     141476    `
+/254            0           0     0     644     103952    `
+/265            0           0     0     644     98576     `
+/275            0           0     0     644     109040    `
+/299            0           0     0     644     127824    `
+/321            0           0     0     644     248784    `
+/344            0           0     0     644     135640    `
+/360            0           0     0     644     100580    `
+/376            0           0     0     644     159872    `
+/392            0           0     0     644     196148    `
+/407            0           0     0     644     182032    `
+/427            0           0     0     644     159104    `
+/447            0           0     0     644     194420    `
+/468            0           0     0     644     234812    `
+/483            0           0     0     644     135852    `
+/507            0           0     0     644     165452    `
+/528            0           0     0     644     148400    `
+/549            0           0     0     644     114384    `
+/573            0           0     0     644     113380    `

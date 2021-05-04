@@ -207,20 +207,13 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_WIPEONFORK	0x02000000	/* Wipe VMA contents in child. */
 #define VM_DONTDUMP	0x04000000	/* Do not include in the core dump */
 
-#ifdef CONFIG_MEM_SOFT_DIRTY 
-#ifndef CONFIG_MMU_TPT_ENABLED
+#ifdef CONFIG_MEM_SOFT_DIRTY
 # define VM_SOFTDIRTY	0x08000000	/* Not soft dirty clean area */
-#else 
-# define VM_SOFTDIRTY	0
-#endif
 #else
 # define VM_SOFTDIRTY	0
-#endif
+#define VM_MEMDOM		0x08000000	/* Synchronous page faults */
 
-#ifdef CONFIG_MMU_TPT_ENABLED
-# define VM_MEMDOM	0x08000000	/* Not soft dirty clean area */
 #endif
-
 
 #define VM_MIXEDMAP	0x10000000	/* Can contain "struct page" and pure PFN pages */
 #define VM_HUGEPAGE	0x20000000	/* MADV_HUGEPAGE marked this vma */
@@ -1340,11 +1333,9 @@ struct zap_details {
 	struct address_space *check_mapping;	/* Check page->mapping if set */
 	pgoff_t	first_index;			/* Lowest page->index to unmap */
 	pgoff_t last_index;			/* Highest page->index to unmap */
-
-#ifdef CONFIG_MMU_TPT_ENABLED
-	int smv_id; //which tpt zap_page_range() cleanup
-#endif
-	
+	#ifdef CONFIG_SW_UDOM
+	int smv_id;				/* Indicate which smv's page tables zap_page_range() is working on */
+	#endif
 };
 
 struct page *_vm_normal_page(struct vm_area_struct *vma, unsigned long addr,
@@ -1357,12 +1348,12 @@ struct page *vm_normal_page_pmd(struct vm_area_struct *vma, unsigned long addr,
 void zap_vma_ptes(struct vm_area_struct *vma, unsigned long address,
 		  unsigned long size);
 
-#ifndef CONFIG_MMU_TPT_ENABLED
+#ifdef CONFIG_SW_UDOM
+void zap_page_range(struct vm_area_struct *vma, unsigned long address,
+		    unsigned long size,struct zap_details *details);
+#else
 void zap_page_range(struct vm_area_struct *vma, unsigned long address,
 		    unsigned long size);
-#else
-void zap_page_range(struct vm_area_struct *vma, unsigned long start,
-		unsigned long size,struct zap_details *details);
 #endif
 
 void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
@@ -1893,12 +1884,23 @@ static inline spinlock_t *ptlock_ptr(struct page *page)
 }
 #endif /* ALLOC_SPLIT_PTLOCKS */
 
+//ztodo: Originally, mm->page_table_lock spinlock protected all page tables of the
+//mm_struct. But this approach leads to poor page fault scalability of
+//multi-threaded applications due high contention on the lock.
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
-	
-	//ztodo: check for possible sync problem and kernel panic, 
+
+	#ifdef CONFIG_SW_UDOM
+
+	if (mm->using_smv) {
+		return &mm->page_table_lock_smv[current->smv_id];
+	}
+	else{
+		return &mm->page_table_lock;
+	}
+	#else
 	return ptlock_ptr(pmd_page(*pmd));
-	
+	#endif
 
 }
 
@@ -1931,13 +1933,7 @@ static inline void pte_lock_deinit(struct page *page)
  */
 static inline spinlock_t *pte_lockptr(struct mm_struct *mm, pmd_t *pmd)
 {
-	#ifndef CONFIG_MMU_TPT_ENABLED
 	return &mm->page_table_lock;
-	#else 
-	if (mm->using_smv) {
-		return &mm->page_table_lock_smv[current->smv_id];
-	}
-	#endif
 }
 static inline void ptlock_cache_init(void) {}
 static inline bool ptlock_init(struct page *page) { return true; }
@@ -2338,6 +2334,16 @@ extern unsigned long do_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot, unsigned long flags,
 	vm_flags_t vm_flags, unsigned long pgoff, unsigned long *populate,
 	struct list_head *uf);
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+
+extern unsigned long udom_do_mmap(unsigned long udom_id,struct file *file, unsigned long addr,
+unsigned long len, unsigned long prot, unsigned long flags,
+vm_flags_t vm_flags, unsigned long pgoff, unsigned long *populate,
+struct list_head *uf);
+#endif
+
 extern int do_munmap(struct mm_struct *, unsigned long, size_t,
 		     struct list_head *uf);
 
@@ -2349,6 +2355,20 @@ do_mmap_pgoff(struct file *file, unsigned long addr,
 {
 	return do_mmap(file, addr, len, prot, flags, 0, pgoff, populate, uf);
 }
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+static inline unsigned long
+udom_do_mmap_pgoff(unsigned long udom_id,struct file *file, unsigned long addr,
+	unsigned long len, unsigned long prot, unsigned long flags,
+	unsigned long pgoff, unsigned long *populate,
+	struct list_head *uf)
+{
+	return udom_do_mmap(udom_id,file, addr, len, prot, flags, 0, pgoff, populate, uf);
+}
+
+#endif //CONFIG_EXTENDED_LSM_DIFC
 
 #ifdef CONFIG_MMU
 extern int __mm_populate(unsigned long addr, unsigned long len,

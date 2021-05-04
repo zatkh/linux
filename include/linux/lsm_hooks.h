@@ -1579,6 +1579,7 @@ union security_list_options {
 	void (*task_free)(struct task_struct *task);
 	int (*cred_alloc_blank)(struct cred *cred, gfp_t gfp);
 	void (*cred_free)(struct cred *cred);
+
 	int (*cred_prepare)(struct cred *new, const struct cred *old,
 				gfp_t gfp);
 	void (*cred_transfer)(struct cred *new, const struct cred *old);
@@ -1777,6 +1778,21 @@ union security_list_options {
 	int (*bpf_prog_alloc_security)(struct bpf_prog_aux *aux);
 	void (*bpf_prog_free_security)(struct bpf_prog_aux *aux);
 #endif /* CONFIG_BPF_SYSCALL */
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+	unsigned long  (*set_task_label) (struct task_struct *tsk, unsigned long label, enum label_types ops, enum label_types label_type, void __user *bulk_label);
+	void*  (*copy_user_label) (const char __user *label);
+	int  (*check_tasks_labels_allowed) (struct task_struct *s_tsk,struct task_struct *d_tsk);
+	int (*check_task_labeled) (struct task_struct *tsk);
+	int (*sk_alloc_security)(struct sock *sk, int family, gfp_t priority);
+	void (*sk_free_security)(struct sock *sk);
+	void (*sk_clone_security)(const struct sock *sk, struct sock *newsk);
+	int (*inode_set_security)(struct inode *inode, const char *name,  void *label, size_t size, int flags);
+
+
+#endif
+
 };
 
 struct security_hook_heads {
@@ -2011,6 +2027,23 @@ struct security_hook_heads {
 	struct hlist_head bpf_prog_alloc_security;
 	struct hlist_head bpf_prog_free_security;
 #endif /* CONFIG_BPF_SYSCALL */
+
+
+#ifdef CONFIG_EXTENDED_LSM_DIFC
+
+	struct hlist_head set_task_label;
+	struct hlist_head copy_user_label;
+	struct hlist_head check_tasks_labels_allowed;
+	struct hlist_head check_task_labeled;
+	struct hlist_head sk_alloc_security;
+	struct hlist_head sk_free_security;
+	struct hlist_head sk_clone_security;
+	struct hlist_head inode_set_security;
+	
+#endif
+
+
+
 } __randomize_layout;
 
 /*

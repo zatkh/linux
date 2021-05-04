@@ -147,8 +147,11 @@ int devtmpfs_delete_node(struct device *dev)
 	kfree(tmp);
 	return req.err;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int dev_mkdir(const char *name, umode_t mode)
+#else
+static int dev_mkdir(const char *name, umode_t mode,void* label)
+#endif 
 {
 	struct dentry *dentry;
 	struct path path;
@@ -158,7 +161,12 @@ static int dev_mkdir(const char *name, umode_t mode)
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
+	#ifndef CONFIG_EXTENDED_LSM_DIFC
 	err = vfs_mkdir(d_inode(path.dentry), dentry, mode);
+	#else
+	err = vfs_mkdir(d_inode(path.dentry), dentry, mode,label);
+	#endif /*CONFIG_EXTENDED_LSM_DIFC */
+
 	if (!err)
 		/* mark as kernel-created inode */
 		d_inode(dentry)->i_private = &thread;
@@ -166,7 +174,12 @@ static int dev_mkdir(const char *name, umode_t mode)
 	return err;
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int create_path(const char *nodepath)
+#else
+static int create_path(const char *nodepath,void* label)
+#endif 
+
 {
 	char *path;
 	char *s;
@@ -183,7 +196,11 @@ static int create_path(const char *nodepath)
 		if (!s)
 			break;
 		s[0] = '\0';
+		#ifndef CONFIG_EXTENDED_LSM_DIFC
 		err = dev_mkdir(path, 0755);
+#else
+		err = dev_mkdir(path, 0755,label);
+#endif 
 		if (err && err != -EEXIST)
 			break;
 		s[0] = '/';
@@ -192,9 +209,14 @@ static int create_path(const char *nodepath)
 	kfree(path);
 	return err;
 }
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 
 static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
 			 kgid_t gid, struct device *dev)
+#else
+static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
+			 kgid_t gid, struct device *dev, void* label)
+#endif
 {
 	struct dentry *dentry;
 	struct path path;
@@ -202,13 +224,21 @@ static int handle_create(const char *nodename, umode_t mode, kuid_t uid,
 
 	dentry = kern_path_create(AT_FDCWD, nodename, &path, 0);
 	if (dentry == ERR_PTR(-ENOENT)) {
+		#ifndef CONFIG_EXTENDED_LSM_DIFC
 		create_path(nodename);
+		#else
+		create_path(nodename,label);
+		#endif
 		dentry = kern_path_create(AT_FDCWD, nodename, &path, 0);
 	}
 	if (IS_ERR(dentry))
 		return PTR_ERR(dentry);
 
+		#ifndef CONFIG_EXTENDED_LSM_DIFC
 	err = vfs_mknod(d_inode(path.dentry), dentry, mode, dev->devt);
+		#else
+	err = vfs_mknod(d_inode(path.dentry), dentry, mode, dev->devt,label);
+		#endif
 	if (!err) {
 		struct iattr newattrs;
 
@@ -367,11 +397,22 @@ int devtmpfs_mount(const char *mntdir)
 
 static DECLARE_COMPLETION(setup_done);
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int handle(const char *name, umode_t mode, kuid_t uid, kgid_t gid,
 		  struct device *dev)
+#else
+static int handle(const char *name, umode_t mode, kuid_t uid, kgid_t gid,
+		  struct device *dev, void* label)
+#endif
+
 {
 	if (mode)
-		return handle_create(name, mode, uid, gid, dev);
+		#ifndef CONFIG_EXTENDED_LSM_DIFC
+			return handle_create(name, mode, uid, gid, dev);
+		#else
+			return handle_create(name, mode, uid, gid, dev,label);
+		#endif
 	else
 		return handle_remove(name, dev);
 }
@@ -397,8 +438,15 @@ static int devtmpfsd(void *p)
 			spin_unlock(&req_lock);
 			while (req) {
 				struct req *next = req->next;
-				req->err = handle(req->name, req->mode,
+
+				#ifndef CONFIG_EXTENDED_LSM_DIFC
+					req->err = handle(req->name, req->mode,
 						  req->uid, req->gid, req->dev);
+				#else
+					req->err = handle(req->name, req->mode,
+						  req->uid, req->gid, req->dev,NULL);
+				#endif
+
 				complete(&req->done);
 				req = next;
 			}

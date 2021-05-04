@@ -476,8 +476,14 @@ out:
 	return res;
 }
 
+
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int hfsplus_mknod(struct inode *dir, struct dentry *dentry,
 			 umode_t mode, dev_t rdev)
+#else
+static int hfsplus_mknod(struct inode *dir, struct dentry *dentry,
+			 umode_t mode, dev_t rdev,void* label)
+#endif			 
 {
 	struct hfsplus_sb_info *sbi = HFSPLUS_SB(dir->i_sb);
 	struct inode *inode;
@@ -516,16 +522,26 @@ out:
 	mutex_unlock(&sbi->vh_mutex);
 	return res;
 }
-
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int hfsplus_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 			  bool excl)
+#else
+static int hfsplus_create(struct inode *dir, struct dentry *dentry, umode_t mode,
+			  bool excl,void* label)
+#endif
+
 {
-	return hfsplus_mknod(dir, dentry, mode, 0);
+	return hfsplus_mknod(dir, dentry, mode, 0,NULL);
 }
 
+#ifndef CONFIG_EXTENDED_LSM_DIFC
 static int hfsplus_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+#else
+static int hfsplus_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode,void* label)
+#endif
+
 {
-	return hfsplus_mknod(dir, dentry, mode | S_IFDIR, 0);
+	return hfsplus_mknod(dir, dentry, mode | S_IFDIR, 0,NULL);
 }
 
 static int hfsplus_rename(struct inode *old_dir, struct dentry *old_dentry,

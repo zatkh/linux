@@ -1,0 +1,1 @@
+cmd_drivers/mmc/host/built-in.a := rm -f drivers/mmc/host/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/mmc/host/built-in.a drivers/mmc/host/mmci.o

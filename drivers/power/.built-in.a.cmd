@@ -1,0 +1,1 @@
+cmd_drivers/power/built-in.a := rm -f drivers/power/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD drivers/power/built-in.a drivers/power/reset/built-in.a drivers/power/supply/built-in.a
