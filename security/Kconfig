@@ -173,7 +173,7 @@ source security/smack/Kconfig
 source security/tomoyo/Kconfig
 source security/apparmor/Kconfig
 source security/loadpin/Kconfig
-source security/azure_sphere/Kconfig
+source security/s_module/Kconfig
 source security/yama/Kconfig
 
 source security/integrity/Kconfig

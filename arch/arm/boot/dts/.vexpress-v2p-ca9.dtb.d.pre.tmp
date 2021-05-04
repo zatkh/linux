@@ -1,0 +1,2 @@
+vexpress-v2p-ca9.o: arch/arm/boot/dts/vexpress-v2p-ca9.dts \
+ arch/arm/boot/dts/vexpress-v2m.dtsi

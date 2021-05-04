@@ -34,7 +34,7 @@ deps_config := \
 	security/integrity/ima/Kconfig \
 	security/integrity/Kconfig \
 	security/yama/Kconfig \
-	security/azure_sphere/Kconfig \
+	security/s_module/Kconfig \
 	security/loadpin/Kconfig \
 	security/apparmor/Kconfig \
 	security/tomoyo/Kconfig \

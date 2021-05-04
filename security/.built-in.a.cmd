@@ -1,1 +1,1 @@
-cmd_security/built-in.a := rm -f security/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD security/built-in.a security/commoncap.o security/min_addr.o security/security.o security/integrity/built-in.a
+cmd_security/built-in.a := rm -f security/built-in.a; /usr/bin/ccache /home/zt/optee/build/../toolchains/aarch32/bin/arm-linux-gnueabihf-ar rcSTPD security/built-in.a security/commoncap.o security/min_addr.o security/security.o security/s_module/built-in.a

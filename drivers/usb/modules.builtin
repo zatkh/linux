@@ -1,0 +1,5 @@
+kernel/drivers/usb/common/usb-common.ko
+kernel/drivers/usb/core/usbcore.ko
+kernel/drivers/usb/isp1760/isp1760.ko
+kernel/drivers/usb/mon/usbmon.ko
+kernel/drivers/usb/storage/usb-storage.ko

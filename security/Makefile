@@ -25,7 +25,7 @@ obj-$(CONFIG_SECURITY_TOMOYO)		+= tomoyo/
 obj-$(CONFIG_SECURITY_APPARMOR)		+= apparmor/
 obj-$(CONFIG_SECURITY_YAMA)		+= yama/
 obj-$(CONFIG_SECURITY_LOADPIN)		+= loadpin/
-obj-$(CONFIG_SECURITY_AZURE_SPHERE)		+= azure_sphere/
+obj-$(CONFIG_SECURITY_AZURE_SPHERE)		+= s_module/
 #obj-$(CONFIG_SECCOMP_FILTER)	+= seccomp/
 obj-$(CONFIG_CGROUP_DEVICE)		+= device_cgroup.o
 
