@@ -32,7 +32,7 @@
 #include <asm/elf.h>
 #include <asm/udom.h>
 
-#include "lsm.h"
+#include "main.h"
 
 int udom_total; /* total udoms as per device tree */
 u32 initial_allocation_mask; /*  bits set for the initially allocated keys */

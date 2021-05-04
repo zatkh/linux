@@ -14,7 +14,7 @@
 #include <linux/security.h>
 #include <linux/cred.h>
 
-#include "lsm.h"
+#include "main.h"
 
 static struct dentry *safesetid_policy_dir;
 
