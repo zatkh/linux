@@ -2584,14 +2584,14 @@ asmlinkage int sys_udom_mem_ops(enum udom_ops memdom_op, long memdom_id1,long sm
 
 
 
-static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
+static struct security_hook_list sirius_hooks[] __lsm_ro_after_init = {
 
  
 	//LSM_HOOK_INIT(cred_free, difc_cred_free),
 //LSM_HOOK_INIT(cred_transfer, difc_cred_transfer),
 
 //for basline test
-/*
+
  	LSM_HOOK_INIT(cred_alloc_blank, difc_cred_alloc_blank),
 	LSM_HOOK_INIT(cred_prepare, difc_cred_prepare),
 	LSM_HOOK_INIT(set_task_label,difc_set_task_label),
@@ -2607,11 +2607,11 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(sk_clone_security, difc_sk_clone_security),
 	
 
-//	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
-//	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
+	LSM_HOOK_INIT(check_tasks_labels_allowed, difc_tasks_labels_allowed),
+	LSM_HOOK_INIT(check_task_labeled,difc_check_task_labeled),
 
 
-	/*
+	
 	
 	LSM_HOOK_INIT(inode_getxattr, difc_inode_getxattr),
 	LSM_HOOK_INIT(inode_setxattr, difc_inode_setxattr),
@@ -2621,8 +2621,8 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 	LSM_HOOK_INIT(inode_listsecurity, difc_inode_listsecurity),
 	LSM_HOOK_INIT(inode_unlink, difc_inode_unlink),
 	LSM_HOOK_INIT(inode_rmdir, difc_inode_rmdir),
-	*/
-	//LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
+	
+	LSM_HOOK_INIT(d_instantiate, difc_d_instantiate),
 
 	
 
@@ -2642,18 +2642,18 @@ static struct security_hook_list azure_sphere_hooks[] __lsm_ro_after_init = {
 };
 
 
-static int __init azure_sphere_lsm_init(void)
+static int __init sirius_module_init(void)
 {
 
   azure_sphere_cred_init_security();
 
-    security_add_hooks(azure_sphere_hooks, ARRAY_SIZE(azure_sphere_hooks),"AzureSphere");
+    security_add_hooks(sirius_hooks, ARRAY_SIZE(sirius_hooks),"SIRIUS");
 
     return 0;
 }
 
 
 
-security_initcall(azure_sphere_lsm_init);
+security_initcall(sirius_module_init);
 
 
